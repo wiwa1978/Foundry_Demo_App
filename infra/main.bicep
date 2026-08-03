@@ -282,6 +282,7 @@ output searchIndexName string = searchIndexName
 output privateEndpointSubnetId string = network.outputs.privateEndpointSubnetId
 output containerRegistryLoginServer string = registry.outputs.loginServer
 output containerAppUrl string = containerApp.outputs.containerAppUrl
+output containerAppManagedIdentityClientId string = containerApp.outputs.managedIdentityClientId
 output containerAppManagedIdentityPrincipalId string = containerApp.outputs.managedIdentityPrincipalId
 output appEnvValues string = '''
 AZURE_STORAGE_ACCOUNT_URL=${storage.outputs.blobEndpoint}

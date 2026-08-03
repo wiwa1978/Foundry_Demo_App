@@ -209,6 +209,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           image: containerImage
           env: [
             {
+              name: 'AZURE_CLIENT_ID'
+              value: appIdentity.properties.clientId
+            }
+            {
               name: 'FOUNDRY_PROJECT_ENDPOINT'
               value: foundryProjectEndpoint
             }
@@ -281,4 +285,5 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
 
 output containerAppName string = containerApp.name
 output containerAppUrl string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
+output managedIdentityClientId string = appIdentity.properties.clientId
 output managedIdentityPrincipalId string = appIdentity.properties.principalId
