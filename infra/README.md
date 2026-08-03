@@ -35,7 +35,7 @@ Or deploy directly with Azure CLI:
 ```powershell
 az deployment sub create `
   --subscription "12aa5cea-1cef-4ce4-85f1-d890b5350326" `
-  --location germanywestcentral `
+  --location swedencentral `
   --template-file .\infra\main.bicep `
   --parameters .\infra\main.bicepparam
 ```

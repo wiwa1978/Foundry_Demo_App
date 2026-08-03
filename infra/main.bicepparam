@@ -1,6 +1,6 @@
 using './main.bicep'
 
-param location = 'germanywestcentral'
+param location = 'swedencentral'
 param resourceGroupName = 'RG-AI-CUSTOMERS-DEMO'
 param tags = {
   workload: 'foundry-chat-app'

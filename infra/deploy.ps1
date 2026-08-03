@@ -1,6 +1,6 @@
 param(
     [string]$SubscriptionId,
-    [string]$Location = "germanywestcentral",
+    [string]$Location = "swedencentral",
     [string]$ParameterFile = ".\infra\main.bicepparam",
     [string]$DeploymentName = "foundry-chat-rag-infra",
     [string]$FoundryProjectEndpoint,
@@ -55,6 +55,7 @@ $deploymentArguments = @(
 )
 
 $parameterOverrides = @()
+$parameterOverrides += "location=$Location"
 if ($FoundryProjectEndpoint) { $parameterOverrides += "foundryProjectEndpoint=$FoundryProjectEndpoint" }
 if ($FoundryOpenAiEndpoint) { $parameterOverrides += "foundryOpenAiEndpoint=$FoundryOpenAiEndpoint" }
 if ($FoundryModels) { $parameterOverrides += "foundryModels=$FoundryModels" }

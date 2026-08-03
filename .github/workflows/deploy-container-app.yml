@@ -25,7 +25,7 @@ permissions:
   id-token: write
 
 env:
-  AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'germanywestcentral' }}
+  AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'swedencentral' }}
   RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME || 'RG-AI-CUSTOMERS-DEMO' }}
   CONTAINER_REGISTRY_NAME: ${{ vars.CONTAINER_REGISTRY_NAME || 'acraicustomersdemo' }}
   CONTAINER_APP_NAME: ${{ vars.CONTAINER_APP_NAME || 'ca-foundry-chat-demo' }}
