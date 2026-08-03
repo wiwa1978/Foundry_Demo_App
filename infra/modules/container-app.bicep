@@ -45,6 +45,9 @@ param searchEndpoint string
 @description('Azure AI Search index name.')
 param searchIndexName string
 
+@description('Existing Azure AI Foundry / Azure AI services account name.')
+param foundryAccountName string
+
 @description('Foundry project endpoint.')
 param foundryProjectEndpoint string
 
@@ -79,6 +82,9 @@ var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var searchIndexDataContributorRoleId = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
 var searchServiceContributorRoleId = '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
+var cognitiveServicesUserRoleId = 'a97b65f3-24c7-4388-baec-2e87135dc908'
+var cognitiveServicesOpenAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+var azureAiDeveloperRoleId = '64702f94-c441-49e6-a78b-ef80e0188fee'
 
 resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsWorkspaceName
@@ -135,6 +141,10 @@ resource searchService 'Microsoft.Search/searchServices@2023-11-01' existing = {
   name: searchServiceName
 }
 
+resource foundryAccount 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
+  name: foundryAccountName
+}
+
 resource acrPullAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(registry.id, managedIdentityName, acrPullRoleId)
   scope: registry
@@ -172,6 +182,36 @@ resource searchServiceContributorAssignment 'Microsoft.Authorization/roleAssignm
     principalId: appIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchServiceContributorRoleId)
+  }
+}
+
+resource foundryUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, managedIdentityName, cognitiveServicesUserRoleId)
+  scope: foundryAccount
+  properties: {
+    principalId: appIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesUserRoleId)
+  }
+}
+
+resource foundryOpenAiUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, managedIdentityName, cognitiveServicesOpenAiUserRoleId)
+  scope: foundryAccount
+  properties: {
+    principalId: appIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleId)
+  }
+}
+
+resource foundryAiDeveloperAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, managedIdentityName, azureAiDeveloperRoleId)
+  scope: foundryAccount
+  properties: {
+    principalId: appIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureAiDeveloperRoleId)
   }
 }
 
@@ -280,6 +320,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
     storageBlobDataContributorAssignment
     searchIndexDataContributorAssignment
     searchServiceContributorAssignment
+    foundryUserAssignment
+    foundryOpenAiUserAssignment
+    foundryAiDeveloperAssignment
   ]
 }
 

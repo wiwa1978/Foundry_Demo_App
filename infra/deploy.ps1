@@ -11,6 +11,7 @@ param(
     [string]$FoundryRealtimeModel,
     [string]$StorageContainerName,
     [string]$SearchIndexName,
+    [string]$FoundryAccountName,
     [switch]$AssignCurrentUserRoles
 )
 
@@ -64,6 +65,7 @@ if ($FoundryRealtimeEndpoint) { $parameterOverrides += "foundryRealtimeEndpoint=
 if ($FoundryRealtimeModel) { $parameterOverrides += "foundryRealtimeModel=$FoundryRealtimeModel" }
 if ($StorageContainerName) { $parameterOverrides += "storageContainerName=$StorageContainerName" }
 if ($SearchIndexName) { $parameterOverrides += "searchIndexName=$SearchIndexName" }
+if ($FoundryAccountName) { $parameterOverrides += "foundryAccountName=$FoundryAccountName" }
 
 if ($parameterOverrides.Count -gt 0) {
     $deploymentArguments += @("--parameters")

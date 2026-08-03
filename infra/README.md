@@ -84,14 +84,15 @@ Also create these repository variables from your local `.env` values:
 
 ```text
 FOUNDRY_PROJECT_ENDPOINT
-FOUNDRY_OPENAI_ENDPOINT
+FOUNDRY_ACCOUNT_NAME
 FOUNDRY_MODELS
-FOUNDRY_REALTIME_ENDPOINT
 FOUNDRY_REALTIME_MODEL
 FOUNDRY_EMBEDDING_MODEL
 AZURE_STORAGE_CONTAINER_NAME
 AZURE_SEARCH_INDEX_NAME
 ```
+
+Use `FOUNDRY_PROJECT_ENDPOINT` as the single Foundry endpoint, for example `https://<resource>.services.ai.azure.com/api/projects/<project>`. The app derives the `/openai/v1` model endpoint internally for inference, so `FOUNDRY_OPENAI_ENDPOINT` is optional and normally does not need to be set.
 
 Do not add `AZURE_STORAGE_ACCOUNT_URL` or `AZURE_SEARCH_ENDPOINT` as GitHub variables; the Bicep deployment derives those from the Azure resources it creates. Do not add `FOUNDRY_API_KEY` unless you intentionally change the app to API-key auth. The app currently uses Microsoft Entra ID through `DefaultAzureCredential`.
 

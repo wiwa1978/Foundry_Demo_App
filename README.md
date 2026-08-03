@@ -97,8 +97,8 @@ Then open http://127.0.0.1:8000.
 
 | Variable | Description |
 | --- | --- |
-| `FOUNDRY_PROJECT_ENDPOINT` | Microsoft Foundry project endpoint, usually `https://<resource>.services.ai.azure.com/api/projects/<project-name>`. `AZURE_AI_PROJECT_ENDPOINT` and `AZURE_AIPROJECT_ENDPOINT` are also accepted. |
-| `FOUNDRY_OPENAI_ENDPOINT` | Optional compatibility fallback if you want to use the direct OpenAI-compatible endpoint from the Foundry sample, usually `https://<resource>.services.ai.azure.com/openai/v1`. `AZURE_OPENAI_ENDPOINT` is also accepted. |
+| `FOUNDRY_PROJECT_ENDPOINT` | Microsoft Foundry project endpoint, usually `https://<resource>.services.ai.azure.com/api/projects/<project-name>`. The app derives the OpenAI-compatible `/openai/v1` model endpoint from this value for inference. `AZURE_AI_PROJECT_ENDPOINT` and `AZURE_AIPROJECT_ENDPOINT` are also accepted. |
+| `FOUNDRY_OPENAI_ENDPOINT` | Optional compatibility fallback if you want to provide the direct endpoint explicitly, usually `https://<resource>.services.ai.azure.com/openai/v1`. `AZURE_OPENAI_ENDPOINT` is also accepted. |
 | `FOUNDRY_MODELS` | Optional comma-separated deployment names used to seed the local SQLite model registry. New deployments and local endpoints are stored in the database, so this does not need to be updated after setup. |
 | `AZURE_STORAGE_ACCOUNT_URL` | Optional Blob Storage account URL for original **Document Q&A** uploads, such as `https://<account>.blob.core.windows.net`. `FOUNDRY_STORAGE_ACCOUNT_URL` is also accepted. |
 | `AZURE_STORAGE_CONTAINER_NAME` | Optional Blob container for original document files. Defaults to `foundry-rag-documents`. `FOUNDRY_STORAGE_CONTAINER_NAME` is also accepted. |
@@ -119,15 +119,15 @@ Then open http://127.0.0.1:8000.
 
 Deployment names must match models you deployed in Microsoft Foundry.
 
-The recommended path follows the Azure AI Projects SDK docs: the app creates an `AIProjectClient(endpoint=FOUNDRY_PROJECT_ENDPOINT, credential=DefaultAzureCredential())`, calls `project_client.get_openai_client()`, then uses `responses.create` for each selected deployment.
+The recommended configuration uses `FOUNDRY_PROJECT_ENDPOINT` as the single Foundry endpoint. For model calls, the backend derives the OpenAI-compatible base URL by replacing the project path with `/openai/v1`, then creates an `OpenAI` client with `DefaultAzureCredential()` and uses `responses.create` or `chat.completions.create` for each selected deployment.
 
-The direct `/openai/v1` endpoint shown in Foundry snippets is the lower-level endpoint that the OpenAI-compatible client calls. It is useful when you create `OpenAI(...)` yourself, but the project endpoint is the clearer default for this app because it keeps the broader Foundry SDK available for future features such as listing deployments, agents, datasets, and evaluations.
+That keeps the app aligned with Foundry project configuration while avoiding a second required endpoint variable. `FOUNDRY_OPENAI_ENDPOINT` remains supported only as a compatibility override.
 
 There are two separate choices:
 
 | Choice | Recommended default | Why |
 | --- | --- | --- |
-| Client endpoint | `FOUNDRY_PROJECT_ENDPOINT` with `AIProjectClient(...).get_openai_client()` | Uses the Foundry SDK and still gives an OpenAI-compatible client. |
+| Client endpoint | `FOUNDRY_PROJECT_ENDPOINT`, with `/openai/v1` derived internally | One Foundry project endpoint in configuration, while model calls use the endpoint expected by the OpenAI-compatible SDK. |
 | Model API surface | Per-model setting: Responses API or Chat Completions API | Different deployments document different APIs. GPT-5.5 uses Responses; Kimi K2.5 uses Chat Completions. |
 
 ## Model switching and comparison

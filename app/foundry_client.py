@@ -10,7 +10,6 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import OpenAI
 
@@ -65,9 +64,9 @@ def load_settings() -> FoundrySettings:
             os.getenv("FOUNDRY_PROJECT_ENDPOINT")
             or os.getenv("AZURE_AI_PROJECT_ENDPOINT")
             or os.getenv("AZURE_AIPROJECT_ENDPOINT")
+            or os.getenv("FOUNDRY_ENDPOINT")
             or os.getenv("FOUNDRY_OPENAI_ENDPOINT")
             or os.getenv("AZURE_OPENAI_ENDPOINT")
-            or os.getenv("FOUNDRY_ENDPOINT")
         ),
         models=models,
         realtime_endpoint=(
@@ -311,15 +310,30 @@ def _normalize_endpoint(endpoint_value: str) -> str:
     return endpoint
 
 
-def _is_openai_endpoint(endpoint_value: str) -> bool:
-    return _normalize_endpoint(endpoint_value).endswith("/openai/v1")
-
-
 def _openai_base_url(endpoint_value: str) -> str:
     endpoint = _normalize_endpoint(endpoint_value)
-    if endpoint.endswith("/openai/v1"):
-        return endpoint
-    return f"{endpoint}/openai/v1"
+    if "://" not in endpoint and "/" not in endpoint:
+        return f"https://{endpoint}.services.ai.azure.com/openai/v1"
+
+    parsed = urlparse(endpoint)
+    if not parsed.scheme or not parsed.netloc:
+        raise RuntimeError(
+            "FOUNDRY_PROJECT_ENDPOINT must be a Foundry project endpoint like "
+            "https://<resource-name>.services.ai.azure.com/api/projects/<project-name>."
+        )
+
+    path = parsed.path.rstrip("/")
+    if path.endswith("/openai/v1"):
+        base_path = path
+    elif "/api/projects/" in path:
+        base_path = "/openai/v1"
+    elif path.endswith("/openai"):
+        base_path = f"{path}/v1"
+    elif not path:
+        base_path = "/openai/v1"
+    else:
+        base_path = f"{path}/openai/v1"
+    return f"{parsed.scheme}://{parsed.netloc}{base_path}"
 
 
 def _normalize_realtime_endpoint(endpoint_value: str) -> str:
@@ -356,23 +370,14 @@ def _normalize_realtime_endpoint(endpoint_value: str) -> str:
 @contextmanager
 def _create_openai_client(settings: FoundrySettings) -> Iterator[OpenAI]:
     endpoint = _normalize_endpoint(settings.endpoint or "")
-    if _is_openai_endpoint(endpoint):
-        token_provider = get_bearer_token_provider(
-            DefaultAzureCredential(),
-            "https://ai.azure.com/.default",
-        )
-        with OpenAI(
-            base_url=_openai_base_url(endpoint),
-            api_key=token_provider,
-        ) as openai_client:
-            yield openai_client
-        return
-
-    with (
-        DefaultAzureCredential() as credential,
-        AIProjectClient(endpoint=endpoint, credential=credential) as project_client,
-        project_client.get_openai_client() as openai_client,
-    ):
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://ai.azure.com/.default",
+    )
+    with OpenAI(
+        base_url=_openai_base_url(endpoint),
+        api_key=token_provider,
+    ) as openai_client:
         yield openai_client
 
 

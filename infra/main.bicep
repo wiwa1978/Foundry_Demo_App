@@ -122,6 +122,9 @@ param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-hellowo
 @description('Foundry project endpoint.')
 param foundryProjectEndpoint string
 
+@description('Existing Azure AI Foundry / Azure AI services account name.')
+param foundryAccountName string
+
 @description('Optional Foundry OpenAI-compatible endpoint.')
 param foundryOpenAiEndpoint string = ''
 
@@ -248,6 +251,7 @@ module containerApp 'modules/container-app.bicep' = {
     searchServiceName: searchServiceName
     searchEndpoint: search.outputs.searchEndpoint
     searchIndexName: searchIndexName
+    foundryAccountName: foundryAccountName
     foundryProjectEndpoint: foundryProjectEndpoint
     foundryOpenAiEndpoint: foundryOpenAiEndpoint
     foundryModels: foundryModels

@@ -30,10 +30,9 @@ env:
   CONTAINER_REGISTRY_NAME: ${{ vars.CONTAINER_REGISTRY_NAME || 'acraicustomersdemo' }}
   CONTAINER_APP_NAME: ${{ vars.CONTAINER_APP_NAME || 'ca-foundry-chat-demo' }}
   FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
-  FOUNDRY_OPENAI_ENDPOINT: ${{ vars.FOUNDRY_OPENAI_ENDPOINT }}
+  FOUNDRY_ACCOUNT_NAME: ${{ vars.FOUNDRY_ACCOUNT_NAME || 'ai-customers-demo-resource' }}
   FOUNDRY_MODELS: ${{ vars.FOUNDRY_MODELS }}
   FOUNDRY_EMBEDDING_MODEL: ${{ vars.FOUNDRY_EMBEDDING_MODEL || 'text-embedding-3-small' }}
-  FOUNDRY_REALTIME_ENDPOINT: ${{ vars.FOUNDRY_REALTIME_ENDPOINT }}
   FOUNDRY_REALTIME_MODEL: ${{ vars.FOUNDRY_REALTIME_MODEL || 'gpt-realtime-2.1' }}
   AZURE_STORAGE_CONTAINER_NAME: ${{ vars.AZURE_STORAGE_CONTAINER_NAME }}
   AZURE_SEARCH_INDEX_NAME: ${{ vars.AZURE_SEARCH_INDEX_NAME || 'foundry-document-rag' }}
@@ -65,10 +64,9 @@ jobs:
             -SubscriptionId "${{ vars.AZURE_SUBSCRIPTION_ID }}" `
             -Location "${{ env.AZURE_LOCATION }}" `
             -FoundryProjectEndpoint "${{ env.FOUNDRY_PROJECT_ENDPOINT }}" `
-            -FoundryOpenAiEndpoint "${{ env.FOUNDRY_OPENAI_ENDPOINT }}" `
+            -FoundryAccountName "${{ env.FOUNDRY_ACCOUNT_NAME }}" `
             -FoundryModels "${{ env.FOUNDRY_MODELS }}" `
             -FoundryEmbeddingModel "${{ env.FOUNDRY_EMBEDDING_MODEL }}" `
-            -FoundryRealtimeEndpoint "${{ env.FOUNDRY_REALTIME_ENDPOINT }}" `
             -FoundryRealtimeModel "${{ env.FOUNDRY_REALTIME_MODEL }}" `
             -StorageContainerName "${{ env.AZURE_STORAGE_CONTAINER_NAME }}" `
             -SearchIndexName "${{ env.AZURE_SEARCH_INDEX_NAME }}"
