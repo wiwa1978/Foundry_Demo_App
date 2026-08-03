@@ -1,0 +1,104 @@
+name: Deploy Container App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-container-app.yml"
+      - "app/**"
+      - "frontend/**"
+      - "infra/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "requirements.txt"
+  workflow_dispatch:
+    inputs:
+      deploy_infra:
+        description: "Deploy or update Azure infrastructure before publishing the app image"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'germanywestcentral' }}
+  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME || 'RG-AI-CUSTOMERS-DEMO' }}
+  CONTAINER_REGISTRY_NAME: ${{ vars.CONTAINER_REGISTRY_NAME || 'acraicustomersdemo' }}
+  CONTAINER_APP_NAME: ${{ vars.CONTAINER_APP_NAME || 'ca-foundry-chat-demo' }}
+  FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+  FOUNDRY_OPENAI_ENDPOINT: ${{ vars.FOUNDRY_OPENAI_ENDPOINT }}
+  FOUNDRY_MODELS: ${{ vars.FOUNDRY_MODELS }}
+  FOUNDRY_EMBEDDING_MODEL: ${{ vars.FOUNDRY_EMBEDDING_MODEL || 'text-embedding-3-small' }}
+  FOUNDRY_REALTIME_ENDPOINT: ${{ vars.FOUNDRY_REALTIME_ENDPOINT }}
+  FOUNDRY_REALTIME_MODEL: ${{ vars.FOUNDRY_REALTIME_MODEL || 'gpt-realtime-2.1' }}
+  AZURE_STORAGE_CONTAINER_NAME: ${{ vars.AZURE_STORAGE_CONTAINER_NAME }}
+  AZURE_SEARCH_INDEX_NAME: ${{ vars.AZURE_SEARCH_INDEX_NAME || 'foundry-document-rag' }}
+  IMAGE_NAME: foundry-chat-app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure Azure CLI extensions
+        run: az config set extension.use_dynamic_install=yes_without_prompt
+
+      - name: Deploy infrastructure
+        if: ${{ github.event_name == 'push' || inputs.deploy_infra }}
+        shell: pwsh
+        run: |
+          ./infra/deploy.ps1 `
+            -SubscriptionId "${{ vars.AZURE_SUBSCRIPTION_ID }}" `
+            -Location "${{ env.AZURE_LOCATION }}" `
+            -FoundryProjectEndpoint "${{ env.FOUNDRY_PROJECT_ENDPOINT }}" `
+            -FoundryOpenAiEndpoint "${{ env.FOUNDRY_OPENAI_ENDPOINT }}" `
+            -FoundryModels "${{ env.FOUNDRY_MODELS }}" `
+            -FoundryEmbeddingModel "${{ env.FOUNDRY_EMBEDDING_MODEL }}" `
+            -FoundryRealtimeEndpoint "${{ env.FOUNDRY_REALTIME_ENDPOINT }}" `
+            -FoundryRealtimeModel "${{ env.FOUNDRY_REALTIME_MODEL }}" `
+            -StorageContainerName "${{ env.AZURE_STORAGE_CONTAINER_NAME }}" `
+            -SearchIndexName "${{ env.AZURE_SEARCH_INDEX_NAME }}"
+
+      - name: Build and push image with ACR
+        run: |
+          az acr build \
+            --registry "${{ env.CONTAINER_REGISTRY_NAME }}" \
+            --image "${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+            --image "${{ env.IMAGE_NAME }}:latest" \
+            .
+
+      - name: Update Container App image
+        run: |
+          LOGIN_SERVER=$(az acr show \
+            --resource-group "${{ env.RESOURCE_GROUP_NAME }}" \
+            --name "${{ env.CONTAINER_REGISTRY_NAME }}" \
+            --query loginServer \
+            --output tsv)
+
+          az containerapp update \
+            --resource-group "${{ env.RESOURCE_GROUP_NAME }}" \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --image "$LOGIN_SERVER/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+      - name: Show app URL
+        run: |
+          APP_FQDN=$(az containerapp show \
+            --resource-group "${{ env.RESOURCE_GROUP_NAME }}" \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)
+          echo "App URL: https://$APP_FQDN"
