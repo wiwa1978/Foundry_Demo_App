@@ -41,7 +41,7 @@ resource blobPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
 
 resource blobPrivateDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
   parent: blobPrivateDnsZone
-  name: '${virtualNetworkName}-blob-link'
+  name: '${virtualNetworkName}-blob-dns-link'
   location: 'global'
   properties: {
     registrationEnabled: false
