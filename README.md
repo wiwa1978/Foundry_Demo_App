@@ -165,7 +165,7 @@ The **Document Q&A** use case uses Blob Storage for originals, Azure AI Search f
 4. Each question is embedded with the same Foundry deployment and sent to Azure AI Search as a hybrid keyword/vector query.
 5. Retrieved excerpts are inserted into a grounded prompt that is answered by the selected Foundry chat deployment with citation instructions.
 
-The signed-in identity needs RBAC access to the Foundry project, Azure AI Search, and Blob Storage. For Search, grant roles such as **Search Index Data Contributor** for indexing/querying and **Search Service Contributor** if the app should create or update the index automatically. For Storage, grant **Storage Blob Data Contributor** on the storage account or container. For a from-scratch Azure deployment, use the reusable Bicep templates in `infra\`; see `infra\README.md`.
+The signed-in identity needs RBAC access to the Foundry project, Azure AI Search, and Blob Storage. For Search, enable Entra auth with `aadOrApiKey`, grant **Search Index Data Reader** for querying, **Search Index Data Contributor** for indexing, and **Search Service Contributor** if the app should create or update the index automatically. For Storage, grant **Storage Blob Data Contributor** on the storage account or container. For a from-scratch Azure deployment, use the reusable Bicep templates in `infra\`; see `infra\README.md`.
 
 If you only need to patch an existing demo environment, you can still use the helper script:
 

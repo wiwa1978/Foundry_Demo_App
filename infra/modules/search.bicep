@@ -32,6 +32,11 @@ resource searchService 'Microsoft.Search/searchServices@2023-11-01' = {
     partitionCount: 1
     publicNetworkAccess: publicNetworkAccess
     replicaCount: 1
+    authOptions: {
+      aadOrApiKey: {
+        aadAuthFailureMode: 'http401WithBearerChallenge'
+      }
+    }
   }
 }
 

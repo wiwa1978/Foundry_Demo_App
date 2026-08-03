@@ -80,6 +80,7 @@ param containerMemory string = '1Gi'
 
 var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+var searchIndexDataReaderRoleId = '1407120a-92aa-4202-b7e9-c0e197c71c8f'
 var searchIndexDataContributorRoleId = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
 var searchServiceContributorRoleId = '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
 var cognitiveServicesUserRoleId = 'a97b65f3-24c7-4388-baec-2e87135dc908'
@@ -172,6 +173,16 @@ resource searchIndexDataContributorAssignment 'Microsoft.Authorization/roleAssig
     principalId: appIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchIndexDataContributorRoleId)
+  }
+}
+
+resource searchIndexDataReaderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(searchService.id, managedIdentityName, searchIndexDataReaderRoleId)
+  scope: searchService
+  properties: {
+    principalId: appIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchIndexDataReaderRoleId)
   }
 }
 
@@ -318,6 +329,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   dependsOn: [
     acrPullAssignment
     storageBlobDataContributorAssignment
+    searchIndexDataReaderAssignment
     searchIndexDataContributorAssignment
     searchServiceContributorAssignment
     foundryUserAssignment
