@@ -12,7 +12,9 @@ param(
     [string]$GitHubRepo,
 
     [string]$AppName = "github-foundry-chat-demo-deploy",
-    [string]$Branch = "main"
+    [string]$Branch = "main",
+
+    [string]$FederatedSubject
 )
 
 $ErrorActionPreference = "Stop"
@@ -65,11 +67,19 @@ if (-not $spId) {
 }
 
 $issuer = "https://token.actions.githubusercontent.com"
-$subject = "repo:${GitHubOrgOrUser}/${GitHubRepo}:ref:refs/heads/${Branch}"
-$credentialName = "github-${GitHubRepo}-${Branch}"
+$subject = if ($FederatedSubject) {
+    $FederatedSubject
+} else {
+    "repo:${GitHubOrgOrUser}/${GitHubRepo}:ref:refs/heads/${Branch}"
+}
+$credentialName = if ($FederatedSubject) {
+    "github-${GitHubRepo}-${Branch}-actual-subject"
+} else {
+    "github-${GitHubRepo}-${Branch}"
+}
 $existingCredential = & az ad app federated-credential list `
     --id $appId `
-    --query "[?name=='$credentialName'].name | [0]" `
+    --query "[?subject=='$subject'].name | [0]" `
     --output tsv 2>$null
 
 if (-not $existingCredential) {
