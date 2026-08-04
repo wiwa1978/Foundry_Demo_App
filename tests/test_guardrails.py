@@ -2,7 +2,11 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.conversation_store import build_model_history
-from app.foundry_admin import guardrail_policy_exists, list_guardrail_policies
+from app.foundry_admin import (
+    get_deployment_guardrail_policy,
+    guardrail_policy_exists,
+    list_guardrail_policies,
+)
 from app.foundry_client import complete_chat
 
 
@@ -53,6 +57,35 @@ def test_policy_validation_rejects_system_policy(mock_list):
 
     assert guardrail_policy_exists("strict-demo") is True
     assert guardrail_policy_exists("Microsoft.DefaultV2") is False
+
+
+@patch("app.foundry_admin._create_management_client")
+@patch("app.foundry_admin.load_admin_config")
+def test_reads_policy_assigned_to_deployment(mock_config, mock_client):
+    mock_config.return_value = SimpleNamespace(
+        is_configured=True,
+        subscription_id="subscription",
+        resource_group="group",
+        account_name="account",
+    )
+    client = MagicMock()
+    client.deployments.get.return_value = SimpleNamespace(
+        name="gpt-demo",
+        properties=SimpleNamespace(rai_policy_name="Microsoft.DefaultV2"),
+    )
+    mock_client.return_value = client
+
+    policy = get_deployment_guardrail_policy("gpt-demo")
+
+    assert policy == {
+        "deployment_name": "gpt-demo",
+        "policy_name": "Microsoft.DefaultV2",
+    }
+    client.deployments.get.assert_called_once_with(
+        resource_group_name="group",
+        account_name="account",
+        deployment_name="gpt-demo",
+    )
 
 
 @patch("app.foundry_client._create_openai_client")

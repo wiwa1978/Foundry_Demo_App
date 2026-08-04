@@ -42,6 +42,7 @@ from app.foundry_admin import (
     DeploymentRequest as FoundryDeploymentRequest,
     admin_config_to_dict,
     create_foundry_deployment,
+    get_deployment_guardrail_policy,
     guardrail_policy_exists,
     load_admin_config,
     list_guardrail_policies,
@@ -404,6 +405,16 @@ def put_settings(request: ModelSettingsRequest) -> dict:
 def get_guardrail_policies() -> dict:
     try:
         return {"policies": list_guardrail_policies()}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/guardrails/deployment-policy")
+def get_guardrail_deployment_policy(model: str = Query(min_length=1)) -> dict:
+    try:
+        return get_deployment_guardrail_policy(model)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 

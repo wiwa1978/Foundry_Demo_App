@@ -140,6 +140,11 @@ type GuardrailPolicy = {
   is_selectable: boolean;
 };
 
+type DeploymentGuardrailPolicy = {
+  deployment_name: string;
+  policy_name: string | null;
+};
+
 type Theme = "light" | "dark";
 type ViewMode = "chat" | "metrics" | "settings";
 type ModelModality = "text" | "image" | "voice";
@@ -515,6 +520,8 @@ export default function App() {
   const [settingsDraft, setSettingsDraft] = useState<ModelSettings | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [guardrailPolicies, setGuardrailPolicies] = useState<GuardrailPolicy[]>([]);
+  const [deploymentGuardrailPolicy, setDeploymentGuardrailPolicy] =
+    useState<DeploymentGuardrailPolicy | null>(null);
   const [guardrailPoliciesLoading, setGuardrailPoliciesLoading] = useState(false);
   const [settingsError, setSettingsError] = useState("");
   const [conversationMenu, setConversationMenu] = useState<ContextMenuState | null>(null);
@@ -1004,8 +1011,9 @@ export default function App() {
     setSettingsDraft(null);
     setSettingsError("");
     setGuardrailPoliciesLoading(true);
+    setDeploymentGuardrailPolicy(null);
     try {
-      const [settingsResponse, policiesResponse] = await Promise.all([
+      const [settingsResponse, policiesResponse, deploymentPolicyResponse] = await Promise.all([
         tracedFetch(
           `/api/model-settings?model=${encodeURIComponent(model)}`,
           {},
@@ -1016,10 +1024,16 @@ export default function App() {
           {},
           { label: "List Foundry guardrails", responseKind: "json" },
         ),
+        tracedFetch(
+          `/api/guardrails/deployment-policy?model=${encodeURIComponent(model)}`,
+          {},
+          { label: "Load deployment guardrail", responseKind: "json" },
+        ),
       ]);
-      const [settingsData, policiesData] = await Promise.all([
+      const [settingsData, policiesData, deploymentPolicyData] = await Promise.all([
         settingsResponse.json(),
         policiesResponse.json(),
+        deploymentPolicyResponse.json(),
       ]);
       if (!settingsResponse.ok) {
         throw new Error(settingsData.detail ?? "Failed to load model settings.");
@@ -1030,6 +1044,13 @@ export default function App() {
         setSettingsError(policiesData.detail ?? "Failed to retrieve Foundry guardrails.");
       } else {
         setGuardrailPolicies(policiesData.policies ?? []);
+      }
+      if (!deploymentPolicyResponse.ok) {
+        setSettingsError(
+          deploymentPolicyData.detail ?? "Failed to retrieve the deployment guardrail.",
+        );
+      } else {
+        setDeploymentGuardrailPolicy(deploymentPolicyData);
       }
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : "Failed to load settings.");
@@ -3045,6 +3066,7 @@ export default function App() {
           draft={settingsDraft}
           saving={isSavingSettings}
           policies={guardrailPolicies}
+          deploymentPolicy={deploymentGuardrailPolicy}
           policiesLoading={guardrailPoliciesLoading}
           error={settingsError}
           onClose={() => setSettingsModel(null)}
@@ -4541,6 +4563,7 @@ type SettingsModalProps = {
   draft: ModelSettings | null;
   saving: boolean;
   policies: GuardrailPolicy[];
+  deploymentPolicy: DeploymentGuardrailPolicy | null;
   policiesLoading: boolean;
   error: string;
   onClose: () => void;
@@ -4554,6 +4577,7 @@ function SettingsModal({
   draft,
   saving,
   policies,
+  deploymentPolicy,
   policiesLoading,
   error,
   onClose,
@@ -4642,6 +4666,19 @@ function SettingsModal({
                     Enabled
                   </label>
                 </div>
+                <div className="rounded-lg border border-blue-200 bg-white/80 px-3 py-2 dark:border-violet-500/30 dark:bg-[#29292c]">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Deployment guardrail
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">
+                      {deploymentPolicy?.policy_name ?? "Service default"}
+                    </Badge>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      Currently assigned to {model}
+                    </span>
+                  </div>
+                </div>
                 <div className="grid gap-2">
                   <Label htmlFor="guardrail-policy">Custom guardrail</Label>
                   <select
@@ -4668,7 +4705,8 @@ function SettingsModal({
                   </p>
                   {!policiesLoading && !selectablePolicies.length ? (
                     <p className="text-xs text-amber-700 dark:text-amber-300">
-                      No selectable custom guardrails were returned for this Foundry account.
+                      No custom guardrails are available. This deployment continues to use{" "}
+                      {deploymentPolicy?.policy_name ?? "its service default"}.
                     </p>
                   ) : null}
                 </div>

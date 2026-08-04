@@ -82,6 +82,30 @@ def guardrail_policy_exists(policy_name: str) -> bool:
     )
 
 
+def get_deployment_guardrail_policy(deployment_name: str) -> dict[str, Any]:
+    config = load_admin_config()
+    if not config.is_configured:
+        raise RuntimeError(
+            "Foundry deployment discovery is not configured. Set "
+            f"{', '.join(config.missing)} in the environment."
+        )
+
+    normalized_name = deployment_name.strip()
+    if not normalized_name:
+        raise ValueError("Model deployment name cannot be blank.")
+
+    deployment = _create_management_client(config).deployments.get(
+        resource_group_name=config.resource_group,
+        account_name=config.account_name,
+        deployment_name=normalized_name,
+    )
+    properties = getattr(deployment, "properties", None)
+    return {
+        "deployment_name": str(getattr(deployment, "name", "") or normalized_name),
+        "policy_name": getattr(properties, "rai_policy_name", None),
+    }
+
+
 def create_foundry_deployment(request: DeploymentRequest) -> dict[str, Any]:
     config = load_admin_config()
     if not config.is_configured:
