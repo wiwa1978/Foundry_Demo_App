@@ -38,7 +38,7 @@ resource dataContributor 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignmen
   properties: {
     principalId: principalId
     roleDefinitionId: '${account.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
-    scope: container.id
+    scope: '${account.id}/dbs/${databaseName}/colls/${containerName}'
   }
 }
 
