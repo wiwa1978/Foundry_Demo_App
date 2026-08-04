@@ -13,3 +13,4 @@ frontend/dist/
 infra/main.json
 *.log
 Thumbs.db
+#test
