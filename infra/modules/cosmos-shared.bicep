@@ -16,14 +16,8 @@ resource account 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' existing = {
   name: accountName
 }
 
-resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-05-15' existing = {
-  parent: account
-  name: databaseName
-}
-
 resource container 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
-  parent: database
-  name: containerName
+  name: '${accountName}/${databaseName}/${containerName}'
   properties: {
     resource: {
       id: containerName
