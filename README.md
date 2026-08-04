@@ -239,6 +239,18 @@ Kimi deployment names default to Chat Completions because the Foundry sample for
 
 Each assistant response shows the API surface that was actually used, either **Responses API** or **Chat Completions API**, in the response metadata. That value is also stored with the conversation history.
 
+### Guardrail comparison
+
+Each model can enable a side-by-side guardrail experiment. The custom guardrail dropdown is
+retrieved from the configured Foundry account through the Cognitive Services management SDK.
+The baseline request omits `x-policy-id` and uses the policy assigned to the deployment. The
+guarded request sends the selected custom policy through `x-policy-id`.
+
+Text chat, Document Q&A, model comparison, and traditional voice display both results and their
+guardrail annotations. Realtime voice remains a single WebRTC session and explicitly reports that
+request-level comparison is unavailable. The app identity must be able to list RAI policies on the
+Foundry account.
+
 Capability tags are local metadata for the playground. They do not change the Foundry deployment, but they let the app later filter models by use case, such as text, image, or voice.
 
 ## Conversation history

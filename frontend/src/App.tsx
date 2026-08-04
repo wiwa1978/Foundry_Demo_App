@@ -98,6 +98,9 @@ type ModelResult = {
   duration_ms?: number;
   usage?: Usage;
   error?: string;
+  guardrail_variant?: "baseline" | "guarded" | null;
+  guardrail_policy_name?: string | null;
+  guardrail_results?: Record<string, unknown> | null;
 };
 
 type ModelSettings = {
@@ -109,6 +112,8 @@ type ModelSettings = {
   top_p: number;
   max_tokens: number;
   repetition_penalty: number;
+  guardrails_enabled: boolean;
+  guardrail_policy_name: string | null;
 };
 
 type ChatMessage = {
@@ -121,6 +126,18 @@ type ChatMessage = {
   duration_ms?: number;
   usage?: Usage;
   error?: string;
+  guardrail_variant?: "baseline" | "guarded" | null;
+  guardrail_policy_name?: string | null;
+  guardrail_results?: Record<string, unknown> | null;
+};
+
+type GuardrailPolicy = {
+  id?: string | null;
+  name: string;
+  type: string;
+  mode: string;
+  base_policy_name?: string | null;
+  is_selectable: boolean;
 };
 
 type Theme = "light" | "dark";
@@ -214,6 +231,9 @@ type StoredMessage = {
   duration_ms: number | null;
   usage: Usage | null;
   error: string | null;
+  guardrail_variant: "baseline" | "guarded" | null;
+  guardrail_policy_name: string | null;
+  guardrail_results: Record<string, unknown> | null;
   created_at: string;
 };
 
@@ -289,6 +309,8 @@ type ChatStreamEvent =
       api_surface: ModelSettings["api_surface"];
       conversation: Conversation;
       user_message: StoredMessage;
+      guardrail_comparison?: boolean;
+      guardrail_policy_name?: string | null;
     }
   | {
       type: "foundry_request";
@@ -323,6 +345,19 @@ type ChatStreamEvent =
       error: string;
       conversation?: Conversation;
       assistant_message?: StoredMessage;
+    }
+  | {
+      type: "variant_completed";
+      conversation: Conversation;
+      result: ModelResult & {
+        assistant_message: StoredMessage;
+        foundry_request?: FoundryRequestTrace;
+        foundry_response?: FoundryResponseTrace;
+      };
+    }
+  | {
+      type: "comparison_completed";
+      conversation: Conversation;
     };
 
 type ApiTraceEntry = {
@@ -349,6 +384,8 @@ type RealtimeSessionResponse = {
   model: string;
   voice: string;
   expires_at?: number | null;
+  configured_guardrail_policy_name?: string | null;
+  guardrail_status?: string;
 };
 
 type RealtimeServerEvent = {
@@ -366,6 +403,24 @@ type RealtimeTranscriptEntry = {
   text: string;
 };
 
+type TraditionalSpeechResult = {
+  model: string;
+  voice: string;
+  audio_base64: string;
+  audio_mime_type: string;
+  duration_ms: number;
+  foundry_request?: { payload?: unknown };
+  foundry_response?: { payload?: unknown };
+};
+
+type TraditionalVoiceVariantResult = ModelResult & {
+  assistant_message: StoredMessage;
+  foundry_request?: FoundryRequestTrace;
+  foundry_response?: FoundryResponseTrace;
+  speech?: TraditionalSpeechResult;
+  speech_error?: string;
+};
+
 type TraditionalVoiceResult = {
   model: string;
   transcription: {
@@ -375,22 +430,15 @@ type TraditionalVoiceResult = {
     foundry_request?: { payload?: unknown };
     foundry_response?: { extracted?: unknown; payload?: unknown };
   };
-  chat: ModelResult & {
+  chat?: ModelResult & {
     foundry_request?: FoundryRequestTrace;
     foundry_response?: FoundryResponseTrace;
   };
-  speech: {
-    model: string;
-    voice: string;
-    audio_base64: string;
-    audio_mime_type: string;
-    duration_ms: number;
-    foundry_request?: { payload?: unknown };
-    foundry_response?: { payload?: unknown };
-  };
+  speech?: TraditionalSpeechResult;
+  results: TraditionalVoiceVariantResult[];
   conversation: Conversation;
   user_message: StoredMessage;
-  assistant_message: StoredMessage;
+  assistant_message?: StoredMessage;
 };
 
 type TracedFetchOptions = {
@@ -408,6 +456,8 @@ const defaultSettings: Omit<ModelSettings, "model"> = {
   top_p: 1,
   max_tokens: 1024,
   repetition_penalty: 1,
+  guardrails_enabled: false,
+  guardrail_policy_name: null,
 };
 
 const defaultDeploymentDraft: AdminDeploymentDraft = {
@@ -464,6 +514,9 @@ export default function App() {
   const [settingsModel, setSettingsModel] = useState<string | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<ModelSettings | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [guardrailPolicies, setGuardrailPolicies] = useState<GuardrailPolicy[]>([]);
+  const [guardrailPoliciesLoading, setGuardrailPoliciesLoading] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
   const [conversationMenu, setConversationMenu] = useState<ContextMenuState | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminConfig, setAdminConfig] = useState<AdminConfig | null>(null);
@@ -495,6 +548,7 @@ export default function App() {
   const [realtimeError, setRealtimeError] = useState("");
   const [realtimeTranscript, setRealtimeTranscript] = useState<RealtimeTranscriptEntry[]>([]);
   const [realtimeSessionModel, setRealtimeSessionModel] = useState<string | null>(null);
+  const [realtimeGuardrailStatus, setRealtimeGuardrailStatus] = useState("");
   const traditionalMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const traditionalMediaStreamRef = useRef<MediaStream | null>(null);
   const traditionalAudioChunksRef = useRef<Blob[]>([]);
@@ -948,13 +1002,40 @@ export default function App() {
 
     setSettingsModel(model);
     setSettingsDraft(null);
-    const response = await tracedFetch(
-      `/api/model-settings?model=${encodeURIComponent(model)}`,
-      {},
-      { label: "Load model settings", responseKind: "json" },
-    );
-    const data = await response.json();
-    setSettingsDraft(data);
+    setSettingsError("");
+    setGuardrailPoliciesLoading(true);
+    try {
+      const [settingsResponse, policiesResponse] = await Promise.all([
+        tracedFetch(
+          `/api/model-settings?model=${encodeURIComponent(model)}`,
+          {},
+          { label: "Load model settings", responseKind: "json" },
+        ),
+        tracedFetch(
+          "/api/guardrails/policies",
+          {},
+          { label: "List Foundry guardrails", responseKind: "json" },
+        ),
+      ]);
+      const [settingsData, policiesData] = await Promise.all([
+        settingsResponse.json(),
+        policiesResponse.json(),
+      ]);
+      if (!settingsResponse.ok) {
+        throw new Error(settingsData.detail ?? "Failed to load model settings.");
+      }
+      setSettingsDraft(settingsData);
+      if (!policiesResponse.ok) {
+        setGuardrailPolicies([]);
+        setSettingsError(policiesData.detail ?? "Failed to retrieve Foundry guardrails.");
+      } else {
+        setGuardrailPolicies(policiesData.policies ?? []);
+      }
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : "Failed to load settings.");
+    } finally {
+      setGuardrailPoliciesLoading(false);
+    }
   }
 
   async function refreshConversations() {
@@ -1384,9 +1465,12 @@ export default function App() {
         response: summarizeTraditionalVoiceResult(result),
       });
 
-      const audioUrl = URL.createObjectURL(
-        base64ToBlob(result.speech.audio_base64, result.speech.audio_mime_type),
-      );
+      const primarySpeech = result.results.length === 1 ? result.results[0].speech : undefined;
+      const audioUrl = primarySpeech
+        ? URL.createObjectURL(
+            base64ToBlob(primarySpeech.audio_base64, primarySpeech.audio_mime_type),
+          )
+        : "";
       replaceTraditionalAudioUrl(audioUrl);
       setTraditionalVoiceResult(result);
       setTraditionalVoiceStatus("complete");
@@ -1395,9 +1479,11 @@ export default function App() {
       setMessages((current) => [
         ...current,
         mapStoredMessage(result.user_message),
-        mapStoredMessage(result.assistant_message),
+        ...result.results.map((variant) => mapStoredMessage(variant.assistant_message)),
       ]);
-      void new Audio(audioUrl).play();
+      if (audioUrl) {
+        void new Audio(audioUrl).play();
+      }
     } catch (error) {
       setTraditionalVoiceStatus("idle");
       setTraditionalVoiceError(
@@ -1422,27 +1508,38 @@ export default function App() {
       durationMs: result.transcription.duration_ms,
       response: result.transcription.foundry_response?.extracted,
     });
-    if (result.chat.foundry_request) {
-      appendFoundryTrace(result.chat.foundry_request, `Foundry chat request for ${result.model}`);
+    for (const variant of result.results) {
+      const variantLabel = variant.guardrail_variant ?? "standard";
+      if (variant.foundry_request) {
+        appendFoundryTrace(
+          variant.foundry_request,
+          `Foundry ${variantLabel} chat request for ${result.model}`,
+        );
+      }
+      if (variant.foundry_response) {
+        appendFoundryResponseTrace(
+          variant.foundry_response,
+          `Foundry ${variantLabel} chat response for ${result.model}`,
+        );
+      }
+      if (variant.speech) {
+        appendApiTrace({
+          direction: "api_foundry",
+          label: `Foundry ${variantLabel} speech (${variant.speech.model})`,
+          method: "POST",
+          url: "/audio/speech",
+          request: variant.speech.foundry_request?.payload,
+        });
+        appendApiTrace({
+          direction: "foundry_api",
+          label: `Foundry ${variantLabel} speech response`,
+          method: "RECV",
+          url: "/audio/speech",
+          durationMs: variant.speech.duration_ms,
+          response: variant.speech.foundry_response?.payload,
+        });
+      }
     }
-    if (result.chat.foundry_response) {
-      appendFoundryResponseTrace(result.chat.foundry_response, `Foundry chat response for ${result.model}`);
-    }
-    appendApiTrace({
-      direction: "api_foundry",
-      label: `Foundry speech (${result.speech.model})`,
-      method: "POST",
-      url: "/audio/speech",
-      request: result.speech.foundry_request?.payload,
-    });
-    appendApiTrace({
-      direction: "foundry_api",
-      label: "Foundry speech response",
-      method: "RECV",
-      url: "/audio/speech",
-      durationMs: result.speech.duration_ms,
-      response: result.speech.foundry_response?.payload,
-    });
   }
 
   function closeRealtimeConnection() {
@@ -1516,6 +1613,7 @@ export default function App() {
     closeRealtimeConnection();
     setRealtimeStatus("idle");
     setRealtimeSessionModel(null);
+    setRealtimeGuardrailStatus("");
     appendRealtimeTranscript("system", "Realtime session stopped");
   }
 
@@ -1557,6 +1655,11 @@ export default function App() {
         throw new Error(tokenData.detail ?? "Failed to create a Foundry Realtime session.");
       }
       const session = tokenData as RealtimeSessionResponse;
+      setRealtimeGuardrailStatus(
+        session.configured_guardrail_policy_name
+          ? `${session.configured_guardrail_policy_name}: ${session.guardrail_status}`
+          : session.guardrail_status ?? "",
+      );
 
       const audioElement = new Audio();
       audioElement.autoplay = true;
@@ -1637,6 +1740,7 @@ export default function App() {
     }
 
     setIsSavingSettings(true);
+    setSettingsError("");
     try {
       const response = await tracedFetch("/api/model-settings", {
         method: "PUT",
@@ -1652,6 +1756,8 @@ export default function App() {
       const saved = await response.json();
       setSettingsDraft(saved);
       setSettingsModel(null);
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : "Failed to save settings.");
     } finally {
       setIsSavingSettings(false);
     }
@@ -1711,6 +1817,11 @@ export default function App() {
     const userPrompt = prompt.trim();
     const pendingUser = createUserMessage(userPrompt);
     const pendingAssistant = createAssistantMessage({ model: activeModel, content: "Thinking..." });
+    const pendingGuarded = createAssistantMessage({
+      model: activeModel,
+      content: "Applying custom guardrail...",
+      guardrail_variant: "guarded",
+    });
     let receivedDelta = false;
     setPrompt("");
     setIsRunning(true);
@@ -1742,8 +1853,8 @@ export default function App() {
         if (event.type === "start") {
           setCurrentConversationId(event.conversation.id);
           upsertConversation(event.conversation);
-          setMessages((current) =>
-            current.map((message) => {
+          setMessages((current) => {
+            const updated = current.map((message) => {
               if (message.id === pendingUser.id) {
                 return mapStoredMessage(event.user_message);
               }
@@ -1751,11 +1862,57 @@ export default function App() {
                 return {
                   ...message,
                   api_surface: event.api_surface,
+                  guardrail_variant: event.guardrail_comparison ? ("baseline" as const) : null,
                 };
               }
               return message;
-            }),
+            });
+            return event.guardrail_comparison
+              ? [
+                  ...updated,
+                  {
+                    ...pendingGuarded,
+                    api_surface: event.api_surface,
+                    guardrail_policy_name: event.guardrail_policy_name,
+                  },
+                ]
+              : updated;
+          });
+          return;
+        }
+
+        if (event.type === "variant_completed") {
+          setCurrentConversationId(event.conversation.id);
+          upsertConversation(event.conversation);
+          const targetId =
+            event.result.guardrail_variant === "guarded"
+              ? pendingGuarded.id
+              : pendingAssistant.id;
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === targetId
+                ? mapStoredMessage(event.result.assistant_message)
+                : message,
+            ),
           );
+          if (event.result.foundry_request) {
+            appendFoundryTrace(
+              event.result.foundry_request,
+              `Foundry ${event.result.guardrail_variant} request for ${activeModel}`,
+            );
+          }
+          if (event.result.foundry_response) {
+            appendFoundryResponseTrace(
+              event.result.foundry_response,
+              `Foundry ${event.result.guardrail_variant} response for ${activeModel}`,
+            );
+          }
+          return;
+        }
+
+        if (event.type === "comparison_completed") {
+          setCurrentConversationId(event.conversation.id);
+          upsertConversation(event.conversation);
           return;
         }
 
@@ -1831,6 +1988,11 @@ export default function App() {
     const userPrompt = prompt.trim();
     const pendingUser = createUserMessage(userPrompt);
     const pendingAssistant = createAssistantMessage({ model: activeModel, content: "Retrieving documents..." });
+    const pendingGuarded = createAssistantMessage({
+      model: activeModel,
+      content: "Applying custom guardrail to retrieved context...",
+      guardrail_variant: "guarded",
+    });
     let receivedDelta = false;
     setPrompt("");
     setIsRunning(true);
@@ -1862,8 +2024,8 @@ export default function App() {
         if (event.type === "start") {
           setCurrentConversationId(event.conversation.id);
           upsertConversation(event.conversation);
-          setMessages((current) =>
-            current.map((message) => {
+          setMessages((current) => {
+            const updated = current.map((message) => {
               if (message.id === pendingUser.id) {
                 return mapStoredMessage(event.user_message);
               }
@@ -1872,11 +2034,57 @@ export default function App() {
                   ...message,
                   api_surface: event.api_surface,
                   content: "Reading retrieved document excerpts...",
+                  guardrail_variant: event.guardrail_comparison ? ("baseline" as const) : null,
                 };
               }
               return message;
-            }),
+            });
+            return event.guardrail_comparison
+              ? [
+                  ...updated,
+                  {
+                    ...pendingGuarded,
+                    api_surface: event.api_surface,
+                    guardrail_policy_name: event.guardrail_policy_name,
+                  },
+                ]
+              : updated;
+          });
+          return;
+        }
+
+        if (event.type === "variant_completed") {
+          setCurrentConversationId(event.conversation.id);
+          upsertConversation(event.conversation);
+          const targetId =
+            event.result.guardrail_variant === "guarded"
+              ? pendingGuarded.id
+              : pendingAssistant.id;
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === targetId
+                ? mapStoredMessage(event.result.assistant_message)
+                : message,
+            ),
           );
+          if (event.result.foundry_request) {
+            appendFoundryTrace(
+              event.result.foundry_request,
+              `Foundry grounded ${event.result.guardrail_variant} request for ${activeModel}`,
+            );
+          }
+          if (event.result.foundry_response) {
+            appendFoundryResponseTrace(
+              event.result.foundry_response,
+              `Foundry grounded ${event.result.guardrail_variant} response for ${activeModel}`,
+            );
+          }
+          return;
+        }
+
+        if (event.type === "comparison_completed") {
+          setCurrentConversationId(event.conversation.id);
+          upsertConversation(event.conversation);
           return;
         }
 
@@ -2018,7 +2226,10 @@ export default function App() {
 
       setCurrentConversationId(data.conversation.id);
       upsertConversation(data.conversation);
-      for (const result of data.results ?? []) {
+      const flatResults = (data.results ?? []).flatMap(
+        (result: { variants?: ModelResult[] }) => result.variants ?? [result],
+      );
+      for (const result of flatResults) {
         if (result.foundry_request) {
           appendFoundryTrace(result.foundry_request, `Foundry request for ${result.model}`);
         }
@@ -2033,14 +2244,16 @@ export default function App() {
         status: response.status,
         response: data,
       });
-      const assistantMessages = data.results.map(
+      const assistantMessages = flatResults.map(
         (result: { assistant_message: StoredMessage }) => result.assistant_message,
       );
       replacePendingMessages(selected.length + 1, [
         mapStoredMessage(data.user_message),
         ...assistantMessages.map(mapStoredMessage),
       ]);
-      speakResponses(assistantMessages);
+      speakResponses(
+        assistantMessages.filter((message: StoredMessage) => message.guardrail_variant !== "guarded"),
+      );
     } finally {
       setIsRunning(false);
     }
@@ -2691,6 +2904,7 @@ export default function App() {
                   model={realtimeSessionModel ?? config?.realtime_model ?? "gpt-realtime-2.1"}
                   status={realtimeStatus}
                   error={realtimeError}
+                  guardrailStatus={realtimeGuardrailStatus}
                   transcript={realtimeTranscript}
                   onStart={() => void startRealtimeSession()}
                   onStop={stopRealtimeSession}
@@ -2702,9 +2916,7 @@ export default function App() {
               <div className="flex-1 overflow-auto p-5">
                 {messages.length ? (
                 <div className="mx-auto grid max-w-5xl gap-4">
-                  {messages.map((message) => (
-                    <ChatBubble key={message.id} message={message} />
-                  ))}
+                  <ChatMessageHistory messages={messages} />
                 </div>
                 ) : (
                 <div className="flex h-full items-center justify-center">
@@ -2832,6 +3044,9 @@ export default function App() {
           model={settingsModel}
           draft={settingsDraft}
           saving={isSavingSettings}
+          policies={guardrailPolicies}
+          policiesLoading={guardrailPoliciesLoading}
+          error={settingsError}
           onClose={() => setSettingsModel(null)}
           onSave={() => void saveSettings()}
           onReset={() =>
@@ -3078,19 +3293,59 @@ function TraditionalVoiceHero({
       {result ? (
         <div className="mt-5 grid gap-3 text-left">
           <VoiceResultBlock label="Transcript" text={result.transcription.text} />
-          <VoiceResultBlock label="Assistant response" text={result.assistant_message.content} />
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-300">
-            <span>
-              {result.transcription.duration_ms} ms STT · {result.chat.duration_ms ?? 0} ms chat ·{" "}
-              {result.speech.duration_ms} ms TTS
-            </span>
-            {audioUrl ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => void new Audio(audioUrl).play()}>
-                <Volume2 className="h-4 w-4" />
-                Replay TTS
-              </Button>
-            ) : null}
+          <div className={cn("grid gap-3", result.results.length > 1 && "lg:grid-cols-2")}>
+            {result.results.map((variant) => {
+              const variantAudioUrl = variant.speech
+                ? `data:${variant.speech.audio_mime_type};base64,${variant.speech.audio_base64}`
+                : "";
+              return (
+                <div
+                  key={variant.assistant_message.id}
+                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-[#606066] dark:bg-[#45454a]"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={variant.guardrail_variant === "guarded" ? "default" : "outline"}>
+                      {variant.guardrail_variant === "guarded"
+                        ? variant.guardrail_policy_name ?? "Custom guardrail"
+                        : variant.guardrail_variant === "baseline"
+                          ? "Deployment default"
+                          : "Assistant response"}
+                    </Badge>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {variant.duration_ms ?? 0} ms chat
+                      {variant.speech ? ` · ${variant.speech.duration_ms} ms TTS` : ""}
+                    </span>
+                  </div>
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-slate-800 dark:text-slate-100">
+                    {variant.error ?? variant.content}
+                  </p>
+                  {variantAudioUrl ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="justify-self-start"
+                      onClick={() => void new Audio(variantAudioUrl).play()}
+                    >
+                      <Volume2 className="h-4 w-4" />
+                      Play TTS
+                    </Button>
+                  ) : variant.speech_error ? (
+                    <p className="text-xs text-red-600 dark:text-red-300">{variant.speech_error}</p>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
+          {result.results.length === 1 && audioUrl ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => void new Audio(audioUrl).play()}>
+              <Volume2 className="h-4 w-4" />
+              Replay TTS
+            </Button>
+          ) : null}
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Shared transcription: {result.transcription.duration_ms} ms
+          </p>
         </div>
       ) : null}
     </div>
@@ -3115,6 +3370,7 @@ function RealtimeVoiceHero({
   model,
   status,
   error,
+  guardrailStatus,
   transcript,
   onStart,
   onStop,
@@ -3123,6 +3379,7 @@ function RealtimeVoiceHero({
   model: string;
   status: RealtimeStatus;
   error: string;
+  guardrailStatus: string;
   transcript: RealtimeTranscriptEntry[];
   onStart: () => void;
   onStop: () => void;
@@ -3135,6 +3392,11 @@ function RealtimeVoiceHero({
     <div className="w-full rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
       <DictationHero active={isActive} />
       <Badge variant="outline">Realtime pipeline</Badge>
+      {guardrailStatus ? (
+        <p className="mx-auto mt-3 max-w-2xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+          {guardrailStatus}
+        </p>
+      ) : null}
       <h3 className="mt-3 text-2xl font-semibold tracking-tight">Realtime speech-in/out</h3>
       <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
         Demo Foundry Realtime speech-in/speech-out with{" "}
@@ -3857,6 +4119,39 @@ function MetricsLineChart({
   );
 }
 
+function ChatMessageHistory({ messages }: { messages: ChatMessage[] }) {
+  const turns = groupComparisonTurns(messages);
+  return (
+    <>
+      {turns.map((turn) => {
+        const isGuardrailComparison = turn.responses.some(
+          (response) => response.guardrail_variant,
+        );
+        return (
+          <div key={turn.user.id} className="grid gap-4">
+            <ChatBubble message={turn.user} />
+            {isGuardrailComparison ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {(["baseline", "guarded"] as const).map((variant) => {
+                  const response = turn.responses.find(
+                    (item) => item.guardrail_variant === variant,
+                  );
+                  return response ? <ChatBubble key={response.id} message={response} /> : null;
+                })}
+              </div>
+            ) : (
+              turn.responses.map((response) => (
+                <ChatBubble key={response.id} message={response} />
+              ))
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -3891,6 +4186,13 @@ function ChatBubble({ message }: { message: ChatMessage }) {
           {!isUser && message.api_surface ? (
             <Badge variant="secondary">{formatApiSurface(message.api_surface)}</Badge>
           ) : null}
+          {!isUser && message.guardrail_variant ? (
+            <Badge variant={message.guardrail_variant === "guarded" ? "default" : "outline"}>
+              {message.guardrail_variant === "guarded"
+                ? message.guardrail_policy_name ?? "Custom guardrail"
+                : "Deployment default"}
+            </Badge>
+          ) : null}
           {!isUser && message.duration_ms ? (
             <span className="inline-flex items-center gap-1">
               <Clock className="h-3 w-3" />
@@ -3899,6 +4201,15 @@ function ChatBubble({ message }: { message: ChatMessage }) {
           ) : null}
           {!isUser && formatUsage(message.usage) ? <span>{formatUsage(message.usage)}</span> : null}
         </div>
+
+        {!isUser && message.guardrail_results ? (
+          <details className="mt-1 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-300">
+            <summary className="cursor-pointer font-medium">Guardrail annotations</summary>
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap">
+              {JSON.stringify(message.guardrail_results, null, 2)}
+            </pre>
+          </details>
+        ) : null}
 
         <div
           className={cn(
@@ -4102,14 +4413,18 @@ function ComparisonModelPane({
         {turns.length ? (
           <div className="grid gap-4">
             {turns.map((turn) => {
-              const response = turn.responses.find((item) => item.model === model);
+              const responses = turn.responses.filter((item) => item.model === model);
               return (
                 <section key={turn.user.id} className="grid gap-2">
                   <div className="ml-auto max-w-[90%] rounded-2xl bg-blue-600 px-3 py-2 text-sm leading-6 text-white shadow-sm dark:bg-violet-600">
                     {turn.user.content}
                   </div>
-                  {response ? (
-                    <ComparisonModelResponse message={response} />
+                  {responses.length ? (
+                    <div className="grid gap-2">
+                      {responses.map((response) => (
+                        <ComparisonModelResponse key={response.id} message={response} />
+                      ))}
+                    </div>
                   ) : (
                     <div className="rounded-2xl border bg-white px-3 py-2 text-sm text-slate-500 shadow-sm dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-400">
                       Waiting for this model...
@@ -4177,6 +4492,13 @@ function ComparisonModelResponse({ message }: { message: ChatMessage }) {
         {message.api_surface ? (
           <Badge variant="secondary">{formatApiSurface(message.api_surface)}</Badge>
         ) : null}
+        {message.guardrail_variant ? (
+          <Badge variant={message.guardrail_variant === "guarded" ? "default" : "outline"}>
+            {message.guardrail_variant === "guarded"
+              ? message.guardrail_policy_name ?? "Custom guardrail"
+              : "Deployment default"}
+          </Badge>
+        ) : null}
         {message.duration_ms ? (
           <span className="inline-flex items-center gap-1">
             <Clock className="h-3 w-3" />
@@ -4188,6 +4510,14 @@ function ComparisonModelResponse({ message }: { message: ChatMessage }) {
       <div className="whitespace-pre-wrap text-slate-900 dark:text-slate-100">
         {message.error ?? message.content}
       </div>
+      {message.guardrail_results ? (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer font-medium">Guardrail annotations</summary>
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">
+            {JSON.stringify(message.guardrail_results, null, 2)}
+          </pre>
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -4210,6 +4540,9 @@ type SettingsModalProps = {
   model: string;
   draft: ModelSettings | null;
   saving: boolean;
+  policies: GuardrailPolicy[];
+  policiesLoading: boolean;
+  error: string;
   onClose: () => void;
   onSave: () => void;
   onReset: () => void;
@@ -4220,11 +4553,15 @@ function SettingsModal({
   model,
   draft,
   saving,
+  policies,
+  policiesLoading,
+  error,
   onClose,
   onSave,
   onReset,
   onChange,
 }: SettingsModalProps) {
+  const selectablePolicies = policies.filter((policy) => policy.is_selectable);
   function toggleModality(modality: ModelModality) {
     if (!draft) {
       return;
@@ -4277,6 +4614,64 @@ function SettingsModal({
                   <option value="responses">Responses API</option>
                   <option value="chat_completions">Chat Completions API</option>
                 </select>
+              </section>
+
+              <section className="grid gap-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4 dark:border-violet-500/40 dark:bg-violet-500/10">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-semibold">Guardrail experiment</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Compare the deployment default with a custom Foundry guardrail using the same
+                      model and prompt.
+                    </p>
+                  </div>
+                  <label className="flex shrink-0 items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={draft.guardrails_enabled}
+                      onChange={(event) =>
+                        onChange({
+                          guardrails_enabled: event.target.checked,
+                          guardrail_policy_name: event.target.checked
+                            ? draft.guardrail_policy_name
+                            : null,
+                        })
+                      }
+                      className="h-4 w-4 accent-blue-600"
+                    />
+                    Enabled
+                  </label>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="guardrail-policy">Custom guardrail</Label>
+                  <select
+                    id="guardrail-policy"
+                    value={draft.guardrail_policy_name ?? ""}
+                    disabled={!draft.guardrails_enabled || policiesLoading}
+                    onChange={(event) =>
+                      onChange({ guardrail_policy_name: event.target.value || null })
+                    }
+                    className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+                  >
+                    <option value="">
+                      {policiesLoading ? "Loading Foundry guardrails..." : "Select a guardrail"}
+                    </option>
+                    {selectablePolicies.map((policy) => (
+                      <option key={policy.name} value={policy.name}>
+                        {policy.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Baseline: deployment-assigned Microsoft default policy. Custom policies are
+                    retrieved live from Foundry.
+                  </p>
+                  {!policiesLoading && !selectablePolicies.length ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      No selectable custom guardrails were returned for this Foundry account.
+                    </p>
+                  ) : null}
+                </div>
               </section>
 
               <section className="grid gap-2">
@@ -4367,6 +4762,12 @@ function SettingsModal({
               </section>
             </CardContent>
 
+            {error ? (
+              <div className="mx-6 mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
+                {error}
+              </div>
+            ) : null}
+
             <CardFooter className="flex flex-col gap-3 border-t bg-slate-50 sm:flex-row sm:justify-between dark:border-[#55555a] dark:bg-[#29292c]">
               <Button type="button" variant="outline" onClick={onReset}>
                 <RotateCcw className="h-4 w-4" />
@@ -4376,7 +4777,14 @@ function SettingsModal({
                 <Button type="button" variant="outline" onClick={onClose}>
                   Close
                 </Button>
-                <Button type="button" onClick={onSave} disabled={saving}>
+                <Button
+                  type="button"
+                  onClick={onSave}
+                  disabled={
+                    saving ||
+                    (draft.guardrails_enabled && !draft.guardrail_policy_name)
+                  }
+                >
                   {saving ? "Saving..." : "Save settings"}
                 </Button>
               </div>
@@ -4693,6 +5101,9 @@ function createAssistantMessage(result: ModelResult): ChatMessage {
     duration_ms: result.duration_ms,
     usage: result.usage,
     error: result.error,
+    guardrail_variant: result.guardrail_variant,
+    guardrail_policy_name: result.guardrail_policy_name,
+    guardrail_results: result.guardrail_results,
   };
 }
 
@@ -4707,6 +5118,9 @@ function mapStoredMessage(message: StoredMessage): ChatMessage {
     duration_ms: message.duration_ms ?? undefined,
     usage: message.usage ?? undefined,
     error: message.error ?? undefined,
+    guardrail_variant: message.guardrail_variant,
+    guardrail_policy_name: message.guardrail_policy_name,
+    guardrail_results: message.guardrail_results,
   };
 }
 
@@ -4794,20 +5208,26 @@ function summarizeTraditionalVoiceResult(result: TraditionalVoiceResult) {
       text: result.transcription.text,
       duration_ms: result.transcription.duration_ms,
     },
-    chat: {
-      model: result.chat.model,
-      api_surface: result.chat.api_surface,
-      content: result.chat.content,
-      duration_ms: result.chat.duration_ms,
-      usage: result.chat.usage,
-    },
-    speech: {
-      model: result.speech.model,
-      voice: result.speech.voice,
-      audio_mime_type: result.speech.audio_mime_type,
-      audio_base64_bytes: result.speech.audio_base64.length,
-      duration_ms: result.speech.duration_ms,
-    },
+    results: result.results.map((variant) => ({
+      model: variant.model,
+      guardrail_variant: variant.guardrail_variant,
+      guardrail_policy_name: variant.guardrail_policy_name,
+      api_surface: variant.api_surface,
+      content: variant.content,
+      error: variant.error,
+      duration_ms: variant.duration_ms,
+      usage: variant.usage,
+      speech: variant.speech
+        ? {
+            model: variant.speech.model,
+            voice: variant.speech.voice,
+            audio_mime_type: variant.speech.audio_mime_type,
+            audio_base64_bytes: variant.speech.audio_base64.length,
+            duration_ms: variant.speech.duration_ms,
+          }
+        : null,
+      speech_error: variant.speech_error,
+    })),
     conversation: result.conversation,
   };
 }
