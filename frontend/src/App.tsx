@@ -532,12 +532,6 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    if (apiTraceOpen) {
-      accountMenuRef.current?.removeAttribute("open");
-    }
-  }, [apiTraceOpen]);
-
-  useEffect(() => {
     tracedFetch("/api/config", {}, { label: "Load Foundry config", responseKind: "json" })
       .then((response) => response.json())
       .then((data: ConfigResponse) => {
@@ -2095,8 +2089,9 @@ export default function App() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-[#303033] dark:text-slate-50">
-      <header className="flex h-12 items-center justify-between gap-4 border-b bg-white px-5 dark:border-[#55555a] dark:bg-[#39393d]">
-        <div className="flex min-w-0 items-center gap-3">
+      <header className="relative flex h-12 items-center border-b bg-white px-5 dark:border-[#55555a] dark:bg-[#39393d]">
+        <h1 className="truncate text-lg font-semibold">Foundry Demo</h1>
+        <div className="absolute left-1/2 -translate-x-1/2">
           <button
             type="button"
             onClick={() => {
@@ -2121,32 +2116,8 @@ export default function App() {
               </span>
             ) : null}
           </button>
-          <h1 className="truncate text-lg font-semibold">Foundry Demo</h1>
         </div>
         <div className="ml-auto flex items-center gap-3 text-slate-400 dark:text-slate-500">
-          <button
-            type="button"
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-            onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
-            className="flex h-6 items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-1 text-slate-500 transition hover:bg-slate-200 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-300 dark:hover:bg-[#505056]"
-          >
-            <span
-              className={cn(
-                "flex h-4 w-4 items-center justify-center rounded-full transition",
-                theme === "light" ? "bg-white text-amber-500 shadow-sm" : "text-slate-500",
-              )}
-            >
-              <Sun className="h-3 w-3" />
-            </span>
-            <span
-              className={cn(
-                "flex h-4 w-4 items-center justify-center rounded-full transition",
-                theme === "dark" ? "bg-[#303033] text-violet-300 shadow-sm" : "text-slate-400",
-              )}
-            >
-              <Moon className="h-3 w-3" />
-            </span>
-          </button>
           {auth?.authenticated ? (
             <details ref={accountMenuRef} className="group relative">
               <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/50 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/20 [&::-webkit-details-marker]:hidden">
@@ -2159,7 +2130,11 @@ export default function App() {
               <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 shadow-xl dark:border-[#606066] dark:bg-[#39393d] dark:text-slate-200">
                 <button
                   type="button"
-                  onClick={() => setActiveView("metrics")}
+                  onClick={() => {
+                    accountMenuRef.current?.removeAttribute("open");
+                    setApiTraceOpen(false);
+                    setActiveView("metrics");
+                  }}
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-[#45454a]"
                 >
                   <BarChart3 className="h-4 w-4" />
@@ -2167,7 +2142,10 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setApiTraceOpen(true)}
+                  onClick={() => {
+                    accountMenuRef.current?.removeAttribute("open");
+                    setApiTraceOpen(true);
+                  }}
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-[#45454a]"
                 >
                   <Network className="h-4 w-4" />
@@ -2181,11 +2159,23 @@ export default function App() {
                 <button
                   type="button"
                   disabled={!canUseProtectedApis}
-                  onClick={() => setActiveView("settings")}
+                  onClick={() => {
+                    accountMenuRef.current?.removeAttribute("open");
+                    setApiTraceOpen(false);
+                    setActiveView("settings");
+                  }}
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-[#45454a]"
                 >
                   <Settings className="h-4 w-4" />
                   Settings
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-[#45454a]"
+                >
+                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  {theme === "dark" ? "Light theme" : "Dark theme"}
                 </button>
                 <a
                   href={logoutUrl}
@@ -2197,22 +2187,32 @@ export default function App() {
               </div>
             </details>
           ) : (
-            <button
-              type="button"
-              disabled={!entraAuthEnabled}
-              onClick={() => {
-                window.location.assign(loginUrl);
-              }}
-              title={
-                entraAuthEnabled
-                  ? "Sign in with your Microsoft account"
-                  : "Entra authentication is not enabled for this environment"
-              }
-              className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200 dark:hover:bg-violet-500/25 dark:disabled:border-[#606066] dark:disabled:bg-[#45454a] dark:disabled:text-slate-500"
-            >
-              <LogIn className="h-3.5 w-3.5" />
-              Sign in with Microsoft
-            </button>
+            <>
+              <button
+                type="button"
+                aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+                onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+                className="rounded-full border border-slate-200 bg-slate-100 p-1.5 text-slate-500 transition hover:bg-slate-200 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-300 dark:hover:bg-[#505056]"
+              >
+                {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                disabled={!entraAuthEnabled}
+                onClick={() => {
+                  window.location.assign(loginUrl);
+                }}
+                title={
+                  entraAuthEnabled
+                    ? "Sign in with your Microsoft account"
+                    : "Entra authentication is not enabled for this environment"
+                }
+                className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200 dark:hover:bg-violet-500/25 dark:disabled:border-[#606066] dark:disabled:bg-[#45454a] dark:disabled:text-slate-500"
+              >
+                <LogIn className="h-3.5 w-3.5" />
+                Sign in with Microsoft
+              </button>
+            </>
           )}
         </div>
       </header>
@@ -2569,7 +2569,7 @@ export default function App() {
           </div>
           ) : null}
           </div>
-          <div className="mt-4 shrink-0 border-t pt-4 dark:border-[#55555a]">
+          <div className="mt-4 flex shrink-0 justify-center border-t pt-4 dark:border-[#55555a]">
             <FoundryStatusPill config={config} />
           </div>
         </aside>
