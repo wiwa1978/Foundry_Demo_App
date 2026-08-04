@@ -1,16 +1,15 @@
-import json
-import sqlite3
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime, time, timedelta
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-DATABASE_PATH = DATA_DIR / "foundry_chat.sqlite3"
+from azure.cosmos.exceptions import CosmosResourceNotFoundError
+
+from app.cosmos_store import get_container, initialize_cosmos_store
 
 MessageRole = Literal["user", "assistant"]
+CONVERSATION_TYPE = "conversation"
+MESSAGE_TYPE = "conversation_message"
 
 
 @dataclass(frozen=True)
@@ -36,83 +35,34 @@ class ConversationMessage:
 
 
 def initialize_conversation_database() -> None:
-    DATA_DIR.mkdir(exist_ok=True)
-    with _connect() as connection:
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS conversations (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS conversation_messages (
-                id TEXT PRIMARY KEY,
-                conversation_id TEXT NOT NULL,
-                role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
-                content TEXT NOT NULL,
-                model TEXT,
-                api_surface TEXT,
-                duration_ms INTEGER,
-                error TEXT,
-                usage_json TEXT,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-            )
-            """
-        )
-        columns = {
-            row["name"]
-            for row in connection.execute("PRAGMA table_info(conversation_messages)").fetchall()
-        }
-        if "api_surface" not in columns:
-            connection.execute("ALTER TABLE conversation_messages ADD COLUMN api_surface TEXT")
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_created
-            ON conversation_messages(conversation_id, created_at)
-            """
-        )
+    initialize_cosmos_store()
 
 
 def list_conversations() -> list[Conversation]:
-    initialize_conversation_database()
-    with _connect() as connection:
-        rows = connection.execute(
-            """
-            SELECT id, title, created_at, updated_at
-            FROM conversations
-            ORDER BY updated_at DESC
-            """
-        ).fetchall()
-    return [_row_to_conversation(row) for row in rows]
+    rows = get_container().query_items(
+        query=(
+            "SELECT c.id, c.title, c.created_at, c.updated_at FROM c "
+            "WHERE c.document_type = @document_type ORDER BY c.updated_at DESC"
+        ),
+        parameters=[{"name": "@document_type", "value": CONVERSATION_TYPE}],
+        enable_cross_partition_query=True,
+    )
+    return [_document_to_conversation(row) for row in rows]
 
 
 def create_conversation(title: str | None = None) -> Conversation:
-    initialize_conversation_database()
     conversation_id = str(uuid.uuid4())
-    conversation_title = _normalize_title(title)
-    with _connect() as connection:
-        connection.execute(
-            """
-            INSERT INTO conversations (id, title)
-            VALUES (?, ?)
-            """,
-            (conversation_id, conversation_title),
-        )
-        row = connection.execute(
-            """
-            SELECT id, title, created_at, updated_at
-            FROM conversations
-            WHERE id = ?
-            """,
-            (conversation_id,),
-        ).fetchone()
-    return _row_to_conversation(row)
+    now = _utc_now()
+    document = {
+        "id": conversation_id,
+        "partition_key": conversation_id,
+        "document_type": CONVERSATION_TYPE,
+        "title": _normalize_title(title),
+        "created_at": now,
+        "updated_at": now,
+    }
+    get_container().create_item(document)
+    return _document_to_conversation(document)
 
 
 def get_or_create_conversation(
@@ -128,51 +78,37 @@ def get_or_create_conversation(
 
 
 def get_conversation(conversation_id: str) -> Conversation | None:
-    initialize_conversation_database()
-    with _connect() as connection:
-        row = connection.execute(
-            """
-            SELECT id, title, created_at, updated_at
-            FROM conversations
-            WHERE id = ?
-            """,
-            (conversation_id,),
-        ).fetchone()
-    return _row_to_conversation(row) if row else None
+    try:
+        document = get_container().read_item(
+            item=conversation_id,
+            partition_key=conversation_id,
+        )
+    except CosmosResourceNotFoundError:
+        return None
+    if document.get("document_type") != CONVERSATION_TYPE:
+        return None
+    return _document_to_conversation(document)
 
 
 def get_conversation_messages(conversation_id: str) -> list[ConversationMessage]:
-    initialize_conversation_database()
-    with _connect() as connection:
-        rows = connection.execute(
-            """
-            SELECT id, conversation_id, role, content, model, api_surface, duration_ms, error, usage_json, created_at
-            FROM conversation_messages
-            WHERE conversation_id = ?
-            ORDER BY created_at ASC, rowid ASC
-            """,
-            (conversation_id,),
-        ).fetchall()
-    return [_row_to_message(row) for row in rows]
+    rows = get_container().query_items(
+        query=(
+            "SELECT * FROM c WHERE c.document_type = @document_type "
+            "ORDER BY c.created_at ASC"
+        ),
+        parameters=[{"name": "@document_type", "value": MESSAGE_TYPE}],
+        partition_key=conversation_id,
+    )
+    return [_document_to_message(row) for row in rows]
 
 
 def delete_conversation(conversation_id: str) -> bool:
-    initialize_conversation_database()
-    with _connect() as connection:
-        conversation = connection.execute(
-            "SELECT id FROM conversations WHERE id = ?",
-            (conversation_id,),
-        ).fetchone()
-        if conversation is None:
-            return False
-        connection.execute(
-            "DELETE FROM conversation_messages WHERE conversation_id = ?",
-            (conversation_id,),
-        )
-        connection.execute(
-            "DELETE FROM conversations WHERE id = ?",
-            (conversation_id,),
-        )
+    if get_conversation(conversation_id) is None:
+        return False
+    container = get_container()
+    for message in get_conversation_messages(conversation_id):
+        container.delete_item(item=message.id, partition_key=conversation_id)
+    container.delete_item(item=conversation_id, partition_key=conversation_id)
     return True
 
 
@@ -183,7 +119,6 @@ def get_usage_metrics(
     input_token_cost_per_1k: float = 0,
     output_token_cost_per_1k: float = 0,
 ) -> dict[str, Any]:
-    initialize_conversation_database()
     today = datetime.now(UTC).date()
     start_date = today - timedelta(days=days - 1)
     bucket_dates = [start_date + timedelta(days=offset) for offset in range(days)]
@@ -202,42 +137,37 @@ def get_usage_metrics(
         }
         for item in bucket_dates
     }
-    models: set[str] = set()
-    request_count = 0
-    prompt_tokens = 0
-    completion_tokens = 0
-    total_tokens = 0
-    duration_total = 0
-    duration_count = 0
-
-    start_timestamp = datetime.combine(start_date, time.min, tzinfo=UTC).strftime(
-        "%Y-%m-%d %H:%M:%S"
+    parameters = [
+        {"name": "@document_type", "value": MESSAGE_TYPE},
+        {"name": "@role", "value": "assistant"},
+        {"name": "@start", "value": f"{start_date.isoformat()}T00:00:00+00:00"},
+    ]
+    model_filter = ""
+    if model:
+        model_filter = " AND c.model = @model"
+        parameters.append({"name": "@model", "value": model})
+    rows = get_container().query_items(
+        query=(
+            "SELECT c.model, c.duration_ms, c.usage, c.created_at FROM c "
+            "WHERE c.document_type = @document_type AND c.role = @role "
+            "AND IS_DEFINED(c.model) AND NOT IS_NULL(c.model) AND c.created_at >= @start"
+            f"{model_filter} ORDER BY c.created_at ASC"
+        ),
+        parameters=parameters,
+        enable_cross_partition_query=True,
     )
-    with _connect() as connection:
-        rows = connection.execute(
-            """
-            SELECT model, duration_ms, usage_json, created_at
-            FROM conversation_messages
-            WHERE role = 'assistant'
-              AND model IS NOT NULL
-              AND created_at >= ?
-              AND (? IS NULL OR model = ?)
-            ORDER BY created_at ASC, rowid ASC
-            """,
-            (start_timestamp, model, model),
-        ).fetchall()
 
+    models: set[str] = set()
+    request_count = prompt_tokens = completion_tokens = total_tokens = 0
+    duration_total = duration_count = 0
     for row in rows:
-        day = _message_day(row["created_at"])
-        bucket = buckets.get(day)
+        bucket = buckets.get(str(row["created_at"])[:10])
         if bucket is None:
             continue
-
-        row_model = row["model"]
+        row_model = row.get("model")
         if row_model:
             models.add(row_model)
-
-        usage = json.loads(row["usage_json"]) if row["usage_json"] else {}
+        usage = row.get("usage") or {}
         row_prompt_tokens = _usage_value(usage, "prompt_tokens")
         row_completion_tokens = _usage_value(usage, "completion_tokens")
         row_total_tokens = _usage_value(usage, "total_tokens") or (
@@ -247,7 +177,6 @@ def get_usage_metrics(
             (row_prompt_tokens / 1000) * input_token_cost_per_1k
             + (row_completion_tokens / 1000) * output_token_cost_per_1k
         )
-
         request_count += 1
         prompt_tokens += row_prompt_tokens
         completion_tokens += row_completion_tokens
@@ -257,8 +186,7 @@ def get_usage_metrics(
         bucket["completion_tokens"] += row_completion_tokens
         bucket["total_tokens"] += row_total_tokens
         bucket["estimated_cost"] += row_cost
-
-        duration_ms = row["duration_ms"]
+        duration_ms = row.get("duration_ms")
         if duration_ms is not None:
             duration_total += duration_ms
             duration_count += 1
@@ -271,7 +199,6 @@ def get_usage_metrics(
                 bucket["total_duration_ms"] / bucket["duration_count"]
             )
         bucket["estimated_cost"] = round(bucket["estimated_cost"], 6)
-
     estimated_cost = (
         (prompt_tokens / 1000) * input_token_cost_per_1k
         + (completion_tokens / 1000) * output_token_cost_per_1k
@@ -306,59 +233,42 @@ def append_message(
     error: str | None = None,
     usage: dict[str, Any] | None = None,
 ) -> ConversationMessage:
-    initialize_conversation_database()
     message_id = str(uuid.uuid4())
-    with _connect() as connection:
-        connection.execute(
-            """
-            INSERT INTO conversation_messages (
-                id,
-                conversation_id,
-                role,
-                content,
-                model,
-                api_surface,
-                duration_ms,
-                error,
-                usage_json
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+    now = _utc_now()
+    document = {
+        "id": message_id,
+        "partition_key": conversation_id,
+        "document_type": MESSAGE_TYPE,
+        "conversation_id": conversation_id,
+        "role": role,
+        "content": content,
+        "model": model,
+        "api_surface": api_surface,
+        "duration_ms": duration_ms,
+        "error": error,
+        "usage": usage,
+        "created_at": now,
+    }
+    container = get_container()
+    container.execute_item_batch(
+        batch_operations=[
+            ("create", (document,)),
             (
-                message_id,
-                conversation_id,
-                role,
-                content,
-                model,
-                api_surface,
-                duration_ms,
-                error,
-                json.dumps(usage) if usage else None,
+                "patch",
+                (
+                    conversation_id,
+                    [{"op": "replace", "path": "/updated_at", "value": now}],
+                ),
             ),
-        )
-        connection.execute(
-            """
-            UPDATE conversations
-            SET updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (conversation_id,),
-        )
-        row = connection.execute(
-            """
-            SELECT id, conversation_id, role, content, model, api_surface, duration_ms, error, usage_json, created_at
-            FROM conversation_messages
-            WHERE id = ?
-            """,
-            (message_id,),
-        ).fetchone()
-    return _row_to_message(row)
+        ],
+        partition_key=conversation_id,
+    )
+    return _document_to_message(document)
 
 
 def build_model_history(conversation_id: str, model: str) -> list[dict[str, str]]:
-    messages = get_conversation_messages(conversation_id)
     history: list[dict[str, str]] = []
-    for message in messages:
+    for message in get_conversation_messages(conversation_id):
         if message.error:
             continue
         if message.role == "user":
@@ -376,52 +286,41 @@ def message_to_dict(message: ConversationMessage) -> dict[str, Any]:
     return asdict(message)
 
 
-def _connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
-    return connection
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 def _normalize_title(title: str | None) -> str:
     if not title or not title.strip():
         return "New chat"
     normalized = " ".join(title.strip().split())
-    if len(normalized) <= 60:
-        return normalized
-    return f"{normalized[:57]}..."
+    return normalized if len(normalized) <= 60 else f"{normalized[:57]}..."
 
 
-def _row_to_conversation(row: sqlite3.Row) -> Conversation:
+def _document_to_conversation(document: dict[str, Any]) -> Conversation:
     return Conversation(
-        id=row["id"],
-        title=row["title"],
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
+        id=document["id"],
+        title=document["title"],
+        created_at=document["created_at"],
+        updated_at=document["updated_at"],
     )
 
 
-def _row_to_message(row: sqlite3.Row) -> ConversationMessage:
-    usage_json = row["usage_json"]
+def _document_to_message(document: dict[str, Any]) -> ConversationMessage:
     return ConversationMessage(
-        id=row["id"],
-        conversation_id=row["conversation_id"],
-        role=row["role"],
-        content=row["content"],
-        model=row["model"],
-        api_surface=row["api_surface"],
-        duration_ms=row["duration_ms"],
-        error=row["error"],
-        usage=json.loads(usage_json) if usage_json else None,
-        created_at=row["created_at"],
+        id=document["id"],
+        conversation_id=document["conversation_id"],
+        role=document["role"],
+        content=document["content"],
+        model=document.get("model"),
+        api_surface=document.get("api_surface"),
+        duration_ms=document.get("duration_ms"),
+        error=document.get("error"),
+        usage=document.get("usage"),
+        created_at=document["created_at"],
     )
-
-
-def _message_day(created_at: str) -> str:
-    return created_at[:10]
 
 
 def _usage_value(usage: dict[str, Any], key: str) -> int:
     value = usage.get(key)
-    if isinstance(value, int | float):
-        return int(value)
-    return 0
+    return int(value) if isinstance(value, int | float) else 0

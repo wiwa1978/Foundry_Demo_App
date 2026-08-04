@@ -100,7 +100,12 @@ Then open http://127.0.0.1:8000.
 | --- | --- |
 | `FOUNDRY_PROJECT_ENDPOINT` | Microsoft Foundry project endpoint, usually `https://<resource>.services.ai.azure.com/api/projects/<project-name>`. The app derives the OpenAI-compatible `/openai/v1` model endpoint from this value for inference. `AZURE_AI_PROJECT_ENDPOINT` and `AZURE_AIPROJECT_ENDPOINT` are also accepted. |
 | `FOUNDRY_OPENAI_ENDPOINT` | Optional compatibility fallback if you want to provide the direct endpoint explicitly, usually `https://<resource>.services.ai.azure.com/openai/v1`. `AZURE_OPENAI_ENDPOINT` is also accepted. |
-| `FOUNDRY_MODELS` | Optional comma-separated deployment names used to seed the local SQLite model registry. New deployments and local endpoints are stored in the database, so this does not need to be updated after setup. |
+| `FOUNDRY_MODELS` | Optional comma-separated deployment names used to seed the Cosmos DB model registry. New deployments and local endpoints are stored in the database, so this does not need to be updated after setup. |
+| `AZURE_COSMOS_ENDPOINT` | Required Cosmos DB for NoSQL account endpoint. The app authenticates with `DefaultAzureCredential` unless `AZURE_COSMOS_KEY` is set. |
+| `AZURE_COSMOS_DATABASE_NAME` | Required shared Cosmos DB database name. |
+| `AZURE_COSMOS_CONTAINER_NAME` | App-specific container name. Defaults to `foundry-chat-app`; use a different container for each app sharing the database. The container partition key must be `/partition_key`. |
+| `AZURE_COSMOS_CREATE_CONTAINER` | Optional. Set to `true` only when the current identity/key may create containers. Normally infrastructure provisions the container. |
+| `AZURE_COSMOS_KEY` | Optional account key for local development or the Cosmos emulator. Omit in Azure and use managed identity. |
 | `AZURE_STORAGE_ACCOUNT_URL` | Optional Blob Storage account URL for original **Document Q&A** uploads, such as `https://<account>.blob.core.windows.net`. `FOUNDRY_STORAGE_ACCOUNT_URL` is also accepted. |
 | `AZURE_STORAGE_CONTAINER_NAME` | Optional Blob container for original document files. Defaults to `foundry-rag-documents`. `FOUNDRY_STORAGE_CONTAINER_NAME` is also accepted. |
 | `AZURE_SEARCH_ENDPOINT` | Optional Azure AI Search endpoint for the **Document Q&A** use case, such as `https://<service>.search.windows.net`. `FOUNDRY_SEARCH_ENDPOINT` is also accepted. |
@@ -134,7 +139,7 @@ There are two separate choices:
 
 ## Model switching and comparison
 
-The model selector is loaded from the local SQLite model registry. `FOUNDRY_MODELS` only seeds that registry for first-run compatibility; after that, local endpoints and deployments created from the Admin UI are saved to the database and appear after refresh without editing `.env`.
+The model selector is loaded from the Cosmos DB model registry. `FOUNDRY_MODELS` only seeds that registry for first-run compatibility; after that, local endpoints and deployments created from the Admin UI are saved to the database and appear after refresh without editing `.env`.
 
 The default mode is single-model chat: choose the active deployment from the selector and send the prompt. Turn on **Side-by-side comparison** when you want one chat pane per selected deployment. Each pane has its own model selector and prompt box, but the prompt text is shared across all panes. Sending from any pane calls `/api/compare`, which dispatches the same prompt to all selected models concurrently.
 
@@ -212,7 +217,7 @@ Each `UseCaseModule` owns its marketplace metadata and behavior flags, including
 
 ## Per-model settings
 
-Use the gear icon beside a model to open its settings page. Settings are persisted per deployment endpoint in a local SQLite database at `data/foundry_chat.sqlite3`.
+Use the gear icon beside a model to open its settings page. Settings are persisted per deployment endpoint in the app's Cosmos DB container.
 
 Each model endpoint can have its own:
 
@@ -238,19 +243,27 @@ Capability tags are local metadata for the playground. They do not change the Fo
 
 ## Conversation history
 
-Chats are stored in the same local SQLite database at `data/foundry_chat.sqlite3`. The sidebar lists saved conversations, and each new prompt sends prior turns from the current conversation as context.
+Chats are stored in the app's Cosmos DB container. The sidebar lists saved conversations, and each new prompt sends prior turns from the current conversation as context.
 
-Right-click a saved conversation in the sidebar to delete it. Deleting removes the conversation and its messages from the local SQLite database.
+Right-click a saved conversation in the sidebar to delete it. Deleting removes the conversation and its messages from Cosmos DB.
 
 For side-by-side comparison, the app stores one user message and one assistant response per selected model. When building context for a model, the backend includes the shared user turns and that model's previous assistant responses.
 
-The storage code is isolated in repository-style modules so SQLite can be replaced later with Cosmos DB without changing the UI flow.
+The shared database uses one container per app to isolate data and RBAC. The container is partitioned by `/partition_key`: a conversation and all its messages share the conversation ID, while model settings use a dedicated logical partition.
+
+To migrate the existing local SQLite records after configuring Cosmos DB, run this once:
+
+```powershell
+python .\scripts\migrate_sqlite_to_cosmos.py
+```
+
+The migration is idempotent and upserts the existing conversations, messages, and model settings into Cosmos DB.
 
 ## Deployment admin
 
 The **Admin > Deploy model** UI creates Azure AI Foundry model deployments through the Azure Cognitive Services management API using `DefaultAzureCredential`. It is optional and only enabled when `FOUNDRY_SUBSCRIPTION_ID`, `FOUNDRY_RESOURCE_GROUP`, and `FOUNDRY_ACCOUNT_NAME` are set.
 
-The form mirrors the deployment basics from the Foundry/Azure CLI path: deployment name, base model name, model version, model format, SKU name, SKU capacity, version upgrade option, and optional RAI policy name. After starting a deployment, the app also saves the new deployment in the local model registry with its API surface, capability tags, and default settings.
+The form mirrors the deployment basics from the Foundry/Azure CLI path: deployment name, base model name, model version, model format, SKU name, SKU capacity, version upgrade option, and optional RAI policy name. After starting a deployment, the app also saves the new deployment in the Cosmos DB model registry with its API surface, capability tags, and default settings.
 
 ## Voice demos
 

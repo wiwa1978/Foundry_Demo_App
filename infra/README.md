@@ -13,6 +13,8 @@ This folder provisions the Azure resources needed by the **Document Q&A** use ca
 - Optional Microsoft Entra sign-in through Azure Container Apps authentication
 - Optional Azure AI Search private endpoint
 - Optional RBAC assignments for the signed-in user or another principal
+- An app-specific container in an existing shared Cosmos DB for NoSQL database
+- Container-scoped Cosmos DB Built-in Data Contributor access for the app identity
 
 ## Deploy
 
@@ -54,11 +56,14 @@ AZURE_STORAGE_CONTAINER_NAME=foundry-documents
 AZURE_SEARCH_ENDPOINT=https://srch-ai-customers-demo.search.windows.net
 AZURE_SEARCH_INDEX_NAME=foundry-document-rag
 FOUNDRY_EMBEDDING_MODEL=text-embedding-3-small
+AZURE_COSMOS_ENDPOINT=https://<account>.documents.azure.com:443/
+AZURE_COSMOS_DATABASE_NAME=<shared-database>
+AZURE_COSMOS_CONTAINER_NAME=foundry-chat-app
 ```
 
 The app creates the Azure AI Search index on first document upload.
 
-The Container App uses a user-assigned managed identity and receives data-plane RBAC for Blob Storage and Azure AI Search. Assign that same identity access to your Foundry project, such as the **Azure AI User** / Foundry user role required by your environment, so `DefaultAzureCredential` can call Foundry from Container Apps.
+The Container App uses a user-assigned managed identity and receives data-plane RBAC for Blob Storage, Azure AI Search, and its app-specific Cosmos DB container. Assign that same identity access to your Foundry project, such as the **Azure AI User** / Foundry user role required by your environment, so `DefaultAzureCredential` can call Foundry from Container Apps.
 
 ## Microsoft Entra app sign-in
 
@@ -120,6 +125,9 @@ FOUNDRY_REALTIME_MODEL
 FOUNDRY_EMBEDDING_MODEL
 AZURE_STORAGE_CONTAINER_NAME
 AZURE_SEARCH_INDEX_NAME
+AZURE_COSMOS_ACCOUNT_NAME
+AZURE_COSMOS_DATABASE_NAME
+AZURE_COSMOS_CONTAINER_NAME
 ```
 
 Use `FOUNDRY_PROJECT_ENDPOINT` as the single Foundry endpoint, for example `https://<resource>.services.ai.azure.com/api/projects/<project>`. The app derives the `/openai/v1` model endpoint internally for inference, so `FOUNDRY_OPENAI_ENDPOINT` is optional and normally does not need to be set.
@@ -138,7 +146,7 @@ And create this repository secret:
 ENTRA_AUTH_CLIENT_SECRET
 ```
 
-Do not add `AZURE_STORAGE_ACCOUNT_URL` or `AZURE_SEARCH_ENDPOINT` as GitHub variables; the Bicep deployment derives those from the Azure resources it creates. Do not add `FOUNDRY_API_KEY` unless you intentionally change the app to API-key auth. The app currently uses Microsoft Entra ID through `DefaultAzureCredential`.
+Do not add `AZURE_STORAGE_ACCOUNT_URL`, `AZURE_SEARCH_ENDPOINT`, or `AZURE_COSMOS_ENDPOINT` as GitHub variables; the Bicep deployment derives those from Azure resources. Do not add `FOUNDRY_API_KEY` or `AZURE_COSMOS_KEY` unless you intentionally change the app to key-based auth. The app uses Microsoft Entra ID through `DefaultAzureCredential`.
 
 The workflow identity needs **Contributor** to create/update resources and **User Access Administrator** to create RBAC assignments for the Container App managed identity. If your organization prefers least-privilege custom roles, replace those broad assignments after the initial demo setup.
 

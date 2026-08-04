@@ -519,6 +519,7 @@ export default function App() {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsError, setMetricsError] = useState("");
   const [apiTraceOpen, setApiTraceOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDetailsElement | null>(null);
   const [apiTraceFilter, setApiTraceFilter] = useState<ApiTraceFilter>("all");
   const [apiTraceEntries, setApiTraceEntries] = useState<ApiTraceEntry[]>([]);
   const apiTraceSequence = useRef(0);
@@ -529,6 +530,12 @@ export default function App() {
     document.documentElement.classList.toggle("dark", theme === "dark");
     localStorage.setItem("foundry-chat-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (apiTraceOpen) {
+      accountMenuRef.current?.removeAttribute("open");
+    }
+  }, [apiTraceOpen]);
 
   useEffect(() => {
     tracedFetch("/api/config", {}, { label: "Load Foundry config", responseKind: "json" })
@@ -2141,7 +2148,7 @@ export default function App() {
             </span>
           </button>
           {auth?.authenticated ? (
-            <details className="group relative">
+            <details ref={accountMenuRef} className="group relative">
               <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/50 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/20 [&::-webkit-details-marker]:hidden">
                 <User className="h-3.5 w-3.5" />
                 <span className="max-w-[11rem] truncate" title={authDisplayName}>

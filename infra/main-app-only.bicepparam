@@ -25,6 +25,9 @@ param storageContainerName            = 'foundry-rag-documents'
 param searchServiceName               = 'aifoundrydemo66fbsearch'
 param searchIndexName                 = 'foundry-document-rag'
 param foundryAccountName              = 'aifoundrydemo66fb'
+param cosmosAccountName               = 'aifoundrydemo66fbcosmosdb'
+param cosmosDatabaseName              = 'apps-db-shared'
+param cosmosContainerName             = 'foundry-demo-app'
 
 // Shared CAE resource ID (output from main-hub-additions.bicep)
 param containerAppsEnvironmentId      = '/subscriptions/12aa5cea-1cef-4ce4-85f1-d890b5350326/resourceGroups/RG-AI-DEMO/providers/Microsoft.App/managedEnvironments/cae-ai-demo'

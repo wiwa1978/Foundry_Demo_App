@@ -66,6 +66,15 @@ param foundryRealtimeEndpoint string = ''
 @description('Foundry realtime model deployment name.')
 param foundryRealtimeModel string = 'gpt-realtime-2.1'
 
+@description('Shared Cosmos DB account endpoint.')
+param cosmosEndpoint string
+
+@description('Shared Cosmos DB for NoSQL database name.')
+param cosmosDatabaseName string
+
+@description('App-specific Cosmos DB container name.')
+param cosmosContainerName string
+
 @description('Enable Microsoft Entra sign-in through Azure Container Apps authentication.')
 param enableEntraAuthentication bool = false
 
@@ -326,6 +335,18 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'FOUNDRY_EMBEDDING_MODEL'
               value: foundryEmbeddingModel
+            }
+            {
+              name: 'AZURE_COSMOS_ENDPOINT'
+              value: cosmosEndpoint
+            }
+            {
+              name: 'AZURE_COSMOS_DATABASE_NAME'
+              value: cosmosDatabaseName
+            }
+            {
+              name: 'AZURE_COSMOS_CONTAINER_NAME'
+              value: cosmosContainerName
             }
           ]
           resources: {

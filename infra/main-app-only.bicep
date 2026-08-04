@@ -40,6 +40,15 @@ param searchIndexName string = 'foundry-document-rag'
 @description('Existing Foundry account name in the hub RG.')
 param foundryAccountName string
 
+@description('Existing shared Cosmos DB account name in the hub RG.')
+param cosmosAccountName string
+
+@description('Existing shared Cosmos DB for NoSQL database name.')
+param cosmosDatabaseName string
+
+@description('App-specific Cosmos DB container name.')
+param cosmosContainerName string = 'foundry-chat-app'
+
 @description('Resource ID of the shared Container Apps Environment (from hub-additions output).')
 param containerAppsEnvironmentId string
 
@@ -143,6 +152,17 @@ module rbacShared 'modules/rbac-shared.bicep' = {
   }
 }
 
+module cosmosShared 'modules/cosmos-shared.bicep' = {
+  name: 'cosmos-shared-${containerAppName}'
+  scope: resourceGroup(sharedResourceGroupName)
+  params: {
+    accountName: cosmosAccountName
+    databaseName: cosmosDatabaseName
+    containerName: cosmosContainerName
+    principalId: appIdentity.properties.principalId
+  }
+}
+
 // ── New: Container App ────────────────────────────────────────────────────────
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: containerAppName
@@ -193,6 +213,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AZURE_SEARCH_ENDPOINT',        value: 'https://${searchService.name}.search.windows.net' }
             { name: 'AZURE_SEARCH_INDEX_NAME',      value: searchIndexName }
             { name: 'FOUNDRY_EMBEDDING_MODEL',      value: foundryEmbeddingModel }
+            { name: 'AZURE_COSMOS_ENDPOINT',        value: cosmosShared.outputs.endpoint }
+            { name: 'AZURE_COSMOS_DATABASE_NAME',   value: cosmosDatabaseName }
+            { name: 'AZURE_COSMOS_CONTAINER_NAME',  value: cosmosContainerName }
           ]
           resources: { cpu: json('0.5'), memory: '1Gi' }
         }
@@ -209,7 +232,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       }
     }
   }
-  dependsOn: [ rbacShared ]
+  dependsOn: [
+    rbacShared
+  ]
 }
 
 resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableEntraAuthentication) {

@@ -39,6 +39,9 @@ env:
   FOUNDRY_REALTIME_MODEL:      ${{ vars.FOUNDRY_REALTIME_MODEL || 'gpt-realtime-2.1' }}
   AZURE_STORAGE_CONTAINER_NAME: ${{ vars.AZURE_STORAGE_CONTAINER_NAME }}
   AZURE_SEARCH_INDEX_NAME:     ${{ vars.AZURE_SEARCH_INDEX_NAME || 'foundry-document-rag' }}
+  AZURE_COSMOS_ACCOUNT_NAME:   ${{ vars.AZURE_COSMOS_ACCOUNT_NAME }}
+  AZURE_COSMOS_DATABASE_NAME:  ${{ vars.AZURE_COSMOS_DATABASE_NAME }}
+  AZURE_COSMOS_CONTAINER_NAME: ${{ vars.AZURE_COSMOS_CONTAINER_NAME || 'foundry-chat-app' }}
   ENABLE_ENTRA_AUTHENTICATION: ${{ vars.ENABLE_ENTRA_AUTHENTICATION || 'false' }}
   ENTRA_AUTH_CLIENT_ID:        ${{ vars.ENTRA_AUTH_CLIENT_ID }}
   ENTRA_AUTH_TENANT_ID:        ${{ vars.ENTRA_AUTH_TENANT_ID || vars.AZURE_TENANT_ID }}
@@ -87,6 +90,9 @@ jobs:
               foundryRealtimeModel="${{ env.FOUNDRY_REALTIME_MODEL }}" \
               storageContainerName="${{ env.AZURE_STORAGE_CONTAINER_NAME }}" \
               searchIndexName="${{ env.AZURE_SEARCH_INDEX_NAME }}" \
+              cosmosAccountName="${{ env.AZURE_COSMOS_ACCOUNT_NAME }}" \
+              cosmosDatabaseName="${{ env.AZURE_COSMOS_DATABASE_NAME }}" \
+              cosmosContainerName="${{ env.AZURE_COSMOS_CONTAINER_NAME }}" \
               enableEntraAuthentication="${{ env.ENABLE_ENTRA_AUTHENTICATION }}" \
               entraAuthenticationClientId="${{ env.ENTRA_AUTH_CLIENT_ID }}" \
               entraAuthenticationClientSecret="${{ secrets.ENTRA_AUTH_CLIENT_SECRET }}" \

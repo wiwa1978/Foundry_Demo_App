@@ -140,6 +140,18 @@ param foundryRealtimeEndpoint string = ''
 @description('Foundry realtime model deployment name.')
 param foundryRealtimeModel string = 'gpt-realtime-2.1'
 
+@description('Resource group containing the existing shared Cosmos DB account.')
+param cosmosResourceGroupName string
+
+@description('Existing shared Cosmos DB account name.')
+param cosmosAccountName string
+
+@description('Existing shared Cosmos DB for NoSQL database name.')
+param cosmosDatabaseName string
+
+@description('App-specific Cosmos DB container name.')
+param cosmosContainerName string = 'foundry-chat-app'
+
 @description('Enable Microsoft Entra sign-in through Azure Container Apps authentication.')
 param enableEntraAuthentication bool = false
 
@@ -271,12 +283,26 @@ module containerApp 'modules/container-app.bicep' = {
     foundryEmbeddingModel: foundryEmbeddingModel
     foundryRealtimeEndpoint: foundryRealtimeEndpoint
     foundryRealtimeModel: foundryRealtimeModel
+    cosmosEndpoint: 'https://${cosmosAccountName}.documents.azure.com:443/'
+    cosmosDatabaseName: cosmosDatabaseName
+    cosmosContainerName: cosmosContainerName
     enableEntraAuthentication: enableEntraAuthentication
     entraAuthenticationClientId: entraAuthenticationClientId
     entraAuthenticationClientSecret: entraAuthenticationClientSecret
     entraAuthenticationTenantId: entraAuthenticationTenantId
     minReplicas: containerAppMinReplicas
     maxReplicas: containerAppMaxReplicas
+  }
+}
+
+module cosmosShared 'modules/cosmos-shared.bicep' = {
+  name: 'cosmos-shared-${uniqueString(cosmosAccountName, cosmosContainerName)}'
+  scope: resourceGroup(cosmosResourceGroupName)
+  params: {
+    accountName: cosmosAccountName
+    databaseName: cosmosDatabaseName
+    containerName: cosmosContainerName
+    principalId: containerApp.outputs.managedIdentityPrincipalId
   }
 }
 
@@ -311,4 +337,7 @@ AZURE_STORAGE_CONTAINER_NAME=${storageContainerName}
 AZURE_SEARCH_ENDPOINT=${search.outputs.searchEndpoint}
 AZURE_SEARCH_INDEX_NAME=${searchIndexName}
 FOUNDRY_EMBEDDING_MODEL=${foundryEmbeddingModel}
+AZURE_COSMOS_ENDPOINT=https://${cosmosAccountName}.documents.azure.com:443/
+AZURE_COSMOS_DATABASE_NAME=${cosmosDatabaseName}
+AZURE_COSMOS_CONTAINER_NAME=${cosmosContainerName}
 '''

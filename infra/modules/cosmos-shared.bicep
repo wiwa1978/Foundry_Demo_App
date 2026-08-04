@@ -1,0 +1,51 @@
+targetScope = 'resourceGroup'
+
+@description('Existing shared Cosmos DB account name.')
+param accountName string
+
+@description('Existing shared Cosmos DB for NoSQL database name.')
+param databaseName string
+
+@description('App-specific Cosmos DB container name.')
+param containerName string
+
+@description('Managed identity principal ID that receives access to this app container.')
+param principalId string
+
+resource account 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' existing = {
+  name: accountName
+}
+
+resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-05-15' existing = {
+  parent: account
+  name: databaseName
+}
+
+resource container 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
+  parent: database
+  name: containerName
+  properties: {
+    resource: {
+      id: containerName
+      partitionKey: {
+        paths: [
+          '/partition_key'
+        ]
+        kind: 'Hash'
+        version: 2
+      }
+    }
+  }
+}
+
+resource dataContributor 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = {
+  parent: account
+  name: guid(account.id, container.id, principalId)
+  properties: {
+    principalId: principalId
+    roleDefinitionId: '${account.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
+    scope: container.id
+  }
+}
+
+output endpoint string = account.properties.documentEndpoint
