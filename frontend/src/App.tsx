@@ -2088,44 +2088,8 @@ export default function App() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-[#303033] dark:text-slate-50">
-      <header className="flex h-12 items-center justify-between border-b bg-white px-5 dark:border-[#55555a] dark:bg-[#39393d]">
-        <h1 className="text-lg font-semibold">Chat playground</h1>
-        <div className="flex items-center gap-3 text-slate-400 dark:text-slate-500">
-          <button
-            type="button"
-            onClick={() => setActiveView("chat")}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-200 dark:hover:bg-[#505056]",
-              activeView === "chat" && "border-blue-300 bg-blue-50 text-blue-700 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200",
-            )}
-          >
-            <Bot className="h-3.5 w-3.5" />
-            Chat
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("metrics")}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-200 dark:hover:bg-[#505056]",
-              activeView === "metrics" && "border-blue-300 bg-blue-50 text-blue-700 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200",
-            )}
-          >
-            <BarChart3 className="h-3.5 w-3.5" />
-            Model metrics
-          </button>
-          <button
-            type="button"
-            onClick={() => setApiTraceOpen(true)}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-200 dark:hover:bg-[#505056]"
-          >
-            <Network className="h-3.5 w-3.5" />
-            API trace
-            {apiTraceEntries.length ? (
-              <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] text-white dark:bg-violet-600">
-                {apiTraceEntries.length}
-              </span>
-            ) : null}
-          </button>
+      <header className="flex h-12 items-center justify-between gap-4 border-b bg-white px-5 dark:border-[#55555a] dark:bg-[#39393d]">
+        <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
             onClick={() => {
@@ -2150,52 +2114,9 @@ export default function App() {
               </span>
             ) : null}
           </button>
-          <FoundryStatusPill config={config} />
-          {auth?.authenticated ? (
-            <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-500/50 dark:bg-emerald-500/15 dark:text-emerald-200">
-              <User className="h-3.5 w-3.5" />
-              <span className="max-w-[11rem] truncate" title={authDisplayName}>
-                {authDisplayName}
-              </span>
-              <a
-                href={logoutUrl}
-                className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-emerald-700 transition hover:bg-emerald-100 dark:text-emerald-100 dark:hover:bg-emerald-500/20"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                Sign out
-              </a>
-            </div>
-          ) : (
-            <button
-              type="button"
-              disabled={!entraAuthEnabled}
-              onClick={() => {
-                window.location.assign(loginUrl);
-              }}
-              title={
-                entraAuthEnabled
-                  ? "Sign in with your Microsoft account"
-                  : "Entra authentication is not enabled for this environment"
-              }
-              className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200 dark:hover:bg-violet-500/25 dark:disabled:border-[#606066] dark:disabled:bg-[#45454a] dark:disabled:text-slate-500"
-            >
-              <LogIn className="h-3.5 w-3.5" />
-              Sign in with Microsoft
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={!canUseProtectedApis}
-            onClick={() => setActiveView("settings")}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-200 dark:hover:bg-[#505056]",
-              activeView === "settings" && "border-blue-300 bg-blue-50 text-blue-700 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200",
-            )}
-          >
-            <Settings className="h-3.5 w-3.5" />
-            Settings
-          </button>
-          <Sparkles className="h-4 w-4" />
+          <h1 className="truncate text-lg font-semibold">Foundry Demo</h1>
+        </div>
+        <div className="ml-auto flex items-center gap-3 text-slate-400 dark:text-slate-500">
           <button
             type="button"
             aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
@@ -2219,6 +2140,73 @@ export default function App() {
               <Moon className="h-3 w-3" />
             </span>
           </button>
+          {auth?.authenticated ? (
+            <details className="group relative">
+              <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/50 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/20 [&::-webkit-details-marker]:hidden">
+                <User className="h-3.5 w-3.5" />
+                <span className="max-w-[11rem] truncate" title={authDisplayName}>
+                  {authDisplayName}
+                </span>
+                <ChevronsUpDown className="h-3.5 w-3.5" />
+              </summary>
+              <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 shadow-xl dark:border-[#606066] dark:bg-[#39393d] dark:text-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setActiveView("metrics")}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-[#45454a]"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  Model metrics
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApiTraceOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-[#45454a]"
+                >
+                  <Network className="h-4 w-4" />
+                  API trace
+                  {apiTraceEntries.length ? (
+                    <span className="ml-auto rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] text-white dark:bg-violet-600">
+                      {apiTraceEntries.length}
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  disabled={!canUseProtectedApis}
+                  onClick={() => setActiveView("settings")}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-[#45454a]"
+                >
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </button>
+                <a
+                  href={logoutUrl}
+                  className="mt-1 flex items-center gap-2 border-t border-slate-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:border-[#55555a] dark:text-red-300 dark:hover:bg-red-950/30"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </a>
+              </div>
+            </details>
+          ) : (
+            <button
+              type="button"
+              disabled={!entraAuthEnabled}
+              onClick={() => {
+                window.location.assign(loginUrl);
+              }}
+              title={
+                entraAuthEnabled
+                  ? "Sign in with your Microsoft account"
+                  : "Entra authentication is not enabled for this environment"
+              }
+              className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200 dark:hover:bg-violet-500/25 dark:disabled:border-[#606066] dark:disabled:bg-[#45454a] dark:disabled:text-slate-500"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              Sign in with Microsoft
+            </button>
+          )}
         </div>
       </header>
 
@@ -2274,7 +2262,8 @@ export default function App() {
       ) : null}
 
       <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 p-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <aside className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden rounded-lg border bg-white p-4 shadow-sm dark:border-[#55555a] dark:bg-[#39393d]">
+        <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-4 shadow-sm dark:border-[#55555a] dark:bg-[#39393d]">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
           <div className="grid gap-2">
             <Label htmlFor="active-model" className="text-slate-700 dark:text-slate-200">
               Model
@@ -2572,6 +2561,10 @@ export default function App() {
             </SidebarSection>
           </div>
           ) : null}
+          </div>
+          <div className="mt-4 shrink-0 border-t pt-4 dark:border-[#55555a]">
+            <FoundryStatusPill config={config} />
+          </div>
         </aside>
 
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white shadow-sm dark:border-[#55555a] dark:bg-[#39393d]">
