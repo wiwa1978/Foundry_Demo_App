@@ -19,7 +19,6 @@ param tags = {
 
 // ── Shared hub resources (all in RG-AI-DEMO) ─────────────────────────────────
 param sharedResourceGroupName         = 'RG-AI-DEMO'
-param virtualNetworkName              = 'agent-vnet-test'
 param containerRegistryName           = 'acr66fb'
 param storageAccountName              = 'aifoundrydemo66fbstorage'
 param storageContainerName            = 'foundry-rag-documents'

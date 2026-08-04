@@ -22,9 +22,6 @@ param tags object = {}
 @description('Resource group where shared hub resources live (template 16 + hub-additions).')
 param sharedResourceGroupName string = 'RG-AI-DEMO'
 
-@description('Existing VNet name in the hub RG.')
-param virtualNetworkName string
-
 @description('Existing ACR name in the hub RG.')
 param containerRegistryName string
 
@@ -97,8 +94,6 @@ param containerAppMinReplicas int = 1
 @description('Maximum Container App replicas.')
 param containerAppMaxReplicas int = 1
 
-// ── Role definition IDs (kept for guid() determinism in rbac-shared module) ──
-// These vars are consumed by modules/rbac-shared.bicep, not by this file directly.
 var entraAuthenticationSecretName = 'entra-auth-client-secret'
 
 // ── Existing hub resource references (cross-RG) ───────────────────────────────
@@ -114,11 +109,6 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing 
 
 resource searchService 'Microsoft.Search/searchServices@2023-11-01' existing = {
   name: searchServiceName
-  scope: resourceGroup(sharedResourceGroupName)
-}
-
-resource foundryAccount 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
-  name: foundryAccountName
   scope: resourceGroup(sharedResourceGroupName)
 }
 
