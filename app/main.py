@@ -999,6 +999,14 @@ def index() -> FileResponse:
     )
 
 
+@app.get("/favicon.svg")
+def favicon() -> FileResponse:
+    favicon_path = FRONTEND_DIST / "favicon.svg"
+    if favicon_path.exists():
+        return FileResponse(favicon_path, media_type="image/svg+xml")
+    raise HTTPException(status_code=404, detail="Favicon not found.")
+
+
 @app.get("/{full_path:path}")
 def spa_fallback(full_path: str) -> FileResponse:
     if full_path.startswith("api/"):

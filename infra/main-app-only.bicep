@@ -250,7 +250,7 @@ resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (e
     }
     login: {
       tokenStore: {
-        enabled: true
+        enabled: false
       }
     }
   }

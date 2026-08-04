@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "10805390687689002624"
+      "templateHash": "11520665464463378604"
     }
   },
   "parameters": {
@@ -358,7 +358,7 @@
         },
         "login": {
           "tokenStore": {
-            "enabled": true
+            "enabled": false
           }
         }
       },
