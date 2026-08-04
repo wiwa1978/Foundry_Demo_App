@@ -24,13 +24,29 @@ function Invoke-AzCli {
 
 function ConvertFrom-AzCliJson {
     param(
-        [Parameter(Mandatory = $true)]
+        [AllowNull()]
         [string[]]$CliOutput
     )
 
+    if ($null -eq $CliOutput -or $CliOutput.Count -eq 0) {
+        return $null
+    }
     $jsonText = ($CliOutput -join "`n").Trim()
     if (-not $jsonText) {
         return $null
+    }
+    $firstObject = $jsonText.IndexOf('{')
+    $firstArray = $jsonText.IndexOf('[')
+    $firstJson = -1
+    if ($firstObject -ge 0 -and $firstArray -ge 0) {
+        $firstJson = [Math]::Min($firstObject, $firstArray)
+    } elseif ($firstObject -ge 0) {
+        $firstJson = $firstObject
+    } elseif ($firstArray -ge 0) {
+        $firstJson = $firstArray
+    }
+    if ($firstJson -gt 0) {
+        $jsonText = $jsonText.Substring($firstJson).Trim()
     }
     return $jsonText | ConvertFrom-Json -Depth 100
 }
@@ -75,7 +91,8 @@ $existingApp = ConvertFrom-AzCliJson (Invoke-AzCli @(
     "ad", "app", "list",
     "--display-name", $AppDisplayName,
     "--query", "[0]",
-    "--output", "json"
+    "--output", "json",
+    "--only-show-errors"
 ))
 
 if ($existingApp) {
@@ -98,7 +115,8 @@ if ($existingApp) {
         "--web-home-page-url", $appUrl,
         "--web-redirect-uris", $redirectUri,
         "--enable-id-token-issuance", "true",
-        "--output", "json"
+        "--output", "json",
+        "--only-show-errors"
     ))
     $appId = $createdApp.appId
 }
@@ -110,7 +128,8 @@ $secret = ConvertFrom-AzCliJson (Invoke-AzCli @(
     "--display-name", "container-app-auth",
     "--years", "$SecretYears",
     "--append",
-    "--output", "json"
+    "--output", "json",
+    "--only-show-errors"
 ))
 
 Write-Host ""
