@@ -8,6 +8,7 @@ from azure.cosmos.exceptions import CosmosResourceNotFoundError
 from app.cosmos_store import get_container, initialize_cosmos_store
 
 MessageRole = Literal["user", "assistant"]
+GuardrailVariant = Literal["baseline", "guarded"]
 CONVERSATION_TYPE = "conversation"
 MESSAGE_TYPE = "conversation_message"
 
@@ -31,6 +32,9 @@ class ConversationMessage:
     duration_ms: int | None
     error: str | None
     usage: dict[str, Any] | None
+    guardrail_variant: GuardrailVariant | None
+    guardrail_policy_name: str | None
+    guardrail_results: dict[str, Any] | None
     created_at: str
 
 
@@ -232,6 +236,9 @@ def append_message(
     duration_ms: int | None = None,
     error: str | None = None,
     usage: dict[str, Any] | None = None,
+    guardrail_variant: GuardrailVariant | None = None,
+    guardrail_policy_name: str | None = None,
+    guardrail_results: dict[str, Any] | None = None,
 ) -> ConversationMessage:
     message_id = str(uuid.uuid4())
     now = _utc_now()
@@ -247,6 +254,9 @@ def append_message(
         "duration_ms": duration_ms,
         "error": error,
         "usage": usage,
+        "guardrail_variant": guardrail_variant,
+        "guardrail_policy_name": guardrail_policy_name,
+        "guardrail_results": guardrail_results,
         "created_at": now,
     }
     container = get_container()
@@ -266,14 +276,21 @@ def append_message(
     return _document_to_message(document)
 
 
-def build_model_history(conversation_id: str, model: str) -> list[dict[str, str]]:
+def build_model_history(
+    conversation_id: str,
+    model: str,
+    guardrail_variant: GuardrailVariant | None = None,
+) -> list[dict[str, str]]:
     history: list[dict[str, str]] = []
     for message in get_conversation_messages(conversation_id):
         if message.error:
             continue
         if message.role == "user":
             history.append({"role": "user", "content": message.content})
-        elif message.model == model:
+        elif message.model == model and (
+            message.guardrail_variant is None
+            or message.guardrail_variant == (guardrail_variant or "baseline")
+        ):
             history.append({"role": "assistant", "content": message.content})
     return history
 
@@ -317,6 +334,9 @@ def _document_to_message(document: dict[str, Any]) -> ConversationMessage:
         duration_ms=document.get("duration_ms"),
         error=document.get("error"),
         usage=document.get("usage"),
+        guardrail_variant=document.get("guardrail_variant"),
+        guardrail_policy_name=document.get("guardrail_policy_name"),
+        guardrail_results=document.get("guardrail_results"),
         created_at=document["created_at"],
     )
 

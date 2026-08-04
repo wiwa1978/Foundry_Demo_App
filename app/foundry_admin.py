@@ -55,6 +55,33 @@ def admin_config_to_dict(config: FoundryAdminConfig) -> dict[str, Any]:
     return {**asdict(config), "is_configured": config.is_configured, "missing": config.missing}
 
 
+def list_guardrail_policies() -> list[dict[str, Any]]:
+    config = load_admin_config()
+    if not config.is_configured:
+        raise RuntimeError(
+            "Foundry guardrail discovery is not configured. Set "
+            f"{', '.join(config.missing)} in the environment."
+        )
+
+    client = _create_management_client(config)
+    policies = client.rai_policies.list(
+        resource_group_name=config.resource_group,
+        account_name=config.account_name,
+    )
+    return sorted(
+        (_guardrail_policy_to_dict(policy) for policy in policies),
+        key=lambda policy: policy["name"].lower(),
+    )
+
+
+def guardrail_policy_exists(policy_name: str) -> bool:
+    normalized_name = policy_name.strip().lower()
+    return any(
+        policy["name"].lower() == normalized_name and policy["is_selectable"]
+        for policy in list_guardrail_policies()
+    )
+
+
 def create_foundry_deployment(request: DeploymentRequest) -> dict[str, Any]:
     config = load_admin_config()
     if not config.is_configured:
@@ -63,15 +90,7 @@ def create_foundry_deployment(request: DeploymentRequest) -> dict[str, Any]:
             f"{', '.join(config.missing)} in .env."
         )
 
-    try:
-        from azure.mgmt.cognitiveservices import CognitiveServicesManagementClient
-    except ImportError as exc:
-        raise RuntimeError(
-            "Missing azure-mgmt-cognitiveservices. Run pip install -r requirements.txt."
-        ) from exc
-
-    credential = DefaultAzureCredential()
-    client = CognitiveServicesManagementClient(credential, config.subscription_id)
+    client = _create_management_client(config)
     deployment_resource = {
         "sku": {
             "name": request.sku_name,
@@ -97,6 +116,36 @@ def create_foundry_deployment(request: DeploymentRequest) -> dict[str, Any]:
     )
     deployment = poller.result() if request.wait_for_completion else poller
     return _deployment_to_dict(deployment, request.wait_for_completion)
+
+
+def _create_management_client(config: FoundryAdminConfig) -> Any:
+    try:
+        from azure.mgmt.cognitiveservices import CognitiveServicesManagementClient
+    except ImportError as exc:
+        raise RuntimeError(
+            "Missing azure-mgmt-cognitiveservices. Run pip install -r requirements.txt."
+        ) from exc
+
+    return CognitiveServicesManagementClient(
+        DefaultAzureCredential(),
+        config.subscription_id,
+    )
+
+
+def _guardrail_policy_to_dict(policy: Any) -> dict[str, Any]:
+    properties = getattr(policy, "properties", None)
+    policy_type = str(getattr(properties, "type", "") or "")
+    name = str(getattr(policy, "name", "") or "")
+    return {
+        "id": getattr(policy, "id", None),
+        "name": name,
+        "type": policy_type,
+        "mode": str(getattr(properties, "mode", "") or ""),
+        "base_policy_name": getattr(properties, "base_policy_name", None),
+        "is_selectable": bool(name)
+        and "systemmanaged" not in policy_type.replace("_", "").lower()
+        and not name.lower().startswith("microsoft."),
+    }
 
 
 def _deployment_to_dict(deployment: Any, completed: bool) -> dict[str, Any]:

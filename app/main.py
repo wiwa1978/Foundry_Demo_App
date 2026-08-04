@@ -1,9 +1,10 @@
 import asyncio
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -41,7 +42,9 @@ from app.foundry_admin import (
     DeploymentRequest as FoundryDeploymentRequest,
     admin_config_to_dict,
     create_foundry_deployment,
+    guardrail_policy_exists,
     load_admin_config,
+    list_guardrail_policies,
 )
 from app.foundry_client import (
     build_foundry_request_trace,
@@ -223,6 +226,8 @@ class ModelSettingsRequest(BaseModel):
     top_p: Annotated[float, Field(gt=0, le=1)] = 1.0
     max_tokens: Annotated[int, Field(ge=1, le=4096)] = 1024
     repetition_penalty: Annotated[float, Field(ge=1, le=2)] = 1.0
+    guardrails_enabled: bool = False
+    guardrail_policy_name: str | None = None
 
     @field_validator("model")
     @classmethod
@@ -253,6 +258,14 @@ class ModelSettingsRequest(BaseModel):
                 f"{', '.join(sorted(MODEL_MODALITIES))}."
             )
         return modalities
+
+    @field_validator("guardrail_policy_name")
+    @classmethod
+    def trim_guardrail_policy_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
 
 class ModelRegistrationRequest(BaseModel):
@@ -368,8 +381,31 @@ def get_settings(model: str) -> dict:
 
 @app.put("/api/model-settings")
 def put_settings(request: ModelSettingsRequest) -> dict:
+    if request.guardrails_enabled:
+        if not request.guardrail_policy_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Select a custom guardrail before enabling comparison.",
+            )
+        try:
+            policy_exists = guardrail_policy_exists(request.guardrail_policy_name)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        if not policy_exists:
+            raise HTTPException(
+                status_code=400,
+                detail="The selected custom guardrail no longer exists or is not selectable.",
+            )
     settings = save_model_settings(ModelSettings(**request.model_dump()))
     return settings_to_dict(settings)
+
+
+@app.get("/api/guardrails/policies")
+def get_guardrail_policies() -> dict:
+    try:
+        return {"policies": list_guardrail_policies()}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/api/models")
@@ -388,7 +424,7 @@ def post_model(request: ModelRegistrationRequest) -> dict:
 @app.post("/api/realtime/session")
 async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
     try:
-        return await asyncio.to_thread(
+        session = await asyncio.to_thread(
             create_realtime_client_secret,
             model=request.model,
             instructions=(
@@ -397,6 +433,22 @@ async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
             ),
             voice=request.voice or "alloy",
         )
+        realtime_model = session["model"]
+        model_settings = get_model_settings(realtime_model)
+        return {
+            **session,
+            "guardrail_comparison_available": False,
+            "configured_guardrail_policy_name": (
+                model_settings.guardrail_policy_name
+                if model_settings.guardrails_enabled
+                else None
+            ),
+            "guardrail_status": (
+                "Realtime uses the deployment-assigned policy; request-level comparison is unavailable."
+                if model_settings.guardrails_enabled
+                else "Realtime uses the deployment-assigned policy."
+            ),
+        }
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -428,83 +480,72 @@ async def post_traditional_voice(
             raise RuntimeError("Foundry transcription did not return any text.")
 
         conversation = get_or_create_conversation(conversation_id, transcript)
-        history = build_model_history(conversation.id, model)
+        model_settings = get_model_settings(model)
+        variants = _guardrail_variants(model_settings)
+        histories = {
+            variant: build_model_history(conversation.id, model, variant)
+            for variant, _ in variants
+        }
         user_message = append_message(
             conversation_id=conversation.id,
             role="user",
             content=transcript,
         )
-        model_settings = get_model_settings(model)
-        foundry_request = build_foundry_request_trace(
-            model=model,
-            prompt=transcript,
-            api_surface=model_settings.api_surface,
-            system_prompt=model_settings.system_prompt,
-            temperature=model_settings.temperature,
-            top_p=model_settings.top_p,
-            max_tokens=model_settings.max_tokens,
-            repetition_penalty=model_settings.repetition_penalty,
-            reasoning_effort=normalized_reasoning_effort,
-            history=history,
+        variant_results = await asyncio.gather(
+            *(
+                asyncio.to_thread(
+                    _run_and_store_variant,
+                    conversation_id=conversation.id,
+                    model_settings=model_settings,
+                    prompt=transcript,
+                    system_prompt=model_settings.system_prompt,
+                    reasoning_effort=normalized_reasoning_effort,
+                    history=histories[variant],
+                    variant=variant,
+                    policy_name=policy_name,
+                )
+                for variant, policy_name in variants
+            )
         )
-        try:
-            chat_response = await asyncio.to_thread(
-                complete_chat,
-                model=model,
-                prompt=transcript,
-                api_surface=model_settings.api_surface,
-                system_prompt=model_settings.system_prompt,
-                temperature=model_settings.temperature,
-                top_p=model_settings.top_p,
-                max_tokens=model_settings.max_tokens,
-                repetition_penalty=model_settings.repetition_penalty,
-                reasoning_effort=normalized_reasoning_effort,
-                history=history,
-            )
-        except Exception as exc:
-            assistant_message = append_message(
-                conversation_id=conversation.id,
-                role="assistant",
-                content="",
-                model=model,
-                api_surface=model_settings.api_surface,
-                error=str(exc),
-            )
+
+        async def add_speech(result: dict[str, Any]) -> dict[str, Any]:
+            if result.get("error") or not result.get("content"):
+                return result
+            try:
+                speech = await asyncio.to_thread(
+                    synthesize_speech,
+                    text=result["content"],
+                )
+            except Exception as exc:
+                return {**result, "speech_error": str(exc)}
             return {
-                "model": model,
-                "error": str(exc),
-                "transcription": transcription,
-                "conversation": conversation_to_dict(
-                    get_conversation(conversation.id) or conversation
-                ),
-                "user_message": message_to_dict(user_message),
-                "assistant_message": message_to_dict(assistant_message),
-                "foundry_request": foundry_request,
+                **result,
+                "speech": {
+                    **{key: value for key, value in speech.items() if key != "audio"},
+                    "audio_base64": base64.b64encode(speech["audio"]).decode("ascii"),
+                },
             }
 
-        assistant_message = append_message(
-            conversation_id=conversation.id,
-            role="assistant",
-            content=chat_response["content"],
-            model=model,
-            api_surface=chat_response["api_surface"],
-            duration_ms=chat_response["duration_ms"],
-            usage=chat_response["usage"],
+        results_with_speech = await asyncio.gather(
+            *(add_speech(result) for result in variant_results)
         )
-        speech = await asyncio.to_thread(synthesize_speech, text=chat_response["content"])
 
-        return {
+        payload = {
             "model": model,
             "transcription": transcription,
-            "chat": chat_response,
-            "speech": {
-                **{key: value for key, value in speech.items() if key != "audio"},
-                "audio_base64": base64.b64encode(speech["audio"]).decode("ascii"),
-            },
+            "results": results_with_speech,
             "conversation": conversation_to_dict(get_conversation(conversation.id) or conversation),
             "user_message": message_to_dict(user_message),
-            "assistant_message": message_to_dict(assistant_message),
         }
+        if len(results_with_speech) == 1:
+            result = results_with_speech[0]
+            payload.update(result)
+            payload["chat"] = {
+                key: value
+                for key, value in result.items()
+                if key not in {"assistant_message", "speech"}
+            }
+        return payload
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -644,77 +685,146 @@ async def post_admin_deployment(request: AdminDeploymentRequest) -> dict:
     }
 
 
+def _guardrail_variants(model_settings: ModelSettings) -> list[tuple[str | None, str | None]]:
+    if not model_settings.guardrails_enabled:
+        return [(None, None)]
+    if not model_settings.guardrail_policy_name:
+        raise ValueError(
+            f"Guardrail comparison is enabled for {model_settings.model}, but no policy is selected."
+        )
+    return [
+        ("baseline", None),
+        ("guarded", model_settings.guardrail_policy_name),
+    ]
+
+
+def _guardrail_error_details(exc: Exception) -> dict[str, Any] | None:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        return body
+    return None
+
+
+def _run_and_store_variant(
+    *,
+    conversation_id: str,
+    model_settings: ModelSettings,
+    prompt: str,
+    system_prompt: str,
+    reasoning_effort: str | None,
+    history: list[dict[str, str]],
+    variant: str | None,
+    policy_name: str | None,
+) -> dict[str, Any]:
+    foundry_request = build_foundry_request_trace(
+        model=model_settings.model,
+        prompt=prompt,
+        api_surface=model_settings.api_surface,
+        system_prompt=system_prompt,
+        temperature=model_settings.temperature,
+        top_p=model_settings.top_p,
+        max_tokens=model_settings.max_tokens,
+        repetition_penalty=model_settings.repetition_penalty,
+        reasoning_effort=reasoning_effort,
+        history=history,
+        guardrail_policy_name=policy_name,
+    )
+    try:
+        response = complete_chat(
+            model=model_settings.model,
+            prompt=prompt,
+            api_surface=model_settings.api_surface,
+            system_prompt=system_prompt,
+            temperature=model_settings.temperature,
+            top_p=model_settings.top_p,
+            max_tokens=model_settings.max_tokens,
+            repetition_penalty=model_settings.repetition_penalty,
+            reasoning_effort=reasoning_effort,
+            history=history,
+            guardrail_policy_name=policy_name,
+        )
+        assistant_message = append_message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=response["content"],
+            model=model_settings.model,
+            api_surface=response["api_surface"],
+            duration_ms=response["duration_ms"],
+            usage=response["usage"],
+            guardrail_variant=variant,
+            guardrail_policy_name=policy_name,
+            guardrail_results=response["guardrail_results"],
+        )
+        return {
+            **response,
+            "guardrail_variant": variant,
+            "assistant_message": message_to_dict(assistant_message),
+        }
+    except Exception as exc:
+        guardrail_results = _guardrail_error_details(exc)
+        assistant_message = append_message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content="",
+            model=model_settings.model,
+            api_surface=model_settings.api_surface,
+            error=str(exc),
+            guardrail_variant=variant,
+            guardrail_policy_name=policy_name,
+            guardrail_results=guardrail_results,
+        )
+        return {
+            "model": model_settings.model,
+            "api_surface": model_settings.api_surface,
+            "error": str(exc),
+            "guardrail_variant": variant,
+            "guardrail_policy_name": policy_name,
+            "guardrail_results": guardrail_results,
+            "assistant_message": message_to_dict(assistant_message),
+            "foundry_request": foundry_request,
+        }
+
+
 @app.post("/api/chat")
 async def chat(request: ChatRequest) -> dict:
     try:
         conversation = get_or_create_conversation(request.conversation_id, request.prompt)
-        history = build_model_history(conversation.id, request.model)
+        model_settings = get_model_settings(request.model)
+        variants = _guardrail_variants(model_settings)
+        histories = {
+            variant: build_model_history(conversation.id, request.model, variant)
+            for variant, _ in variants
+        }
         user_message = append_message(
             conversation_id=conversation.id,
             role="user",
             content=request.prompt,
         )
-        model_settings = get_model_settings(request.model)
-        foundry_request = build_foundry_request_trace(
-            model=request.model,
-            prompt=request.prompt,
-            api_surface=model_settings.api_surface,
-            system_prompt=model_settings.system_prompt,
-            temperature=model_settings.temperature,
-            top_p=model_settings.top_p,
-            max_tokens=model_settings.max_tokens,
-            repetition_penalty=model_settings.repetition_penalty,
-            reasoning_effort=request.reasoning_effort,
-            history=history,
-        )
-        try:
-            response = await asyncio.to_thread(
-                complete_chat,
-                model=request.model,
-                prompt=request.prompt,
-                api_surface=model_settings.api_surface,
-                system_prompt=model_settings.system_prompt,
-                temperature=model_settings.temperature,
-                top_p=model_settings.top_p,
-                max_tokens=model_settings.max_tokens,
-                repetition_penalty=model_settings.repetition_penalty,
-                reasoning_effort=request.reasoning_effort,
-                history=history,
+        results = await asyncio.gather(
+            *(
+                asyncio.to_thread(
+                    _run_and_store_variant,
+                    conversation_id=conversation.id,
+                    model_settings=model_settings,
+                    prompt=request.prompt,
+                    system_prompt=model_settings.system_prompt,
+                    reasoning_effort=request.reasoning_effort,
+                    history=histories[variant],
+                    variant=variant,
+                    policy_name=policy_name,
+                )
+                for variant, policy_name in variants
             )
-        except Exception as exc:
-            assistant_message = append_message(
-                conversation_id=conversation.id,
-                role="assistant",
-                content="",
-                model=request.model,
-                api_surface=model_settings.api_surface,
-                error=str(exc),
-            )
-            return {
-                "model": request.model,
-                "error": str(exc),
-                "conversation": conversation_to_dict(
-                    get_conversation(conversation.id) or conversation
-                ),
-                "user_message": message_to_dict(user_message),
-                "assistant_message": message_to_dict(assistant_message),
-                "foundry_request": foundry_request,
-            }
-        assistant_message = append_message(
-            conversation_id=conversation.id,
-            role="assistant",
-            content=response["content"],
-            model=request.model,
-            api_surface=response["api_surface"],
-            duration_ms=response["duration_ms"],
-            usage=response["usage"],
         )
-        return {
-            **response,
+        payload = {
+            "model": request.model,
             "conversation": conversation_to_dict(get_conversation(conversation.id) or conversation),
             "user_message": message_to_dict(user_message),
-            "assistant_message": message_to_dict(assistant_message),
+            "results": results,
         }
+        if len(results) == 1:
+            payload.update(results[0])
+        return payload
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -725,13 +835,17 @@ async def chat(request: ChatRequest) -> dict:
 def chat_stream(request: ChatRequest) -> StreamingResponse:
     try:
         conversation = get_or_create_conversation(request.conversation_id, request.prompt)
-        history = build_model_history(conversation.id, request.model)
+        model_settings = get_model_settings(request.model)
+        variants = _guardrail_variants(model_settings)
+        histories = {
+            variant: build_model_history(conversation.id, request.model, variant)
+            for variant, _ in variants
+        }
         user_message = append_message(
             conversation_id=conversation.id,
             role="user",
             content=request.prompt,
         )
-        model_settings = get_model_settings(request.model)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -745,8 +859,47 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                     get_conversation(conversation.id) or conversation
                 ),
                 "user_message": message_to_dict(user_message),
+                "guardrail_comparison": model_settings.guardrails_enabled,
+                "guardrail_policy_name": model_settings.guardrail_policy_name,
             }
         )
+        if model_settings.guardrails_enabled:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = {
+                    executor.submit(
+                        _run_and_store_variant,
+                        conversation_id=conversation.id,
+                        model_settings=model_settings,
+                        prompt=request.prompt,
+                        system_prompt=model_settings.system_prompt,
+                        reasoning_effort=request.reasoning_effort,
+                        history=histories[variant],
+                        variant=variant,
+                        policy_name=policy_name,
+                    ): variant
+                    for variant, policy_name in variants
+                }
+                for future in as_completed(futures):
+                    result = future.result()
+                    yield _sse(
+                        {
+                            "type": "variant_completed",
+                            "result": result,
+                            "conversation": conversation_to_dict(
+                                get_conversation(conversation.id) or conversation
+                            ),
+                        }
+                    )
+            yield _sse(
+                {
+                    "type": "comparison_completed",
+                    "conversation": conversation_to_dict(
+                        get_conversation(conversation.id) or conversation
+                    ),
+                }
+            )
+            return
+
         try:
             for event in stream_chat(
                 model=request.model,
@@ -758,7 +911,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                 max_tokens=model_settings.max_tokens,
                 repetition_penalty=model_settings.repetition_penalty,
                 reasoning_effort=request.reasoning_effort,
-                history=history,
+                history=histories[None],
             ):
                 if event["type"] == "foundry_request":
                     yield _sse(event)
@@ -775,6 +928,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                         api_surface=model_settings.api_surface,
                         duration_ms=event["duration_ms"],
                         usage=event["usage"],
+                        guardrail_results=event["guardrail_results"],
                     )
                     yield _sse(
                         {
@@ -815,13 +969,17 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
         retrieval = retrieve_document_chunks(request.prompt)
         chunks = retrieval["chunks"]
         grounded_prompt = build_grounded_prompt(request.prompt, chunks)
-        history = build_model_history(conversation.id, request.model)
+        model_settings = get_model_settings(request.model)
+        variants = _guardrail_variants(model_settings)
+        histories = {
+            variant: build_model_history(conversation.id, request.model, variant)
+            for variant, _ in variants
+        }
         user_message = append_message(
             conversation_id=conversation.id,
             role="user",
             content=request.prompt,
         )
-        model_settings = get_model_settings(request.model)
         system_prompt = build_rag_system_prompt(model_settings.system_prompt)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -838,6 +996,8 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                     get_conversation(conversation.id) or conversation
                 ),
                 "user_message": message_to_dict(user_message),
+                "guardrail_comparison": model_settings.guardrails_enabled,
+                "guardrail_policy_name": model_settings.guardrail_policy_name,
             }
         )
         yield _sse(
@@ -847,6 +1007,42 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                 "embedding": retrieval["embedding"],
             }
         )
+        if model_settings.guardrails_enabled:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = [
+                    executor.submit(
+                        _run_and_store_variant,
+                        conversation_id=conversation.id,
+                        model_settings=model_settings,
+                        prompt=grounded_prompt,
+                        system_prompt=system_prompt,
+                        reasoning_effort=request.reasoning_effort,
+                        history=histories[variant],
+                        variant=variant,
+                        policy_name=policy_name,
+                    )
+                    for variant, policy_name in variants
+                ]
+                for future in as_completed(futures):
+                    yield _sse(
+                        {
+                            "type": "variant_completed",
+                            "result": future.result(),
+                            "conversation": conversation_to_dict(
+                                get_conversation(conversation.id) or conversation
+                            ),
+                        }
+                    )
+            yield _sse(
+                {
+                    "type": "comparison_completed",
+                    "conversation": conversation_to_dict(
+                        get_conversation(conversation.id) or conversation
+                    ),
+                }
+            )
+            return
+
         try:
             for event in stream_chat(
                 model=request.model,
@@ -858,7 +1054,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                 max_tokens=model_settings.max_tokens,
                 repetition_penalty=model_settings.repetition_penalty,
                 reasoning_effort=request.reasoning_effort,
-                history=history,
+                history=histories[None],
             ):
                 if event["type"] == "foundry_request":
                     yield _sse(event)
@@ -875,6 +1071,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                         api_surface=model_settings.api_surface,
                         duration_ms=event["duration_ms"],
                         usage=event["usage"],
+                        guardrail_results=event["guardrail_results"],
                     )
                     yield _sse(
                         {
@@ -915,8 +1112,17 @@ async def compare(request: CompareRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    model_settings_by_name = {
+        model: get_model_settings(model) for model in request.models
+    }
+    variants_by_model = {
+        model: _guardrail_variants(model_settings)
+        for model, model_settings in model_settings_by_name.items()
+    }
     histories = {
-        model: build_model_history(conversation.id, model) for model in request.models
+        (model, variant): build_model_history(conversation.id, model, variant)
+        for model, variants in variants_by_model.items()
+        for variant, _ in variants
     }
     user_message = append_message(
         conversation_id=conversation.id,
@@ -925,60 +1131,30 @@ async def compare(request: CompareRequest) -> dict:
     )
 
     async def run_model(model: str) -> dict:
-        model_settings = get_model_settings(model)
-        foundry_request = build_foundry_request_trace(
-            model=model,
-            prompt=request.prompt,
-            api_surface=model_settings.api_surface,
-            system_prompt=model_settings.system_prompt,
-            temperature=model_settings.temperature,
-            top_p=model_settings.top_p,
-            max_tokens=model_settings.max_tokens,
-            repetition_penalty=model_settings.repetition_penalty,
-            reasoning_effort=request.reasoning_effort,
-            history=histories[model],
+        model_settings = model_settings_by_name[model]
+        variant_results = await asyncio.gather(
+            *(
+                asyncio.to_thread(
+                    _run_and_store_variant,
+                    conversation_id=conversation.id,
+                    model_settings=model_settings,
+                    prompt=request.prompt,
+                    system_prompt=model_settings.system_prompt,
+                    reasoning_effort=request.reasoning_effort,
+                    history=histories[(model, variant)],
+                    variant=variant,
+                    policy_name=policy_name,
+                )
+                for variant, policy_name in variants_by_model[model]
+            )
         )
-        try:
-            response = await asyncio.to_thread(
-                complete_chat,
-                model=model,
-                prompt=request.prompt,
-                api_surface=model_settings.api_surface,
-                system_prompt=model_settings.system_prompt,
-                temperature=model_settings.temperature,
-                top_p=model_settings.top_p,
-                max_tokens=model_settings.max_tokens,
-                repetition_penalty=model_settings.repetition_penalty,
-                reasoning_effort=request.reasoning_effort,
-                history=histories[model],
-            )
-            assistant_message = append_message(
-                conversation_id=conversation.id,
-                role="assistant",
-                content=response["content"],
-                model=model,
-                api_surface=response["api_surface"],
-                duration_ms=response["duration_ms"],
-                usage=response["usage"],
-            )
-        except Exception as exc:
-            assistant_message = append_message(
-                conversation_id=conversation.id,
-                role="assistant",
-                content="",
-                model=model,
-                api_surface=model_settings.api_surface,
-                error=str(exc),
-            )
-            return {
-                "model": model,
-                "error": str(exc),
-                "assistant_message": message_to_dict(assistant_message),
-                "foundry_request": foundry_request,
-            }
+        if len(variant_results) == 1:
+            return variant_results[0]
         return {
-            **response,
-            "assistant_message": message_to_dict(assistant_message),
+            "model": model,
+            "guardrail_comparison": True,
+            "guardrail_policy_name": model_settings.guardrail_policy_name,
+            "variants": variant_results,
         }
 
     results = await asyncio.gather(*(run_model(model) for model in request.models))

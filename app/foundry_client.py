@@ -226,6 +226,7 @@ def build_foundry_request_trace(
     repetition_penalty: float = 1.0,
     reasoning_effort: str | None = None,
     history: list[dict[str, str]] | None = None,
+    guardrail_policy_name: str | None = None,
 ) -> dict[str, Any]:
     if api_surface == "chat_completions":
         request = _build_chat_completion_request(
@@ -238,12 +239,15 @@ def build_foundry_request_trace(
             repetition_penalty=repetition_penalty,
             history=history,
         )
-        return {
+        trace = {
             "api_surface": api_surface,
             "method": "POST",
             "path": "/chat/completions",
             "payload": request,
         }
+        if guardrail_policy_name:
+            trace["headers"] = {"x-policy-id": guardrail_policy_name}
+        return trace
     if api_surface == "responses":
         request = _build_response_request(
             model=model,
@@ -256,12 +260,15 @@ def build_foundry_request_trace(
             reasoning_effort=reasoning_effort,
             history=history,
         )
-        return {
+        trace = {
             "api_surface": api_surface,
             "method": "POST",
             "path": "/responses",
             "payload": request,
         }
+        if guardrail_policy_name:
+            trace["headers"] = {"x-policy-id": guardrail_policy_name}
+        return trace
     raise ValueError("API surface must be 'responses' or 'chat_completions'.")
 
 
@@ -272,12 +279,14 @@ def build_foundry_response_trace(
     content: str,
     usage: Any,
 ) -> dict[str, Any]:
+    payload = _serialize_openai_payload(response)
     return {
         "api_surface": api_surface,
-        "payload": _serialize_openai_payload(response),
+        "payload": payload,
         "extracted": {
             "content": content,
             "usage": _usage_to_dict(usage),
+            "guardrail_results": _extract_guardrail_results(payload),
         },
     }
 
@@ -289,14 +298,43 @@ def build_foundry_stream_response_trace(
     content: str,
     usage: Any,
 ) -> dict[str, Any]:
+    serialized_events = [_serialize_openai_payload(event) for event in events]
     return {
         "api_surface": api_surface,
-        "events": [_serialize_openai_payload(event) for event in events],
+        "events": serialized_events,
         "extracted": {
             "content": content,
             "usage": _usage_to_dict(usage),
+            "guardrail_results": _extract_stream_guardrail_results(serialized_events),
         },
     }
+
+
+def _extract_guardrail_results(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+    results = {
+        key: payload[key]
+        for key in ("content_filters", "prompt_filter_results")
+        if payload.get(key) is not None
+    }
+    choice_results = [
+        choice["content_filter_results"]
+        for choice in payload.get("choices", [])
+        if isinstance(choice, dict) and choice.get("content_filter_results") is not None
+    ]
+    if choice_results:
+        results["content_filter_results"] = choice_results
+    return results or None
+
+
+def _extract_stream_guardrail_results(events: list[Any]) -> dict[str, Any] | None:
+    event_results = [
+        result
+        for event in events
+        if (result := _extract_guardrail_results(event)) is not None
+    ]
+    return {"events": event_results} if event_results else None
 
 
 def _normalize_endpoint(endpoint_value: str) -> str:
@@ -393,6 +431,7 @@ def complete_chat(
     repetition_penalty: float = 1.0,
     reasoning_effort: str | None = None,
     history: list[dict[str, str]] | None = None,
+    guardrail_policy_name: str | None = None,
 ) -> dict[str, Any]:
     settings = load_settings()
     if not settings.is_configured:
@@ -412,15 +451,25 @@ def complete_chat(
         repetition_penalty=repetition_penalty,
         reasoning_effort=reasoning_effort,
         history=history,
+        guardrail_policy_name=guardrail_policy_name,
+    )
+    extra_headers = (
+        {"x-policy-id": guardrail_policy_name} if guardrail_policy_name else None
     )
     with _create_openai_client(settings) as openai_client:
         if api_surface == "chat_completions":
             request = foundry_request["payload"]
-            response = openai_client.chat.completions.create(**request)
+            response = openai_client.chat.completions.create(
+                **request,
+                extra_headers=extra_headers,
+            )
             content = response.choices[0].message.content if response.choices else ""
         elif api_surface == "responses":
             request = foundry_request["payload"]
-            response = openai_client.responses.create(**request)
+            response = openai_client.responses.create(
+                **request,
+                extra_headers=extra_headers,
+            )
             content = getattr(response, "output_text", "") or ""
         else:
             raise ValueError("API surface must be 'responses' or 'chat_completions'.")
@@ -428,19 +477,22 @@ def complete_chat(
 
     usage = getattr(response, "usage", None)
 
+    foundry_response = build_foundry_response_trace(
+        api_surface=api_surface,
+        response=response,
+        content=content,
+        usage=usage,
+    )
     return {
         "model": model,
         "api_surface": api_surface,
         "content": content,
         "duration_ms": duration_ms,
         "usage": _usage_to_dict(usage),
+        "guardrail_policy_name": guardrail_policy_name,
+        "guardrail_results": foundry_response["extracted"]["guardrail_results"],
         "foundry_request": foundry_request,
-        "foundry_response": build_foundry_response_trace(
-            api_surface=api_surface,
-            response=response,
-            content=content,
-            usage=usage,
-        ),
+        "foundry_response": foundry_response,
     }
 
 
@@ -705,6 +757,7 @@ def stream_chat(
     repetition_penalty: float = 1.0,
     reasoning_effort: str | None = None,
     history: list[dict[str, str]] | None = None,
+    guardrail_policy_name: str | None = None,
 ) -> Iterator[dict[str, Any]]:
     settings = load_settings()
     if not settings.is_configured:
@@ -727,13 +780,21 @@ def stream_chat(
         repetition_penalty=repetition_penalty,
         reasoning_effort=reasoning_effort,
         history=history,
+        guardrail_policy_name=guardrail_policy_name,
     )
     yield {"type": "foundry_request", "request": foundry_request}
 
+    extra_headers = (
+        {"x-policy-id": guardrail_policy_name} if guardrail_policy_name else None
+    )
     with _create_openai_client(settings) as openai_client:
         if api_surface == "chat_completions":
             request = foundry_request["payload"]
-            stream = openai_client.chat.completions.create(**request, stream=True)
+            stream = openai_client.chat.completions.create(
+                **request,
+                stream=True,
+                extra_headers=extra_headers,
+            )
             for event in stream:
                 foundry_events.append(event)
                 usage = getattr(event, "usage", None) or usage
@@ -745,7 +806,11 @@ def stream_chat(
                     yield {"type": "delta", "delta": delta}
         elif api_surface == "responses":
             request = foundry_request["payload"]
-            stream = openai_client.responses.create(**request, stream=True)
+            stream = openai_client.responses.create(
+                **request,
+                stream=True,
+                extra_headers=extra_headers,
+            )
             for event in stream:
                 foundry_events.append(event)
                 event_type = getattr(event, "type", "")
@@ -761,18 +826,21 @@ def stream_chat(
             raise ValueError("API surface must be 'responses' or 'chat_completions'.")
 
     content = "".join(chunks)
+    foundry_response = build_foundry_stream_response_trace(
+        api_surface=api_surface,
+        events=foundry_events,
+        content=content,
+        usage=usage,
+    )
     yield {
         "type": "foundry_response",
-        "response": build_foundry_stream_response_trace(
-            api_surface=api_surface,
-            events=foundry_events,
-            content=content,
-            usage=usage,
-        ),
+        "response": foundry_response,
     }
     yield {
         "type": "completed",
         "content": content,
         "duration_ms": round((time.perf_counter() - started) * 1000),
         "usage": _usage_to_dict(usage),
+        "guardrail_policy_name": guardrail_policy_name,
+        "guardrail_results": foundry_response["extracted"]["guardrail_results"],
     }

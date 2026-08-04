@@ -23,6 +23,8 @@ class ModelSettings:
     top_p: float = 1.0
     max_tokens: int = 1024
     repetition_penalty: float = 1.0
+    guardrails_enabled: bool = False
+    guardrail_policy_name: str | None = None
 
 
 def initialize_database() -> None:
@@ -76,6 +78,10 @@ def save_model_settings(settings: ModelSettings) -> ModelSettings:
         top_p=settings.top_p,
         max_tokens=settings.max_tokens,
         repetition_penalty=settings.repetition_penalty,
+        guardrails_enabled=settings.guardrails_enabled,
+        guardrail_policy_name=_normalize_guardrail_policy_name(
+            settings.guardrail_policy_name
+        ),
     )
     get_container().upsert_item(_settings_document(normalized))
     return normalized
@@ -110,6 +116,8 @@ def _settings_document(settings: ModelSettings) -> dict[str, Any]:
         "top_p": settings.top_p,
         "max_tokens": settings.max_tokens,
         "repetition_penalty": settings.repetition_penalty,
+        "guardrails_enabled": settings.guardrails_enabled,
+        "guardrail_policy_name": settings.guardrail_policy_name,
         "updated_at": datetime.now(UTC).isoformat(),
     }
 
@@ -129,6 +137,10 @@ def _document_to_settings(document: dict[str, Any]) -> ModelSettings:
         top_p=document["top_p"],
         max_tokens=document["max_tokens"],
         repetition_penalty=document["repetition_penalty"],
+        guardrails_enabled=bool(document.get("guardrails_enabled", False)),
+        guardrail_policy_name=_normalize_guardrail_policy_name(
+            document.get("guardrail_policy_name")
+        ),
     )
 
 
@@ -160,6 +172,13 @@ def _normalize_api_surface(api_surface: str) -> str:
     if normalized_surface not in API_SURFACES:
         raise ValueError("API surface must be 'responses' or 'chat_completions'.")
     return normalized_surface
+
+
+def _normalize_guardrail_policy_name(policy_name: str | None) -> str | None:
+    if policy_name is None:
+        return None
+    normalized_name = policy_name.strip()
+    return normalized_name or None
 
 
 def _normalize_modalities(modalities: tuple[str, ...] | list[str]) -> tuple[str, ...]:
