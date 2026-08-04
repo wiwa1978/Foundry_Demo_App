@@ -66,6 +66,19 @@ param foundryRealtimeEndpoint string = ''
 @description('Foundry realtime model deployment name.')
 param foundryRealtimeModel string = 'gpt-realtime-2.1'
 
+@description('Enable Microsoft Entra sign-in through Azure Container Apps authentication.')
+param enableEntraAuthentication bool = false
+
+@description('Application client ID of the Entra app registration used by Container Apps authentication.')
+param entraAuthenticationClientId string = ''
+
+@secure()
+@description('Client secret for the Entra app registration used by Container Apps authentication.')
+param entraAuthenticationClientSecret string = ''
+
+@description('Tenant ID for the Entra app registration used by Container Apps authentication.')
+param entraAuthenticationTenantId string = ''
+
 @description('Minimum number of Container App replicas.')
 param minReplicas int = 1
 
@@ -86,6 +99,7 @@ var searchServiceContributorRoleId = '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
 var cognitiveServicesUserRoleId = 'a97b65f3-24c7-4388-baec-2e87135dc908'
 var cognitiveServicesOpenAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 var azureAiDeveloperRoleId = '64702f94-c441-49e6-a78b-ef80e0188fee'
+var entraAuthenticationSecretName = 'entra-auth-client-secret'
 
 resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsWorkspaceName
@@ -252,6 +266,12 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           identity: appIdentity.id
         }
       ]
+      secrets: enableEntraAuthentication ? [
+        {
+          name: entraAuthenticationSecretName
+          value: entraAuthenticationClientSecret
+        }
+      ] : []
     }
     template: {
       containers: [
@@ -262,6 +282,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'AZURE_CLIENT_ID'
               value: appIdentity.properties.clientId
+            }
+            {
+              name: 'ENTRA_AUTH_ENABLED'
+              value: string(enableEntraAuthentication)
             }
             {
               name: 'FOUNDRY_PROJECT_ENDPOINT'
@@ -336,6 +360,50 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
     foundryOpenAiUserAssignment
     foundryAiDeveloperAssignment
   ]
+}
+
+resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableEntraAuthentication) {
+  parent: containerApp
+  name: 'current'
+  properties: {
+    platform: {
+      enabled: true
+      runtimeVersion: '~1'
+    }
+    globalValidation: {
+      unauthenticatedClientAction: 'AllowAnonymous'
+      redirectToProvider: 'azureactivedirectory'
+    }
+    httpSettings: {
+      requireHttps: true
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        login: {
+          loginParameters: [
+            'prompt=select_account'
+          ]
+        }
+        registration: {
+          clientId: entraAuthenticationClientId
+          clientSecretSettingName: entraAuthenticationSecretName
+          openIdIssuer: uri(environment().authentication.loginEndpoint, '${entraAuthenticationTenantId}/v2.0')
+        }
+        validation: {
+          allowedAudiences: [
+            entraAuthenticationClientId
+            'api://${entraAuthenticationClientId}'
+          ]
+        }
+      }
+    }
+    login: {
+      tokenStore: {
+        enabled: true
+      }
+    }
+  }
 }
 
 output containerAppName string = containerApp.name

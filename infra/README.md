@@ -10,6 +10,7 @@ This folder provisions the Azure resources needed by the **Document Q&A** use ca
 - Azure Container Registry
 - Azure Container Apps environment integrated with the VNet
 - One external Container App that serves both the React frontend and FastAPI backend
+- Optional Microsoft Entra sign-in through Azure Container Apps authentication
 - Optional Azure AI Search private endpoint
 - Optional RBAC assignments for the signed-in user or another principal
 
@@ -22,6 +23,11 @@ Review `main.bicepparam`, then deploy the infrastructure:
   -SubscriptionId "12aa5cea-1cef-4ce4-85f1-d890b5350326" `
   -AssignCurrentUserRoles
 ```
+
+At the end of deployment, the script prints:
+- key endpoints and app config values (Storage, Search, Container App URL, ACR login server, managed identity IDs),
+- a full resource inventory table for the resource group, and
+- a private endpoint summary.
 
 The first deployment uses a public placeholder image so Azure Container Registry and Container Apps can be created before the app image exists. After the deployment finishes, build and publish the real image:
 
@@ -54,6 +60,28 @@ The app creates the Azure AI Search index on first document upload.
 
 The Container App uses a user-assigned managed identity and receives data-plane RBAC for Blob Storage and Azure AI Search. Assign that same identity access to your Foundry project, such as the **Azure AI User** / Foundry user role required by your environment, so `DefaultAzureCredential` can call Foundry from Container Apps.
 
+## Microsoft Entra app sign-in
+
+The deployed app can use Azure Container Apps built-in authentication. Static frontend routes remain anonymous so users see a **Sign in with Microsoft** button, while FastAPI protects `/api/*` routes when `ENTRA_AUTH_ENABLED=true`.
+
+After the Container App has an ingress URL, create or update the Entra app registration:
+
+```powershell
+.\infra\setup-entra-auth.ps1 `
+  -SubscriptionId "12aa5cea-1cef-4ce4-85f1-d890b5350326" `
+  -ResourceGroupName "RG-AI-DEMO-APP1" `
+  -ContainerAppName "ca-foundry-chat" `
+  -GitHubRepo "wiwa1978/Foundry_Demo_App"
+```
+
+The script configures this redirect URI:
+
+```text
+https://<container-app-fqdn>/.auth/login/aad/callback
+```
+
+It also enables ID token issuance, creates a client secret, and can write the required GitHub repository values when `-GitHubRepo` is provided.
+
 ## GitHub Actions deployment
 
 The workflow in `.github\workflows\deploy-container-app.yml` deploys infrastructure, builds the Docker image with Azure Container Registry, and updates the Container App image on pushes to `main`.
@@ -76,8 +104,10 @@ AZURE_TENANT_ID
 AZURE_SUBSCRIPTION_ID
 AZURE_LOCATION
 RESOURCE_GROUP_NAME
+SHARED_RESOURCE_GROUP_NAME
 CONTAINER_REGISTRY_NAME
 CONTAINER_APP_NAME
+CONTAINER_APPS_ENV_ID
 ```
 
 Also create these repository variables from your local `.env` values:
@@ -93,6 +123,20 @@ AZURE_SEARCH_INDEX_NAME
 ```
 
 Use `FOUNDRY_PROJECT_ENDPOINT` as the single Foundry endpoint, for example `https://<resource>.services.ai.azure.com/api/projects/<project>`. The app derives the `/openai/v1` model endpoint internally for inference, so `FOUNDRY_OPENAI_ENDPOINT` is optional and normally does not need to be set.
+
+To enable the login button and API protection in the deployed Container App, also create these repository variables:
+
+```text
+ENABLE_ENTRA_AUTHENTICATION=true
+ENTRA_AUTH_CLIENT_ID
+ENTRA_AUTH_TENANT_ID
+```
+
+And create this repository secret:
+
+```text
+ENTRA_AUTH_CLIENT_SECRET
+```
 
 Do not add `AZURE_STORAGE_ACCOUNT_URL` or `AZURE_SEARCH_ENDPOINT` as GitHub variables; the Bicep deployment derives those from the Azure resources it creates. Do not add `FOUNDRY_API_KEY` unless you intentionally change the app to API-key auth. The app currently uses Microsoft Entra ID through `DefaultAzureCredential`.
 

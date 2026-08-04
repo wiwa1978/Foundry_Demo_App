@@ -13,6 +13,8 @@ import {
   GitCompareArrows,
   HelpCircle,
   Infinity,
+  LogIn,
+  LogOut,
   Mic,
   MicOff,
   Moon,
@@ -55,6 +57,7 @@ import { UseCaseDetailsPanel } from "@/features/useCases/UseCaseDetailsPanel";
 import { cn } from "@/lib/utils";
 
 type ConfigResponse = {
+  entra_auth_enabled: boolean;
   is_configured: boolean;
   endpoint: string | null;
   models: string[];
@@ -71,6 +74,15 @@ type ConfigResponse = {
   transcription_model: string | null;
   tts_model: string | null;
   tts_voice: string | null;
+};
+
+type AuthResponse = {
+  authenticated: boolean;
+  entra_auth_enabled: boolean;
+  name?: string | null;
+  email?: string | null;
+  user_id?: string | null;
+  identity_provider?: string | null;
 };
 
 type Usage = {
@@ -428,6 +440,7 @@ const speechVoiceStorageKey = "foundry-chat-speech-voice-uri";
 
 export default function App() {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
+  const [auth, setAuth] = useState<AuthResponse | null>(null);
   const [models, setModels] = useState<string[]>([]);
   const [activeModel, setActiveModel] = useState("");
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
@@ -509,6 +522,8 @@ export default function App() {
   const [apiTraceFilter, setApiTraceFilter] = useState<ApiTraceFilter>("all");
   const [apiTraceEntries, setApiTraceEntries] = useState<ApiTraceEntry[]>([]);
   const apiTraceSequence = useRef(0);
+  const entraAuthEnabled = config?.entra_auth_enabled ?? auth?.entra_auth_enabled ?? false;
+  const canUseProtectedApis = entraAuthEnabled ? auth?.authenticated === true : config !== null;
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -531,6 +546,7 @@ export default function App() {
       .catch((error: Error) => {
         setConfig({
           is_configured: false,
+          entra_auth_enabled: false,
           endpoint: error.message,
           models: [],
           is_realtime_configured: false,
@@ -551,24 +567,49 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refreshConversations();
+    const controller = new AbortController();
+    fetch("/api/auth/me", { signal: controller.signal })
+      .then((response) =>
+        response.ok
+          ? response.json()
+          : ({ authenticated: false, entra_auth_enabled: false } satisfies AuthResponse),
+      )
+      .then((data: AuthResponse) => setAuth(data))
+      .catch((error: Error) => {
+        if (error.name !== "AbortError") {
+          setAuth({ authenticated: false, entra_auth_enabled: false });
+        }
+      });
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
+    if (!canUseProtectedApis) {
+      setConversations([]);
+      return;
+    }
+    void refreshConversations();
+  }, [canUseProtectedApis]);
+
+  useEffect(() => {
+    if (!canUseProtectedApis) {
+      setDocuments([]);
+      return;
+    }
     if (activeUseCase === "document_qa" && config?.is_document_rag_configured) {
       void refreshDocuments();
     }
-  }, [activeUseCase, config?.is_document_rag_configured]);
+  }, [activeUseCase, canUseProtectedApis, config?.is_document_rag_configured]);
 
   useEffect(() => {
-    if (activeView !== "metrics") {
+    if (activeView !== "metrics" || !canUseProtectedApis) {
       return;
     }
 
     const controller = new AbortController();
     void refreshMetrics(controller.signal);
     return () => controller.abort();
-  }, [activeView, metricsDays, metricsModel]);
+  }, [activeView, canUseProtectedApis, metricsDays, metricsModel]);
 
   useEffect(() => {
     if (!conversationMenu) {
@@ -2021,6 +2062,7 @@ export default function App() {
 
   const canSubmit =
     !isRunning &&
+    canUseProtectedApis &&
     Boolean(prompt.trim()) &&
     (comparisonMode
       ? selected.length > 0
@@ -2037,6 +2079,12 @@ export default function App() {
   const documentRagConfigMessage = config
     ? `Set ${missingDocumentRagConfig.join(", ")} to enable document RAG.`
     : "Loading document RAG configuration...";
+  const authDisplayName = auth?.name || auth?.email || "Signed in";
+  const currentRelativeUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const loginUrl = `/.auth/login/aad?post_login_redirect_uri=${encodeURIComponent(
+    currentRelativeUrl || "/",
+  )}`;
+  const logoutUrl = `/.auth/logout?post_logout_redirect_uri=${encodeURIComponent("/")}`;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-[#303033] dark:text-slate-50">
@@ -2103,11 +2151,44 @@ export default function App() {
             ) : null}
           </button>
           <FoundryStatusPill config={config} />
+          {auth?.authenticated ? (
+            <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-500/50 dark:bg-emerald-500/15 dark:text-emerald-200">
+              <User className="h-3.5 w-3.5" />
+              <span className="max-w-[11rem] truncate" title={authDisplayName}>
+                {authDisplayName}
+              </span>
+              <a
+                href={logoutUrl}
+                className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-emerald-700 transition hover:bg-emerald-100 dark:text-emerald-100 dark:hover:bg-emerald-500/20"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Sign out
+              </a>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={!entraAuthEnabled}
+              onClick={() => {
+                window.location.assign(loginUrl);
+              }}
+              title={
+                entraAuthEnabled
+                  ? "Sign in with your Microsoft account"
+                  : "Entra authentication is not enabled for this environment"
+              }
+              className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200 dark:hover:bg-violet-500/25 dark:disabled:border-[#606066] dark:disabled:bg-[#45454a] dark:disabled:text-slate-500"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              Sign in with Microsoft
+            </button>
+          )}
           <button
             type="button"
+            disabled={!canUseProtectedApis}
             onClick={() => setActiveView("settings")}
             className={cn(
-              "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-200 dark:hover:bg-[#505056]",
+              "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-200 dark:hover:bg-[#505056]",
               activeView === "settings" && "border-blue-300 bg-blue-50 text-blue-700 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200",
             )}
           >
@@ -2218,6 +2299,7 @@ export default function App() {
                 type="button"
                 variant="outline"
                 size="icon"
+                disabled={!canUseProtectedApis}
                 onClick={() => void openSettings(activeModel)}
                 title="Open model settings"
                 className="shrink-0"
@@ -2259,7 +2341,7 @@ export default function App() {
                     type="button"
                     variant="outline"
                     className="w-full justify-start"
-                    disabled={!config?.is_document_rag_configured || documentsLoading}
+                    disabled={!canUseProtectedApis || !config?.is_document_rag_configured || documentsLoading}
                     onClick={() => documentFileInputRef.current?.click()}
                   >
                     <UploadCloud className="h-4 w-4" />
@@ -2662,7 +2744,7 @@ export default function App() {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        disabled={!activeModel}
+                        disabled={!activeModel || !canUseProtectedApis}
                         onClick={() => void openSettings(activeModel)}
                         title="Open active model settings"
                         className="h-8 w-8 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-300 dark:hover:bg-[#3b3b40] dark:hover:text-slate-100"

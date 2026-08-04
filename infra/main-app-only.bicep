@@ -1,0 +1,274 @@
+targetScope = 'resourceGroup'
+
+// ── Per-App Deployment ────────────────────────────────────────────────────────
+// Deploy to a dedicated app RG (e.g. RG-AI-DEMO-APP1).
+// References all shared hub resources in sharedResourceGroupName cross-RG.
+// The shared Container Apps Environment must already exist (deploy
+// main-hub-additions.bicep to RG-AI-DEMO first).
+//
+// Deploy with:
+//   az group create -n RG-AI-DEMO-APP1 -l swedencentral
+//   az deployment group create -g RG-AI-DEMO-APP1 \
+//     --template-file main-app-only.bicep \
+//     --parameters main-app-only.bicepparam
+
+@description('Azure region for new resources.')
+param location string = resourceGroup().location
+
+@description('Tags applied to created resources.')
+param tags object = {}
+
+// ── Hub references ────────────────────────────────────────────────────────────
+@description('Resource group where shared hub resources live (template 16 + hub-additions).')
+param sharedResourceGroupName string = 'RG-AI-DEMO'
+
+@description('Existing VNet name in the hub RG.')
+param virtualNetworkName string
+
+@description('Existing ACR name in the hub RG.')
+param containerRegistryName string
+
+@description('Existing Storage account name in the hub RG.')
+param storageAccountName string
+
+@description('Blob container name for RAG uploads.')
+param storageContainerName string = 'foundry-rag-documents'
+
+@description('Existing AI Search service name in the hub RG.')
+param searchServiceName string
+
+@description('Azure AI Search index name.')
+param searchIndexName string = 'foundry-document-rag'
+
+@description('Existing Foundry account name in the hub RG.')
+param foundryAccountName string
+
+@description('Resource ID of the shared Container Apps Environment (from hub-additions output).')
+param containerAppsEnvironmentId string
+
+// ── Parameters: new resources (created in app RG) ─────────────────────────────
+@description('Log Analytics workspace name (per-app, for app-level logs).')
+param logAnalyticsWorkspaceName string
+
+@description('Container App name.')
+param containerAppName string
+
+@description('User-assigned managed identity name for the Container App.')
+param containerAppManagedIdentityName string
+
+@description('Container image to run. Use placeholder until app image is pushed to ACR.')
+param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
+// ── Parameters: app config ────────────────────────────────────────────────────
+@description('Foundry project endpoint.')
+param foundryProjectEndpoint string
+
+@description('Optional Foundry OpenAI-compatible endpoint override.')
+param foundryOpenAiEndpoint string = ''
+
+@description('Comma-separated Foundry model deployment names.')
+param foundryModels string
+
+@description('Foundry embedding deployment name.')
+param foundryEmbeddingModel string = 'text-embedding-3-small'
+
+@description('Optional Foundry realtime endpoint override.')
+param foundryRealtimeEndpoint string = ''
+
+@description('Foundry realtime model deployment name.')
+param foundryRealtimeModel string = 'gpt-realtime-2.1'
+
+@description('Enable Microsoft Entra sign-in through Azure Container Apps authentication.')
+param enableEntraAuthentication bool = false
+
+@description('Application client ID of the Entra app registration used by Container Apps authentication.')
+param entraAuthenticationClientId string = ''
+
+@secure()
+@description('Client secret for the Entra app registration used by Container Apps authentication.')
+param entraAuthenticationClientSecret string = ''
+
+@description('Tenant ID for the Entra app registration used by Container Apps authentication.')
+param entraAuthenticationTenantId string = ''
+
+@description('Minimum Container App replicas.')
+param containerAppMinReplicas int = 1
+
+@description('Maximum Container App replicas.')
+param containerAppMaxReplicas int = 1
+
+// ── Role definition IDs (kept for guid() determinism in rbac-shared module) ──
+// These vars are consumed by modules/rbac-shared.bicep, not by this file directly.
+var entraAuthenticationSecretName = 'entra-auth-client-secret'
+
+// ── Existing hub resource references (cross-RG) ───────────────────────────────
+resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: containerRegistryName
+  scope: resourceGroup(sharedResourceGroupName)
+}
+
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: storageAccountName
+  scope: resourceGroup(sharedResourceGroupName)
+}
+
+resource searchService 'Microsoft.Search/searchServices@2023-11-01' existing = {
+  name: searchServiceName
+  scope: resourceGroup(sharedResourceGroupName)
+}
+
+resource foundryAccount 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
+  name: foundryAccountName
+  scope: resourceGroup(sharedResourceGroupName)
+}
+
+// ── New: Log Analytics Workspace (per-app) ────────────────────────────────────
+resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: logAnalyticsWorkspaceName
+  location: location
+  tags: tags
+  properties: {
+    retentionInDays: 30
+    sku: { name: 'PerGB2018' }
+  }
+}
+
+// ── New: Managed Identity (per-app) ──────────────────────────────────────────
+resource appIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: containerAppManagedIdentityName
+  location: location
+  tags: tags
+}
+
+// ── RBAC: all roles on hub resources via module (cross-RG) ───────────────────
+module rbacShared 'modules/rbac-shared.bicep' = {
+  name: 'rbac-shared-${containerAppName}'
+  scope: resourceGroup(sharedResourceGroupName)
+  params: {
+    principalId:            appIdentity.properties.principalId
+    containerRegistryName:  containerRegistryName
+    storageAccountName:     storageAccountName
+    searchServiceName:      searchServiceName
+    foundryAccountName:     foundryAccountName
+  }
+}
+
+// ── New: Container App ────────────────────────────────────────────────────────
+resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
+  name: containerAppName
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${appIdentity.id}': {} }
+  }
+  properties: {
+    environmentId: containerAppsEnvironmentId
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: {
+        allowInsecure: false
+        external: true
+        targetPort: 8000
+        transport: 'auto'
+      }
+      registries: [
+        {
+          server: registry.properties.loginServer
+          identity: appIdentity.id
+        }
+      ]
+      secrets: enableEntraAuthentication ? [
+        {
+          name: entraAuthenticationSecretName
+          value: entraAuthenticationClientSecret
+        }
+      ] : []
+    }
+    template: {
+      containers: [
+        {
+          name: 'foundry-chat-app'
+          image: containerImage
+          env: [
+            { name: 'AZURE_CLIENT_ID',              value: appIdentity.properties.clientId }
+            { name: 'ENTRA_AUTH_ENABLED',           value: string(enableEntraAuthentication) }
+            { name: 'FOUNDRY_PROJECT_ENDPOINT',     value: foundryProjectEndpoint }
+            { name: 'FOUNDRY_OPENAI_ENDPOINT',      value: foundryOpenAiEndpoint }
+            { name: 'FOUNDRY_MODELS',               value: foundryModels }
+            { name: 'FOUNDRY_REALTIME_ENDPOINT',    value: empty(foundryRealtimeEndpoint) ? foundryProjectEndpoint : foundryRealtimeEndpoint }
+            { name: 'FOUNDRY_REALTIME_MODEL',       value: foundryRealtimeModel }
+            { name: 'AZURE_STORAGE_ACCOUNT_URL',    value: 'https://${storageAccount.name}.blob.${environment().suffixes.storage}' }
+            { name: 'AZURE_STORAGE_CONTAINER_NAME', value: storageContainerName }
+            { name: 'AZURE_SEARCH_ENDPOINT',        value: 'https://${searchService.name}.search.windows.net' }
+            { name: 'AZURE_SEARCH_INDEX_NAME',      value: searchIndexName }
+            { name: 'FOUNDRY_EMBEDDING_MODEL',      value: foundryEmbeddingModel }
+          ]
+          resources: { cpu: json('0.5'), memory: '1Gi' }
+        }
+      ]
+      scale: {
+        minReplicas: containerAppMinReplicas
+        maxReplicas: containerAppMaxReplicas
+        rules: [
+          {
+            name: 'http-scaling'
+            http: { metadata: { concurrentRequests: '20' } }
+          }
+        ]
+      }
+    }
+  }
+  dependsOn: [ rbacShared ]
+}
+
+resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableEntraAuthentication) {
+  parent: containerApp
+  name: 'current'
+  properties: {
+    platform: {
+      enabled: true
+      runtimeVersion: '~1'
+    }
+    globalValidation: {
+      unauthenticatedClientAction: 'AllowAnonymous'
+      redirectToProvider: 'azureactivedirectory'
+    }
+    httpSettings: {
+      requireHttps: true
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        login: {
+          loginParameters: [
+            'prompt=select_account'
+          ]
+        }
+        registration: {
+          clientId: entraAuthenticationClientId
+          clientSecretSettingName: entraAuthenticationSecretName
+          openIdIssuer: uri(environment().authentication.loginEndpoint, '${entraAuthenticationTenantId}/v2.0')
+        }
+        validation: {
+          allowedAudiences: [
+            entraAuthenticationClientId
+            'api://${entraAuthenticationClientId}'
+          ]
+        }
+      }
+    }
+    login: {
+      tokenStore: {
+        enabled: true
+      }
+    }
+  }
+}
+
+// ── Outputs ───────────────────────────────────────────────────────────
+output containerAppUrl string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
+output containerAppName string = containerApp.name
+output managedIdentityClientId string = appIdentity.properties.clientId
+output managedIdentityPrincipalId string = appIdentity.properties.principalId
+output acrLoginServer string = registry.properties.loginServer

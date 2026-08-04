@@ -12,6 +12,7 @@ A lightweight local app for chatting with and comparing Microsoft Foundry model 
 - Enable side-by-side comparison with synced prompt inputs for several deployments.
 - Upload documents for RAG-style question answering with Foundry embeddings, Azure AI Search retrieval, and Foundry chat responses.
 - Deploy the demo to Azure Container Apps with the included Bicep infrastructure under `infra\`.
+- Sign in with a Microsoft account in Azure Container Apps deployments that enable Microsoft Entra authentication.
 - Save system prompts, generation parameters, API surface, and model capability tags separately for each deployment.
 - Persist chat conversations locally, send prior turns as context, and delete saved chats from the sidebar context menu.
 - Dictate prompts with browser speech-to-text.
@@ -111,6 +112,7 @@ Then open http://127.0.0.1:8000.
 | `FOUNDRY_TRANSCRIPTION_MODEL` | Optional transcription deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-transcribe`. |
 | `FOUNDRY_TTS_MODEL` | Optional text-to-speech deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-tts`. |
 | `FOUNDRY_TTS_VOICE` | Optional TTS voice name for the traditional voice pipeline. Defaults to `alloy`. |
+| `ENTRA_AUTH_ENABLED` | Optional flag used by the deployed backend. Set to `true` with Azure Container Apps authentication to require a signed-in Microsoft Entra user for protected `/api/*` routes. Local development can omit it. |
 | `FOUNDRY_INPUT_TOKEN_COST_PER_1K` | Optional input-token price per 1K tokens used by the Model metrics dashboard to estimate cost. Defaults to `0`. |
 | `FOUNDRY_OUTPUT_TOKEN_COST_PER_1K` | Optional output-token price per 1K tokens used by the Model metrics dashboard to estimate cost. Defaults to `0`. |
 | `FOUNDRY_SUBSCRIPTION_ID` | Optional Azure subscription ID used by the Admin deployment UI. `AZURE_SUBSCRIPTION_ID` is also accepted. |
@@ -154,6 +156,12 @@ The top bar includes a **Use cases** marketplace. Use cases are local UI presets
 | **Realtime Speech in / Speech out** | Opens the Foundry Realtime WebRTC workspace. |
 
 Settings, API trace, metrics, previous conversations, and model settings remain available outside the marketplace because they are shared app capabilities.
+
+## Microsoft Entra sign-in
+
+For Azure Container Apps deployments, the infrastructure can enable built-in Microsoft Entra authentication while leaving static frontend routes anonymous. The app then shows a **Sign in with Microsoft** button in the header, uses `/.auth/login/aad?post_login_redirect_uri=...` to force Microsoft account selection, and protects backend API routes until Container Apps supplies the signed-in user headers.
+
+See `infra\README.md` for the Entra app registration helper and GitHub variable/secret setup.
 
 ## Document Q&A RAG
 

@@ -1,8 +1,9 @@
 param(
     [string]$SubscriptionId,
-    [string]$ResourceGroupName = "RG-AI-CUSTOMERS-DEMO",
-    [string]$ContainerRegistryName = "acraicustomersdemo",
-    [string]$ContainerAppName = "ca-foundry-chat-demo",
+    [string]$ResourceGroupName = "RG-AI-DEMO-APP1",
+    [string]$SharedResourceGroupName = "RG-AI-DEMO",
+    [string]$ContainerRegistryName = "acr66fb",
+    [string]$ContainerAppName = "ca-foundry-chat",
     [string]$ImageName = "foundry-chat-app",
     [string]$ImageTag = "latest"
 )
@@ -35,7 +36,7 @@ if ($SubscriptionId) {
 
 $loginServer = (Invoke-AzCli @(
     "acr", "show",
-    "--resource-group", $ResourceGroupName,
+    "--resource-group", $SharedResourceGroupName,
     "--name", $ContainerRegistryName,
     "--query", "loginServer",
     "--output", "tsv"

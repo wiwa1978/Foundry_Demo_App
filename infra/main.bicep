@@ -140,6 +140,19 @@ param foundryRealtimeEndpoint string = ''
 @description('Foundry realtime model deployment name.')
 param foundryRealtimeModel string = 'gpt-realtime-2.1'
 
+@description('Enable Microsoft Entra sign-in through Azure Container Apps authentication.')
+param enableEntraAuthentication bool = false
+
+@description('Application client ID of the Entra app registration used by Container Apps authentication.')
+param entraAuthenticationClientId string = ''
+
+@secure()
+@description('Client secret for the Entra app registration used by Container Apps authentication.')
+param entraAuthenticationClientSecret string = ''
+
+@description('Tenant ID for the Entra app registration used by Container Apps authentication.')
+param entraAuthenticationTenantId string = ''
+
 @description('Minimum number of Container App replicas.')
 param containerAppMinReplicas int = 1
 
@@ -258,6 +271,10 @@ module containerApp 'modules/container-app.bicep' = {
     foundryEmbeddingModel: foundryEmbeddingModel
     foundryRealtimeEndpoint: foundryRealtimeEndpoint
     foundryRealtimeModel: foundryRealtimeModel
+    enableEntraAuthentication: enableEntraAuthentication
+    entraAuthenticationClientId: entraAuthenticationClientId
+    entraAuthenticationClientSecret: entraAuthenticationClientSecret
+    entraAuthenticationTenantId: entraAuthenticationTenantId
     minReplicas: containerAppMinReplicas
     maxReplicas: containerAppMaxReplicas
   }

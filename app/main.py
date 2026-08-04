@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Annotated
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
@@ -65,6 +66,7 @@ load_dotenv()
 
 app = FastAPI(title="Foundry Chat App")
 REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
+PUBLIC_API_PATHS = {"/api/auth/me", "/api/config"}
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
@@ -72,6 +74,70 @@ FRONTEND_INDEX = FRONTEND_DIST / "index.html"
 
 if (FRONTEND_DIST / "assets").exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+
+
+def _is_entra_auth_enabled() -> bool:
+    return os.getenv("ENTRA_AUTH_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _decode_client_principal(request: Request) -> dict | None:
+    encoded_principal = request.headers.get("x-ms-client-principal")
+    if not encoded_principal:
+        return None
+    try:
+        decoded = base64.b64decode(encoded_principal).decode("utf-8")
+        principal = json.loads(decoded)
+    except (ValueError, json.JSONDecodeError):
+        return None
+    return principal if isinstance(principal, dict) else None
+
+
+def _authenticated_user_from_request(request: Request) -> dict | None:
+    principal = _decode_client_principal(request)
+    user_name = request.headers.get("x-ms-client-principal-name")
+    user_id = request.headers.get("x-ms-client-principal-id")
+    provider = request.headers.get("x-ms-client-principal-idp")
+    if principal:
+        claims = principal.get("claims") if isinstance(principal.get("claims"), list) else []
+        claim_lookup = {
+            str(claim.get("typ")): str(claim.get("val"))
+            for claim in claims
+            if isinstance(claim, dict) and claim.get("typ") and claim.get("val")
+        }
+        return {
+            "authenticated": True,
+            "name": principal.get("userDetails") or user_name,
+            "user_id": principal.get("userId") or user_id,
+            "identity_provider": principal.get("identityProvider") or provider,
+            "email": claim_lookup.get("preferred_username")
+            or claim_lookup.get("email")
+            or user_name,
+        }
+    if user_name or user_id:
+        return {
+            "authenticated": True,
+            "name": user_name,
+            "user_id": user_id,
+            "identity_provider": provider,
+            "email": user_name,
+        }
+    return None
+
+
+@app.middleware("http")
+async def require_authenticated_api_user(request: Request, call_next):
+    if (
+        _is_entra_auth_enabled()
+        and request.method != "OPTIONS"
+        and request.url.path.startswith("/api/")
+        and request.url.path not in PUBLIC_API_PATHS
+        and _authenticated_user_from_request(request) is None
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Sign in with Microsoft Entra ID to use this app."},
+        )
+    return await call_next(request)
 
 
 @app.on_event("startup")
@@ -263,6 +329,7 @@ def get_config() -> dict:
     settings = load_settings()
     rag_settings = load_rag_search_settings()
     return {
+        "entra_auth_enabled": _is_entra_auth_enabled(),
         "is_configured": settings.is_configured,
         "endpoint": settings.endpoint,
         "auth_mode": settings.auth_mode,
@@ -281,6 +348,14 @@ def get_config() -> dict:
         "tts_model": settings.tts_model,
         "tts_voice": settings.tts_voice,
     }
+
+
+@app.get("/api/auth/me")
+def get_authenticated_user(request: Request) -> dict:
+    user = _authenticated_user_from_request(request)
+    if user is None:
+        return {"authenticated": False, "entra_auth_enabled": _is_entra_auth_enabled()}
+    return {**user, "entra_auth_enabled": _is_entra_auth_enabled()}
 
 
 @app.get("/api/model-settings")

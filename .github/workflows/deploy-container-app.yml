@@ -25,17 +25,23 @@ permissions:
   id-token: write
 
 env:
-  AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'swedencentral' }}
-  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME || 'RG-AI-CUSTOMERS-DEMO' }}
-  CONTAINER_REGISTRY_NAME: ${{ vars.CONTAINER_REGISTRY_NAME || 'acraicustomersdemo' }}
-  CONTAINER_APP_NAME: ${{ vars.CONTAINER_APP_NAME || 'ca-foundry-chat-demo' }}
-  FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
-  FOUNDRY_ACCOUNT_NAME: ${{ vars.FOUNDRY_ACCOUNT_NAME || 'ai-customers-demo-resource' }}
-  FOUNDRY_MODELS: ${{ vars.FOUNDRY_MODELS }}
-  FOUNDRY_EMBEDDING_MODEL: ${{ vars.FOUNDRY_EMBEDDING_MODEL || 'text-embedding-3-small' }}
-  FOUNDRY_REALTIME_MODEL: ${{ vars.FOUNDRY_REALTIME_MODEL || 'gpt-realtime-2.1' }}
+  AZURE_LOCATION:              ${{ vars.AZURE_LOCATION || 'swedencentral' }}
+  # App resource group (spoke) — shared hub resources stay in RG-AI-DEMO
+  RESOURCE_GROUP_NAME:         ${{ vars.RESOURCE_GROUP_NAME || 'RG-AI-DEMO-APP1' }}
+  SHARED_RESOURCE_GROUP_NAME:  ${{ vars.SHARED_RESOURCE_GROUP_NAME || 'RG-AI-DEMO' }}
+  CONTAINER_REGISTRY_NAME:     ${{ vars.CONTAINER_REGISTRY_NAME || 'acr66fb' }}
+  CONTAINER_APP_NAME:          ${{ vars.CONTAINER_APP_NAME || 'ca-foundry-chat' }}
+  CONTAINER_APPS_ENV_ID:       ${{ vars.CONTAINER_APPS_ENV_ID }}
+  FOUNDRY_PROJECT_ENDPOINT:    ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+  FOUNDRY_ACCOUNT_NAME:        ${{ vars.FOUNDRY_ACCOUNT_NAME || 'aifoundrydemo66fb' }}
+  FOUNDRY_MODELS:              ${{ vars.FOUNDRY_MODELS }}
+  FOUNDRY_EMBEDDING_MODEL:     ${{ vars.FOUNDRY_EMBEDDING_MODEL || 'text-embedding-3-small' }}
+  FOUNDRY_REALTIME_MODEL:      ${{ vars.FOUNDRY_REALTIME_MODEL || 'gpt-realtime-2.1' }}
   AZURE_STORAGE_CONTAINER_NAME: ${{ vars.AZURE_STORAGE_CONTAINER_NAME }}
-  AZURE_SEARCH_INDEX_NAME: ${{ vars.AZURE_SEARCH_INDEX_NAME || 'foundry-document-rag' }}
+  AZURE_SEARCH_INDEX_NAME:     ${{ vars.AZURE_SEARCH_INDEX_NAME || 'foundry-document-rag' }}
+  ENABLE_ENTRA_AUTHENTICATION: ${{ vars.ENABLE_ENTRA_AUTHENTICATION || 'false' }}
+  ENTRA_AUTH_CLIENT_ID:        ${{ vars.ENTRA_AUTH_CLIENT_ID }}
+  ENTRA_AUTH_TENANT_ID:        ${{ vars.ENTRA_AUTH_TENANT_ID || vars.AZURE_TENANT_ID }}
   IMAGE_NAME: foundry-chat-app
 
 jobs:
@@ -56,20 +62,37 @@ jobs:
       - name: Configure Azure CLI extensions
         run: az config set extension.use_dynamic_install=yes_without_prompt
 
+      - name: Ensure app resource group exists
+        if: ${{ github.event_name == 'push' || inputs.deploy_infra }}
+        run: |
+          az group create \
+            --name "${{ env.RESOURCE_GROUP_NAME }}" \
+            --location "${{ env.AZURE_LOCATION }}" \
+            --output none
+
       - name: Deploy infrastructure
         if: ${{ github.event_name == 'push' || inputs.deploy_infra }}
-        shell: pwsh
         run: |
-          ./infra/deploy.ps1 `
-            -SubscriptionId "${{ vars.AZURE_SUBSCRIPTION_ID }}" `
-            -Location "${{ env.AZURE_LOCATION }}" `
-            -FoundryProjectEndpoint "${{ env.FOUNDRY_PROJECT_ENDPOINT }}" `
-            -FoundryAccountName "${{ env.FOUNDRY_ACCOUNT_NAME }}" `
-            -FoundryModels "${{ env.FOUNDRY_MODELS }}" `
-            -FoundryEmbeddingModel "${{ env.FOUNDRY_EMBEDDING_MODEL }}" `
-            -FoundryRealtimeModel "${{ env.FOUNDRY_REALTIME_MODEL }}" `
-            -StorageContainerName "${{ env.AZURE_STORAGE_CONTAINER_NAME }}" `
-            -SearchIndexName "${{ env.AZURE_SEARCH_INDEX_NAME }}"
+          az deployment group create \
+            --resource-group "${{ env.RESOURCE_GROUP_NAME }}" \
+            --name "foundry-chat-app-infra" \
+            --template-file infra/main-app-only.bicep \
+            --parameters infra/main-app-only.bicepparam \
+            --parameters \
+              sharedResourceGroupName="${{ env.SHARED_RESOURCE_GROUP_NAME }}" \
+              containerAppsEnvironmentId="${{ env.CONTAINER_APPS_ENV_ID }}" \
+              foundryProjectEndpoint="${{ env.FOUNDRY_PROJECT_ENDPOINT }}" \
+              foundryModels="${{ env.FOUNDRY_MODELS }}" \
+              foundryEmbeddingModel="${{ env.FOUNDRY_EMBEDDING_MODEL }}" \
+              foundryRealtimeModel="${{ env.FOUNDRY_REALTIME_MODEL }}" \
+              storageContainerName="${{ env.AZURE_STORAGE_CONTAINER_NAME }}" \
+              searchIndexName="${{ env.AZURE_SEARCH_INDEX_NAME }}" \
+              enableEntraAuthentication="${{ env.ENABLE_ENTRA_AUTHENTICATION }}" \
+              entraAuthenticationClientId="${{ env.ENTRA_AUTH_CLIENT_ID }}" \
+              entraAuthenticationClientSecret="${{ secrets.ENTRA_AUTH_CLIENT_SECRET }}" \
+              entraAuthenticationTenantId="${{ env.ENTRA_AUTH_TENANT_ID }}" \
+              containerAppName="${{ env.CONTAINER_APP_NAME }}" \
+            --output table
 
       - name: Build and push image with ACR
         run: |
@@ -82,7 +105,7 @@ jobs:
       - name: Update Container App image
         run: |
           LOGIN_SERVER=$(az acr show \
-            --resource-group "${{ env.RESOURCE_GROUP_NAME }}" \
+            --resource-group "${{ env.SHARED_RESOURCE_GROUP_NAME }}" \
             --name "${{ env.CONTAINER_REGISTRY_NAME }}" \
             --query loginServer \
             --output tsv)
