@@ -221,7 +221,7 @@ resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (e
       runtimeVersion: '~1'
     }
     globalValidation: {
-      unauthenticatedClientAction: 'AllowAnonymous'
+      unauthenticatedClientAction: 'RedirectToLoginPage'
       redirectToProvider: 'azureactivedirectory'
     }
     httpSettings: {
