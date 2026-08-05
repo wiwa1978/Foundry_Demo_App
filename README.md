@@ -245,8 +245,10 @@ Each assistant response shows the API surface that was actually used, either **R
 
 Each model can enable a side-by-side guardrail experiment. The custom guardrail dropdown is
 retrieved from the configured Foundry account through the Cognitive Services management SDK.
-The baseline request omits `x-policy-id` and uses the policy assigned to the deployment. The
-guarded request sends the selected custom policy through `x-policy-id`.
+The deployment-default request omits `x-policy-id` and uses the policy assigned to the deployment.
+A selected custom policy is sent through `x-policy-id` as a request-level override, so it does not
+need to be assigned to that deployment in Foundry. Foundry supports this override for text requests;
+image-input requests continue to use the deployment default.
 
 Text chat, Document Q&A, model comparison, and traditional voice display both results and their
 guardrail annotations. Realtime voice remains a single WebRTC session and explicitly reports that
