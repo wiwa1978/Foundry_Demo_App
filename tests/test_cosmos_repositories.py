@@ -8,6 +8,13 @@ from app.model_settings import ModelSettings, get_model_settings, save_model_set
 
 
 class ConversationStoreTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.backend = patch("app.conversation_store.persistence_backend", return_value="cosmos")
+        self.backend.start()
+
+    def tearDown(self) -> None:
+        self.backend.stop()
+
     @patch("app.conversation_store.get_container")
     def test_create_conversation_uses_conversation_partition(self, get_container: MagicMock) -> None:
         conversation = create_conversation("  A   useful chat  ")
@@ -43,6 +50,13 @@ class ConversationStoreTests(unittest.TestCase):
 
 
 class ModelSettingsStoreTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.backend = patch("app.model_settings.persistence_backend", return_value="cosmos")
+        self.backend.start()
+
+    def tearDown(self) -> None:
+        self.backend.stop()
+
     @patch("app.model_settings.get_container")
     def test_missing_settings_return_model_defaults(self, get_container: MagicMock) -> None:
         get_container.return_value.read_item.side_effect = CosmosResourceNotFoundError()

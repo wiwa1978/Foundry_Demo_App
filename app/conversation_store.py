@@ -1,4 +1,5 @@
 import uuid
+import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -6,6 +7,8 @@ from typing import Any, Literal
 from azure.cosmos.exceptions import CosmosResourceNotFoundError
 
 from app.cosmos_store import get_container, initialize_cosmos_store
+from app.persistence import persistence_backend
+from app.sqlite_store import connect, initialize_sqlite_store
 
 MessageRole = Literal["user", "assistant"]
 GuardrailVariant = Literal["baseline", "guarded", "policy_1", "policy_2"]
@@ -39,10 +42,19 @@ class ConversationMessage:
 
 
 def initialize_conversation_database() -> None:
-    initialize_cosmos_store()
+    if persistence_backend() == "cosmos":
+        initialize_cosmos_store()
+    else:
+        initialize_sqlite_store()
 
 
 def list_conversations() -> list[Conversation]:
+    if persistence_backend() == "sqlite":
+        with connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM conversations ORDER BY updated_at DESC"
+            ).fetchall()
+        return [_document_to_conversation(dict(row)) for row in rows]
     rows = get_container().query_items(
         query=(
             "SELECT c.id, c.title, c.created_at, c.updated_at FROM c "
@@ -65,7 +77,14 @@ def create_conversation(title: str | None = None) -> Conversation:
         "created_at": now,
         "updated_at": now,
     }
-    get_container().create_item(document)
+    if persistence_backend() == "sqlite":
+        with connect() as connection:
+            connection.execute(
+                "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (conversation_id, document["title"], now, now),
+            )
+    else:
+        get_container().create_item(document)
     return _document_to_conversation(document)
 
 
@@ -82,6 +101,12 @@ def get_or_create_conversation(
 
 
 def get_conversation(conversation_id: str) -> Conversation | None:
+    if persistence_backend() == "sqlite":
+        with connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM conversations WHERE id = ?", (conversation_id,)
+            ).fetchone()
+        return _document_to_conversation(dict(row)) if row else None
     try:
         document = get_container().read_item(
             item=conversation_id,
@@ -95,6 +120,13 @@ def get_conversation(conversation_id: str) -> Conversation | None:
 
 
 def get_conversation_messages(conversation_id: str) -> list[ConversationMessage]:
+    if persistence_backend() == "sqlite":
+        with connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at ASC",
+                (conversation_id,),
+            ).fetchall()
+        return [_sqlite_row_to_message(row) for row in rows]
     rows = get_container().query_items(
         query=(
             "SELECT * FROM c WHERE c.document_type = @document_type "
@@ -107,6 +139,10 @@ def get_conversation_messages(conversation_id: str) -> list[ConversationMessage]
 
 
 def delete_conversation(conversation_id: str) -> bool:
+    if persistence_backend() == "sqlite":
+        with connect() as connection:
+            cursor = connection.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+        return cursor.rowcount > 0
     if get_conversation(conversation_id) is None:
         return False
     container = get_container()
@@ -141,25 +177,42 @@ def get_usage_metrics(
         }
         for item in bucket_dates
     }
-    parameters = [
+    if persistence_backend() == "sqlite":
+        query = (
+            "SELECT model, duration_ms, usage_json, created_at FROM conversation_messages "
+            "WHERE role = 'assistant' AND model IS NOT NULL AND created_at >= ?"
+        )
+        values: list[Any] = [f"{start_date.isoformat()}T00:00:00+00:00"]
+        if model:
+            query += " AND model = ?"
+            values.append(model)
+        query += " ORDER BY created_at ASC"
+        with connect() as connection:
+            sqlite_rows = connection.execute(query, values).fetchall()
+        rows: Any = [
+            {**dict(row), "usage": json.loads(row["usage_json"]) if row["usage_json"] else None}
+            for row in sqlite_rows
+        ]
+    else:
+        parameters = [
         {"name": "@document_type", "value": MESSAGE_TYPE},
         {"name": "@role", "value": "assistant"},
         {"name": "@start", "value": f"{start_date.isoformat()}T00:00:00+00:00"},
     ]
-    model_filter = ""
-    if model:
-        model_filter = " AND c.model = @model"
-        parameters.append({"name": "@model", "value": model})
-    rows = get_container().query_items(
-        query=(
-            "SELECT c.model, c.duration_ms, c.usage, c.created_at FROM c "
-            "WHERE c.document_type = @document_type AND c.role = @role "
-            "AND IS_DEFINED(c.model) AND NOT IS_NULL(c.model) AND c.created_at >= @start"
-            f"{model_filter} ORDER BY c.created_at ASC"
-        ),
-        parameters=parameters,
-        enable_cross_partition_query=True,
-    )
+        model_filter = ""
+        if model:
+            model_filter = " AND c.model = @model"
+            parameters.append({"name": "@model", "value": model})
+        rows = get_container().query_items(
+            query=(
+                "SELECT c.model, c.duration_ms, c.usage, c.created_at FROM c "
+                "WHERE c.document_type = @document_type AND c.role = @role "
+                "AND IS_DEFINED(c.model) AND NOT IS_NULL(c.model) AND c.created_at >= @start"
+                f"{model_filter} ORDER BY c.created_at ASC"
+            ),
+            parameters=parameters,
+            enable_cross_partition_query=True,
+        )
 
     models: set[str] = set()
     request_count = prompt_tokens = completion_tokens = total_tokens = 0
@@ -259,8 +312,29 @@ def append_message(
         "guardrail_results": guardrail_results,
         "created_at": now,
     }
-    container = get_container()
-    container.execute_item_batch(
+    if persistence_backend() == "sqlite":
+        with connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO conversation_messages (
+                    id, conversation_id, role, content, model, api_surface, duration_ms, error,
+                    usage_json, guardrail_variant, guardrail_policy_name, guardrail_results_json,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    message_id, conversation_id, role, content, model, api_surface, duration_ms,
+                    error, json.dumps(usage) if usage is not None else None, guardrail_variant,
+                    guardrail_policy_name,
+                    json.dumps(guardrail_results) if guardrail_results is not None else None, now,
+                ),
+            )
+            connection.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conversation_id)
+            )
+    else:
+        container = get_container()
+        container.execute_item_batch(
         batch_operations=[
             ("create", (document,)),
             (
@@ -312,7 +386,7 @@ def _matches_guardrail_history(
         }
     return message.guardrail_variant is None or message.guardrail_variant == (
         guardrail_variant or "baseline"
-    )
+        )
 
 
 def conversation_to_dict(conversation: Conversation) -> dict[str, Any]:
@@ -359,6 +433,17 @@ def _document_to_message(document: dict[str, Any]) -> ConversationMessage:
         guardrail_results=document.get("guardrail_results"),
         created_at=document["created_at"],
     )
+
+
+def _sqlite_row_to_message(row: Any) -> ConversationMessage:
+    document = dict(row)
+    document["usage"] = json.loads(document.pop("usage_json")) if document["usage_json"] else None
+    document["guardrail_results"] = (
+        json.loads(document.pop("guardrail_results_json"))
+        if document["guardrail_results_json"]
+        else None
+    )
+    return _document_to_message(document)
 
 
 def _usage_value(usage: dict[str, Any], key: str) -> int:

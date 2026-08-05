@@ -202,6 +202,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           image: containerImage
           env: [
             { name: 'AZURE_CLIENT_ID',              value: appIdentity.properties.clientId }
+            { name: 'PERSISTENCE_BACKEND',           value: 'cosmos' }
             { name: 'ENTRA_AUTH_ENABLED',           value: string(enableEntraAuthentication) }
             { name: 'FOUNDRY_SUBSCRIPTION_ID',      value: subscription().subscriptionId }
             { name: 'FOUNDRY_RESOURCE_GROUP',       value: sharedResourceGroupName }

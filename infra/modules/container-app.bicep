@@ -293,6 +293,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: appIdentity.properties.clientId
             }
             {
+              name: 'PERSISTENCE_BACKEND'
+              value: 'cosmos'
+            }
+            {
               name: 'ENTRA_AUTH_ENABLED'
               value: string(enableEntraAuthentication)
             }
