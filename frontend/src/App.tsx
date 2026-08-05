@@ -586,6 +586,7 @@ export default function App() {
   const apiTraceSequence = useRef(0);
   const entraAuthEnabled = config?.entra_auth_enabled ?? auth?.entra_auth_enabled ?? false;
   const canUseProtectedApis = entraAuthEnabled ? auth?.authenticated === true : config !== null;
+  const authGateActive = auth === null || (entraAuthEnabled && auth.authenticated !== true);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -2502,7 +2503,13 @@ export default function App() {
         </div>
       ) : null}
 
-      <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 p-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <div
+        className={cn(
+          "grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 p-4",
+          !authGateActive && "lg:grid-cols-[18rem_minmax(0,1fr)]",
+        )}
+      >
+        {!authGateActive ? (
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-4 shadow-sm dark:border-[#55555a] dark:bg-[#39393d]">
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
           <div className="grid gap-2">
@@ -2807,8 +2814,10 @@ export default function App() {
             <FoundryStatusPill config={config} />
           </div>
         </aside>
+        ) : null}
 
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white shadow-sm dark:border-[#55555a] dark:bg-[#39393d]">
+          {!authGateActive ? (
           <div className="flex items-center justify-between border-b px-5 py-4 dark:border-[#55555a]">
             <div>
               <h2 className="font-semibold">
@@ -2861,8 +2870,35 @@ export default function App() {
               </button>
             </div>
           </div>
+          ) : null}
 
-          {activeView === "metrics" ? (
+          {authGateActive ? (
+            <div className="flex flex-1 items-center justify-center p-6">
+              <div className="max-w-md text-center">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 dark:bg-violet-500/15 dark:text-violet-200">
+                  <LogIn className="h-7 w-7" />
+                </div>
+                <h2 className="text-2xl font-semibold">
+                  {auth === null ? "Checking access..." : "Sign in to Foundry Demo"}
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  {auth === null
+                    ? "Confirming your Microsoft account session."
+                    : "Use your Microsoft account to access chat, voice, document, and model comparison demos."}
+                </p>
+                {auth !== null ? (
+                  <Button
+                    type="button"
+                    className="mt-6"
+                    onClick={() => window.location.assign(loginUrl)}
+                  >
+                    <LogIn className="h-4 w-4" />
+                    Sign in with Microsoft
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : activeView === "metrics" ? (
             <ModelMetricsDashboard
               models={models}
               metrics={metrics}
