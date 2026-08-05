@@ -22,6 +22,7 @@ def test_user_is_mapped_from_id_token_claims():
             "name": "Ada Lovelace",
             "oid": "user-1",
             "preferred_username": "ada@example.com",
+            "tid": "tenant-1",
         }
     )
 
@@ -31,4 +32,5 @@ def test_user_is_mapped_from_id_token_claims():
         "user_id": "user-1",
         "identity_provider": "aad",
         "email": "ada@example.com",
+        "tenant_id": "tenant-1",
     }

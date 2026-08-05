@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 from urllib.parse import urlparse
@@ -14,6 +15,19 @@ class AuthMode(StrEnum):
     DISABLED = "disabled"
     LOCAL = "local"
     CONTAINER_APPS = "container_apps"
+
+
+@dataclass(frozen=True)
+class UserScope:
+    tenant_id: str
+    user_id: str
+
+    @property
+    def owner_key(self) -> str:
+        return f"{self.tenant_id}:{self.user_id}"
+
+
+LOCAL_DEMO_SCOPE = UserScope(tenant_id="local-demo", user_id="local-demo")
 
 
 def auth_mode() -> AuthMode:
@@ -38,7 +52,7 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
         return None
     if mode is AuthMode.LOCAL:
         local_user = decode_cookie(connection.cookies.get(AUTH_SESSION_COOKIE))
-        if not local_user or not local_user.get("user_id"):
+        if not local_user or not local_user.get("user_id") or not local_user.get("tenant_id"):
             return None
         return {key: value for key, value in local_user.items() if key != "exp"}
 
@@ -55,15 +69,40 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
         if isinstance(claim, dict) and claim.get("typ") and claim.get("val")
     } if isinstance(claims, list) else {}
     user_name = str(principal.get("userDetails") or "").strip() or None
+    tenant_id = _claim_value(
+        claim_lookup,
+        "tid",
+        "http://schemas.microsoft.com/identity/claims/tenantid",
+    )
+    if not tenant_id:
+        return None
     return {
         "authenticated": True,
         "name": user_name,
         "user_id": user_id,
         "identity_provider": principal.get("identityProvider"),
-        "email": claim_lookup.get("preferred_username")
-        or claim_lookup.get("email")
+        "email": _claim_value(
+            claim_lookup,
+            "preferred_username",
+            "email",
+            "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+        )
         or user_name,
+        "tenant_id": tenant_id,
     }
+
+
+def user_scope(connection: HTTPConnection) -> UserScope:
+    if auth_mode() is AuthMode.DISABLED:
+        return LOCAL_DEMO_SCOPE
+    user = authenticated_user(connection)
+    if user is None:
+        raise ValueError("Authenticated user is required.")
+    tenant_id = str(user.get("tenant_id") or "").strip()
+    user_id = str(user.get("user_id") or "").strip()
+    if not tenant_id or not user_id:
+        raise ValueError("Authenticated user identity is incomplete.")
+    return UserScope(tenant_id=tenant_id, user_id=user_id)
 
 
 def websocket_origin_allowed(connection: HTTPConnection) -> bool:
@@ -92,3 +131,11 @@ def _decode_client_principal(value: str | None) -> dict[str, Any] | None:
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     return principal if isinstance(principal, dict) else None
+
+
+def _claim_value(claims: dict[str, str], *names: str) -> str | None:
+    for name in names:
+        value = claims.get(name)
+        if value:
+            return value
+    return None

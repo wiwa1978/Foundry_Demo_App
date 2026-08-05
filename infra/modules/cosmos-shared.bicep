@@ -17,10 +17,10 @@ resource account 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' existing = {
 }
 
 resource container 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
-  name: '${accountName}/${databaseName}/${containerName}'
+  name: '${accountName}/${databaseName}/${containerName}-v2'
   properties: {
     resource: {
-      id: containerName
+      id: '${containerName}-v2'
       partitionKey: {
         paths: [
           '/partition_key'
@@ -38,7 +38,7 @@ resource dataContributor 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignmen
   properties: {
     principalId: principalId
     roleDefinitionId: '${account.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
-    scope: '${account.id}/dbs/${databaseName}/colls/${containerName}'
+    scope: '${account.id}/dbs/${databaseName}/colls/${containerName}-v2'
   }
 }
 

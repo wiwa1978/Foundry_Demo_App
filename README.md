@@ -297,15 +297,14 @@ Right-click a saved conversation in the sidebar to delete it. Deleting removes t
 
 For side-by-side comparison, the app stores one user message and one assistant response per selected model. When building context for a model, the backend includes the shared user turns and that model's previous assistant responses.
 
-The shared database uses one container per app to isolate data and RBAC. The container is partitioned by `/partition_key`: a conversation and all its messages share the conversation ID, while model settings use a dedicated logical partition.
+The shared database uses one versioned container per app. Conversation records are scoped by Entra
+tenant and user; each user's conversations and messages share an owner partition, while global model
+settings use a dedicated logical partition. Document Blob paths and Search filters use the same tenant
+and user scope.
 
-To migrate the existing local SQLite records after configuring Cosmos DB, run this once:
-
-```powershell
-python .\scripts\migrate_sqlite_to_cosmos.py
-```
-
-The migration is idempotent and upserts the existing conversations, messages, and model settings into Cosmos DB.
+This development version uses owner-scoped persistence schema v2. Existing ownerless SQLite tables,
+the previous Cosmos container, and the previous Search index are intentionally not migrated; demo
+data may be discarded. Runtime resources use the configured Cosmos/Search names with a `-v2` suffix.
 
 ## Deployment admin
 

@@ -27,11 +27,13 @@ from azure.search.documents.models import VectorizedQuery
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
 from app.foundry_client import create_embeddings, load_settings
+from app.security import UserScope
 
 MAX_DOCUMENT_BYTES = 12 * 1024 * 1024
 CHUNK_TARGET_CHARS = 1400
 CHUNK_OVERLAP_CHARS = 180
 DEFAULT_TOP_K = 6
+SEARCH_SCHEMA_VERSION = "v2"
 VECTOR_PROFILE_NAME = "foundry-rag-vector-profile"
 VECTOR_ALGORITHM_NAME = "foundry-rag-hnsw"
 
@@ -91,11 +93,11 @@ def load_rag_search_settings() -> RagSearchSettings:
     configured_dimensions = os.getenv("FOUNDRY_EMBEDDING_DIMENSIONS")
     return RagSearchSettings(
         endpoint=os.getenv("AZURE_SEARCH_ENDPOINT") or os.getenv("FOUNDRY_SEARCH_ENDPOINT"),
-        index_name=(
+        index_name=f"{(
             os.getenv("AZURE_SEARCH_INDEX_NAME")
             or os.getenv("FOUNDRY_SEARCH_INDEX_NAME")
             or "foundry-document-rag"
-        ),
+        )}-{SEARCH_SCHEMA_VERSION}",
         embedding_model=foundry_settings.embedding_model,
         embedding_dimensions=int(configured_dimensions) if configured_dimensions else None,
         storage_account_url=(
@@ -110,7 +112,13 @@ def load_rag_search_settings() -> RagSearchSettings:
     )
 
 
-def add_document(*, filename: str, content_type: str | None, data: bytes) -> dict[str, Any]:
+def add_document(
+    *,
+    scope: UserScope,
+    filename: str,
+    content_type: str | None,
+    data: bytes,
+) -> dict[str, Any]:
     settings = _require_search_settings()
     safe_filename = Path(filename or "uploaded-document").name
     if not data:
@@ -132,7 +140,7 @@ def add_document(*, filename: str, content_type: str | None, data: bytes) -> dic
 
     document_id = str(uuid.uuid4())
     created_at = datetime.now(UTC).isoformat()
-    blob_name = f"documents/{document_id}/{safe_filename}"
+    blob_name = f"documents/{scope.tenant_id}/{scope.user_id}/{document_id}/{safe_filename}"
     blob_url = _upload_original_document(
         settings=settings,
         blob_name=blob_name,
@@ -152,6 +160,8 @@ def add_document(*, filename: str, content_type: str | None, data: bytes) -> dic
         {
             "id": f"{document_id}-{index}",
             "document_id": document_id,
+            "tenant_id": scope.tenant_id,
+            "owner_id": scope.user_id,
             "filename": safe_filename,
             "content_type": content_type or "",
             "byte_size": len(data),
@@ -190,13 +200,14 @@ def add_document(*, filename: str, content_type: str | None, data: bytes) -> dic
     }
 
 
-def list_documents() -> list[UploadedDocument]:
+def list_documents(scope: UserScope) -> list[UploadedDocument]:
     settings = _require_search_settings()
     documents: dict[str, UploadedDocument] = {}
     with _create_search_client(settings) as search_client:
         try:
             results = search_client.search(
                 search_text="*",
+                filter=_owner_filter(scope),
                 select=[
                     "document_id",
                     "filename",
@@ -228,7 +239,7 @@ def list_documents() -> list[UploadedDocument]:
     return sorted(documents.values(), key=lambda document: document.created_at, reverse=True)
 
 
-def delete_document(document_id: str) -> bool:
+def delete_document(scope: UserScope, document_id: str) -> bool:
     settings = _require_search_settings()
     escaped_document_id = _escape_search_filter_value(document_id)
     with _create_search_client(settings) as search_client:
@@ -237,7 +248,7 @@ def delete_document(document_id: str) -> bool:
         try:
             results = search_client.search(
                 search_text="*",
-                filter=f"document_id eq '{escaped_document_id}'",
+                filter=f"{_owner_filter(scope)} and document_id eq '{escaped_document_id}'",
                 select=["id", "blob_name"],
                 top=1000,
             )
@@ -256,7 +267,12 @@ def delete_document(document_id: str) -> bool:
     return True
 
 
-def retrieve_document_chunks(query: str, *, limit: int = DEFAULT_TOP_K) -> dict[str, Any]:
+def retrieve_document_chunks(
+    scope: UserScope,
+    query: str,
+    *,
+    limit: int = DEFAULT_TOP_K,
+) -> dict[str, Any]:
     settings = _require_search_settings()
     embedding = create_embeddings(inputs=[query], model=settings.embedding_model)
     query_vector = embedding["vectors"][0]
@@ -269,6 +285,7 @@ def retrieve_document_chunks(query: str, *, limit: int = DEFAULT_TOP_K) -> dict[
         try:
             results = search_client.search(
                 search_text=query,
+                filter=_owner_filter(scope),
                 vector_queries=[vector_query],
                 select=["document_id", "filename", "chunk_index", "content", "blob_url"],
                 top=limit,
@@ -371,6 +388,8 @@ def _ensure_search_index(settings: RagSearchSettings, embedding_dimensions: int)
     fields = [
         SimpleField(name="id", type=SearchFieldDataType.String, key=True, filterable=True),
         SimpleField(name="document_id", type=SearchFieldDataType.String, filterable=True),
+        SimpleField(name="tenant_id", type=SearchFieldDataType.String, filterable=True),
+        SimpleField(name="owner_id", type=SearchFieldDataType.String, filterable=True),
         SearchableField(name="filename", type=SearchFieldDataType.String, filterable=True),
         SimpleField(name="content_type", type=SearchFieldDataType.String, filterable=True),
         SimpleField(name="byte_size", type=SearchFieldDataType.Int64, filterable=True),
@@ -581,3 +600,9 @@ def _split_long_text(text: str) -> list[str]:
 
 def _escape_search_filter_value(value: str) -> str:
     return value.replace("'", "''")
+
+
+def _owner_filter(scope: UserScope) -> str:
+    tenant_id = _escape_search_filter_value(scope.tenant_id)
+    owner_id = _escape_search_filter_value(scope.user_id)
+    return f"tenant_id eq '{tenant_id}' and owner_id eq '{owner_id}'"

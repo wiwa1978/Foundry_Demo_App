@@ -15,6 +15,10 @@ from app.model_settings import (
     ModelSettings,
     _document_to_settings,
 )
+from app.security import UserScope
+
+
+USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
 
 
 def _policy(name: str, policy_type: str) -> SimpleNamespace:
@@ -201,9 +205,9 @@ def test_history_keeps_guardrail_variants_separate(mock_messages):
         message("assistant", "legacy answer"),
     ]
 
-    baseline = build_model_history("conversation", "gpt-demo", "baseline")
-    guarded = build_model_history("conversation", "gpt-demo", "guarded")
-    standard = build_model_history("conversation", "gpt-demo")
+    baseline = build_model_history(USER_SCOPE, "conversation", "gpt-demo", "baseline")
+    guarded = build_model_history(USER_SCOPE, "conversation", "gpt-demo", "guarded")
+    standard = build_model_history(USER_SCOPE, "conversation", "gpt-demo")
 
     assert [item["content"] for item in baseline] == [
         "question",
@@ -275,6 +279,12 @@ def test_history_follows_policy_name_when_slots_change(mock_messages):
         message("assistant", "lenient answer", "policy_2", "lenient-demo"),
     ]
 
-    strict = build_model_history("conversation", "gpt-demo", "policy_2", "strict-demo")
+    strict = build_model_history(
+        USER_SCOPE,
+        "conversation",
+        "gpt-demo",
+        "policy_2",
+        "strict-demo",
+    )
 
     assert [item["content"] for item in strict] == ["question", "strict answer"]

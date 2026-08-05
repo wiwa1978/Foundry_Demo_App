@@ -51,6 +51,7 @@ def user_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
         "user_id": claims.get("oid") or claims.get("sub"),
         "identity_provider": "aad",
         "email": email,
+        "tenant_id": claims.get("tid"),
     }
 
 

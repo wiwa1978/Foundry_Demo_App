@@ -7,6 +7,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.main import MAX_AUDIO_BYTES, MAX_PROMPT_LENGTH, app
 from app.security import auth_mode
+from app.sqlite_store import initialize_sqlite_store
 
 
 client = TestClient(app)
@@ -17,7 +18,10 @@ def _principal(user_id: str = "user-1") -> str:
         "identityProvider": "aad",
         "userId": user_id,
         "userDetails": "user@example.com",
-        "claims": [{"typ": "preferred_username", "val": "user@example.com"}],
+        "claims": [
+            {"typ": "preferred_username", "val": "user@example.com"},
+            {"typ": "tid", "val": "tenant-1"},
+        ],
     }
     return base64.b64encode(json.dumps(payload).encode()).decode()
 
@@ -73,6 +77,30 @@ def test_container_apps_mode_requires_encoded_principal(monkeypatch):
 
     assert rejected.status_code == 401
     assert accepted.status_code == 200
+
+
+def test_conversations_are_isolated_between_authenticated_users(monkeypatch, tmp_path):
+    monkeypatch.setenv("APP_AUTH_MODE", "container_apps")
+    monkeypatch.setenv("PERSISTENCE_BACKEND", "sqlite")
+    monkeypatch.setenv("SQLITE_DATABASE_PATH", str(tmp_path / "isolation.sqlite3"))
+    initialize_sqlite_store()
+
+    created = client.post(
+        "/api/conversations",
+        headers={"x-ms-client-principal": _principal("user-1")},
+    )
+    owner_list = client.get(
+        "/api/conversations",
+        headers={"x-ms-client-principal": _principal("user-1")},
+    )
+    other_list = client.get(
+        "/api/conversations",
+        headers={"x-ms-client-principal": _principal("user-2")},
+    )
+
+    assert created.status_code == 200
+    assert len(owner_list.json()["conversations"]) == 1
+    assert other_list.json() == {"conversations": []}
 
 
 def test_invalid_auth_mode_fails_configuration(monkeypatch):

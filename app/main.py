@@ -9,7 +9,7 @@ import threading
 from typing import Annotated, Any, Callable, Iterator, TypeVar
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -85,7 +85,7 @@ from app.local_auth import (
     user_from_claims,
 )
 from app.live_interpreter import LiveInterpreterSession
-from app.security import AuthMode, auth_mode, authenticated_user, websocket_origin_allowed
+from app.security import AuthMode, UserScope, auth_mode, authenticated_user, user_scope, websocket_origin_allowed
 
 load_dotenv()
 
@@ -125,6 +125,13 @@ def _is_entra_auth_enabled() -> bool:
 
 def _authenticated_user_from_request(request: Request | WebSocket) -> dict | None:
     return authenticated_user(request)
+
+
+def _current_user_scope(request: Request) -> UserScope:
+    try:
+        return user_scope(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="Authentication is required.") from exc
 
 
 async def _run_model_call(function: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
@@ -716,6 +723,7 @@ async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
 
 @app.post("/api/voice/traditional")
 async def post_traditional_voice(
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
     audio: UploadFile = File(...),
     model: str = Form(...),
     conversation_id: str | None = Form(None),
@@ -743,11 +751,12 @@ async def post_traditional_voice(
         if not transcript:
             raise RuntimeError("Foundry transcription did not return any text.")
 
-        conversation = get_or_create_conversation(conversation_id, transcript, use_case)
+        conversation = get_or_create_conversation(scope, conversation_id, transcript, use_case)
         model_settings = get_model_settings(model)
         variants = _guardrail_variants(model_settings, False)
-        histories = _guardrail_histories(conversation.id, model, variants)
+        histories = _guardrail_histories(scope, conversation.id, model, variants)
         user_message = append_message(
+            scope=scope,
             conversation_id=conversation.id,
             role="user",
             content=transcript,
@@ -756,6 +765,7 @@ async def post_traditional_voice(
             *(
                 asyncio.to_thread(
                     _run_and_store_variant,
+                    scope=scope,
                     conversation_id=conversation.id,
                     model_settings=model_settings,
                     prompt=transcript,
@@ -795,7 +805,9 @@ async def post_traditional_voice(
             "model": model,
             "transcription": transcription,
             "results": results_with_speech,
-            "conversation": conversation_to_dict(get_conversation(conversation.id) or conversation),
+            "conversation": conversation_to_dict(
+                get_conversation(scope, conversation.id) or conversation
+            ),
             "user_message": message_to_dict(user_message),
         }
         if len(results_with_speech) == 1:
@@ -982,31 +994,38 @@ async def post_transcription(
 
 
 @app.get("/api/conversations")
-def get_conversations(use_case: str = Query("text_chat")) -> dict:
+def get_conversations(
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
+    use_case: str = Query("text_chat"),
+) -> dict:
     return {
         "conversations": [
-            conversation_to_dict(item) for item in list_conversations(use_case)
+            conversation_to_dict(item) for item in list_conversations(scope, use_case)
         ]
     }
 
 
 @app.post("/api/conversations")
-def post_conversation(use_case: str = Query("text_chat")) -> dict:
-    conversation = create_conversation(use_case=use_case)
+def post_conversation(
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
+    use_case: str = Query("text_chat"),
+) -> dict:
+    conversation = create_conversation(scope, use_case=use_case)
     return {"conversation": conversation_to_dict(conversation), "messages": []}
 
 
 @app.get("/api/conversations/{conversation_id}")
 def get_conversation_by_id(
     conversation_id: str,
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
     use_case: str = Query("text_chat"),
 ) -> dict:
-    conversation = get_conversation(conversation_id)
+    conversation = get_conversation(scope, conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found.")
     if conversation.use_case != use_case:
         raise HTTPException(status_code=404, detail="Conversation not found for this use case.")
-    messages = get_conversation_messages(conversation_id)
+    messages = get_conversation_messages(scope, conversation_id)
     return {
         "conversation": conversation_to_dict(conversation),
         "messages": [message_to_dict(message) for message in messages],
@@ -1014,22 +1033,28 @@ def get_conversation_by_id(
 
 
 @app.delete("/api/conversations/{conversation_id}")
-def delete_conversation_by_id(conversation_id: str) -> dict:
-    if not delete_conversation(conversation_id):
+def delete_conversation_by_id(
+    conversation_id: str,
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
+) -> dict:
+    if not delete_conversation(scope, conversation_id):
         raise HTTPException(status_code=404, detail="Conversation not found.")
     return {"deleted": True}
 
 
 @app.get("/api/documents")
-def get_documents() -> dict:
+def get_documents(scope: Annotated[UserScope, Depends(_current_user_scope)]) -> dict:
     try:
-        return {"documents": [document_to_dict(item) for item in list_rag_documents()]}
+        return {"documents": [document_to_dict(item) for item in list_rag_documents(scope)]}
     except Exception as exc:
         raise _upstream_error("Document listing", exc) from exc
 
 
 @app.post("/api/documents")
-async def post_documents(files: list[UploadFile] = File(...)) -> dict:
+async def post_documents(
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
+    files: list[UploadFile] = File(...),
+) -> dict:
     if not files:
         raise HTTPException(status_code=422, detail="Upload at least one document.")
     if len(files) > MAX_DOCUMENT_FILES:
@@ -1044,6 +1069,7 @@ async def post_documents(files: list[UploadFile] = File(...)) -> dict:
                 raise HTTPException(status_code=413, detail="Document upload cannot exceed 50 MB.")
             result = await _run_model_call(
                 add_document,
+                scope=scope,
                 filename=file.filename or "uploaded-document",
                 content_type=file.content_type,
                 data=data,
@@ -1062,9 +1088,12 @@ async def post_documents(files: list[UploadFile] = File(...)) -> dict:
 
 
 @app.delete("/api/documents/{document_id}")
-def delete_document_by_id(document_id: str) -> dict:
+def delete_document_by_id(
+    document_id: str,
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
+) -> dict:
     try:
-        if not delete_document(document_id):
+        if not delete_document(scope, document_id):
             raise HTTPException(status_code=404, detail="Document not found.")
     except HTTPException:
         raise
@@ -1075,11 +1104,13 @@ def delete_document_by_id(document_id: str) -> dict:
 
 @app.get("/api/metrics/model")
 def get_model_usage_metrics(
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
     days: Annotated[int, Query(ge=1, le=31)] = 7,
     model: str | None = None,
 ) -> dict:
     normalized_model = model.strip() if model else None
     return get_usage_metrics(
+        scope=scope,
         days=days,
         model=normalized_model or None,
         input_token_cost_per_1k=_env_float("FOUNDRY_INPUT_TOKEN_COST_PER_1K"),
@@ -1147,12 +1178,14 @@ def _guardrail_variants(
 
 
 def _guardrail_histories(
+    scope: UserScope,
     conversation_id: str,
     model: str,
     variants: list[tuple[str | None, str | None]],
 ) -> dict[str | None, list[dict[str, str]]]:
     return {
         variant: build_model_history(
+            scope,
             conversation_id,
             model,
             variant,
@@ -1171,6 +1204,7 @@ def _guardrail_error_details(exc: Exception) -> dict[str, Any] | None:
 
 def _run_and_store_variant(
     *,
+    scope: UserScope,
     conversation_id: str,
     model_settings: ModelSettings,
     prompt: str,
@@ -1209,6 +1243,7 @@ def _run_and_store_variant(
                 guardrail_policy_name=policy_name,
             )
         assistant_message = append_message(
+            scope=scope,
             conversation_id=conversation_id,
             role="assistant",
             content=response["content"],
@@ -1228,6 +1263,7 @@ def _run_and_store_variant(
     except Exception as exc:
         guardrail_results = _guardrail_error_details(exc)
         assistant_message = append_message(
+            scope=scope,
             conversation_id=conversation_id,
             role="assistant",
             content="",
@@ -1251,15 +1287,19 @@ def _run_and_store_variant(
 
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest) -> dict:
+async def chat(
+    request: ChatRequest,
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
+) -> dict:
     try:
         conversation = get_or_create_conversation(
-            request.conversation_id, request.prompt, request.use_case
+            scope, request.conversation_id, request.prompt, request.use_case
         )
         model_settings = get_model_settings(request.model)
         variants = _guardrail_variants(model_settings, request.guardrail_comparison)
-        histories = _guardrail_histories(conversation.id, request.model, variants)
+        histories = _guardrail_histories(scope, conversation.id, request.model, variants)
         user_message = append_message(
+            scope=scope,
             conversation_id=conversation.id,
             role="user",
             content=request.prompt,
@@ -1268,6 +1308,7 @@ async def chat(request: ChatRequest) -> dict:
             *(
                 asyncio.to_thread(
                     _run_and_store_variant,
+                    scope=scope,
                     conversation_id=conversation.id,
                     model_settings=model_settings,
                     prompt=request.prompt,
@@ -1282,7 +1323,9 @@ async def chat(request: ChatRequest) -> dict:
         )
         payload = {
             "model": request.model,
-            "conversation": conversation_to_dict(get_conversation(conversation.id) or conversation),
+            "conversation": conversation_to_dict(
+                get_conversation(scope, conversation.id) or conversation
+            ),
             "user_message": message_to_dict(user_message),
             "results": results,
         }
@@ -1296,15 +1339,19 @@ async def chat(request: ChatRequest) -> dict:
 
 
 @app.post("/api/chat/stream")
-def chat_stream(request: ChatRequest) -> StreamingResponse:
+def chat_stream(
+    request: ChatRequest,
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
+) -> StreamingResponse:
     try:
         conversation = get_or_create_conversation(
-            request.conversation_id, request.prompt, request.use_case
+            scope, request.conversation_id, request.prompt, request.use_case
         )
         model_settings = get_model_settings(request.model)
         variants = _guardrail_variants(model_settings, request.guardrail_comparison)
-        histories = _guardrail_histories(conversation.id, request.model, variants)
+        histories = _guardrail_histories(scope, conversation.id, request.model, variants)
         user_message = append_message(
+            scope=scope,
             conversation_id=conversation.id,
             role="user",
             content=request.prompt,
@@ -1319,7 +1366,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                 "model": request.model,
                 "api_surface": model_settings.api_surface,
                 "conversation": conversation_to_dict(
-                    get_conversation(conversation.id) or conversation
+                    get_conversation(scope, conversation.id) or conversation
                 ),
                 "user_message": message_to_dict(user_message),
                 "guardrail_comparison": request.guardrail_comparison,
@@ -1331,6 +1378,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                 futures = {
                     executor.submit(
                         _run_and_store_variant,
+                        scope=scope,
                         conversation_id=conversation.id,
                         model_settings=model_settings,
                         prompt=request.prompt,
@@ -1349,7 +1397,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                             "type": "variant_completed",
                             "result": result,
                             "conversation": conversation_to_dict(
-                                get_conversation(conversation.id) or conversation
+                                get_conversation(scope, conversation.id) or conversation
                             ),
                         }
                     )
@@ -1357,7 +1405,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                 {
                     "type": "comparison_completed",
                     "conversation": conversation_to_dict(
-                        get_conversation(conversation.id) or conversation
+                        get_conversation(scope, conversation.id) or conversation
                     ),
                 }
             )
@@ -1384,6 +1432,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                     yield _sse(event)
                 elif event["type"] == "completed":
                     assistant_message = append_message(
+                        scope=scope,
                         conversation_id=conversation.id,
                         role="assistant",
                         content=event["content"],
@@ -1397,13 +1446,14 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                         {
                             "type": "completed",
                             "conversation": conversation_to_dict(
-                                get_conversation(conversation.id) or conversation
+                                get_conversation(scope, conversation.id) or conversation
                             ),
                             "assistant_message": message_to_dict(assistant_message),
                         }
                     )
         except Exception as exc:
             assistant_message = append_message(
+                scope=scope,
                 conversation_id=conversation.id,
                 role="assistant",
                 content="",
@@ -1416,7 +1466,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                     "type": "error",
                     "error": "Model stream failed. Try again later.",
                     "conversation": conversation_to_dict(
-                        get_conversation(conversation.id) or conversation
+                        get_conversation(scope, conversation.id) or conversation
                     ),
                     "assistant_message": message_to_dict(assistant_message),
                 }
@@ -1426,18 +1476,22 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
 
 
 @app.post("/api/documents/ask/stream")
-def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
+def document_ask_stream(
+    request: DocumentQuestionRequest,
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
+) -> StreamingResponse:
     try:
         conversation = get_or_create_conversation(
-            request.conversation_id, request.prompt, request.use_case
+            scope, request.conversation_id, request.prompt, request.use_case
         )
-        retrieval = retrieve_document_chunks(request.prompt)
+        retrieval = retrieve_document_chunks(scope, request.prompt)
         chunks = retrieval["chunks"]
         grounded_prompt = build_grounded_prompt(request.prompt, chunks)
         model_settings = get_model_settings(request.model)
         variants = _guardrail_variants(model_settings, request.guardrail_comparison)
-        histories = _guardrail_histories(conversation.id, request.model, variants)
+        histories = _guardrail_histories(scope, conversation.id, request.model, variants)
         user_message = append_message(
+            scope=scope,
             conversation_id=conversation.id,
             role="user",
             content=request.prompt,
@@ -1455,7 +1509,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                 "model": request.model,
                 "api_surface": model_settings.api_surface,
                 "conversation": conversation_to_dict(
-                    get_conversation(conversation.id) or conversation
+                    get_conversation(scope, conversation.id) or conversation
                 ),
                 "user_message": message_to_dict(user_message),
                 "guardrail_comparison": request.guardrail_comparison,
@@ -1474,6 +1528,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                 futures = [
                     executor.submit(
                         _run_and_store_variant,
+                        scope=scope,
                         conversation_id=conversation.id,
                         model_settings=model_settings,
                         prompt=grounded_prompt,
@@ -1491,7 +1546,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                             "type": "variant_completed",
                             "result": future.result(),
                             "conversation": conversation_to_dict(
-                                get_conversation(conversation.id) or conversation
+                                get_conversation(scope, conversation.id) or conversation
                             ),
                         }
                     )
@@ -1499,7 +1554,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                 {
                     "type": "comparison_completed",
                     "conversation": conversation_to_dict(
-                        get_conversation(conversation.id) or conversation
+                        get_conversation(scope, conversation.id) or conversation
                     ),
                 }
             )
@@ -1526,6 +1581,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                     yield _sse(event)
                 elif event["type"] == "completed":
                     assistant_message = append_message(
+                        scope=scope,
                         conversation_id=conversation.id,
                         role="assistant",
                         content=event["content"],
@@ -1539,13 +1595,14 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                         {
                             "type": "completed",
                             "conversation": conversation_to_dict(
-                                get_conversation(conversation.id) or conversation
+                                get_conversation(scope, conversation.id) or conversation
                             ),
                             "assistant_message": message_to_dict(assistant_message),
                         }
                     )
         except Exception as exc:
             assistant_message = append_message(
+                scope=scope,
                 conversation_id=conversation.id,
                 role="assistant",
                 content="",
@@ -1558,7 +1615,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                     "type": "error",
                     "error": "Document answer stream failed. Try again later.",
                     "conversation": conversation_to_dict(
-                        get_conversation(conversation.id) or conversation
+                        get_conversation(scope, conversation.id) or conversation
                     ),
                     "assistant_message": message_to_dict(assistant_message),
                 }
@@ -1568,10 +1625,13 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
 
 
 @app.post("/api/compare")
-async def compare(request: CompareRequest) -> dict:
+async def compare(
+    request: CompareRequest,
+    scope: Annotated[UserScope, Depends(_current_user_scope)],
+) -> dict:
     try:
         conversation = get_or_create_conversation(
-            request.conversation_id, request.prompt, request.use_case
+            scope, request.conversation_id, request.prompt, request.use_case
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -1585,6 +1645,7 @@ async def compare(request: CompareRequest) -> dict:
     }
     histories = {
         (model, variant): build_model_history(
+            scope,
             conversation.id,
             model,
             variant,
@@ -1594,6 +1655,7 @@ async def compare(request: CompareRequest) -> dict:
         for variant, policy_name in variants
     }
     user_message = append_message(
+        scope=scope,
         conversation_id=conversation.id,
         role="user",
         content=request.prompt,
@@ -1605,6 +1667,7 @@ async def compare(request: CompareRequest) -> dict:
             *(
                 asyncio.to_thread(
                     _run_and_store_variant,
+                    scope=scope,
                     conversation_id=conversation.id,
                     model_settings=model_settings,
                     prompt=request.prompt,
@@ -1628,7 +1691,9 @@ async def compare(request: CompareRequest) -> dict:
 
     results = await asyncio.gather(*(run_model(model) for model in request.models))
     return {
-        "conversation": conversation_to_dict(get_conversation(conversation.id) or conversation),
+        "conversation": conversation_to_dict(
+            get_conversation(scope, conversation.id) or conversation
+        ),
         "user_message": message_to_dict(user_message),
         "results": results,
     }

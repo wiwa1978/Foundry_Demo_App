@@ -9,6 +9,7 @@ from azure.cosmos.exceptions import CosmosResourceNotFoundError
 from app.cosmos_store import get_container, initialize_cosmos_store
 from app.persistence import persistence_backend
 from app.sqlite_store import connect, initialize_sqlite_store
+from app.security import UserScope
 
 MessageRole = Literal["user", "assistant"]
 GuardrailVariant = Literal["baseline", "guarded", "policy_1", "policy_2"]
@@ -49,38 +50,49 @@ def initialize_conversation_database() -> None:
         initialize_sqlite_store()
 
 
-def list_conversations(use_case: str = "text_chat") -> list[Conversation]:
+def list_conversations(scope: UserScope, use_case: str = "text_chat") -> list[Conversation]:
     if persistence_backend() == "sqlite":
         with connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM conversations WHERE use_case = ? ORDER BY updated_at DESC",
-                (use_case,),
+                "SELECT * FROM conversations WHERE tenant_id = ? AND owner_id = ? "
+                "AND use_case = ? ORDER BY updated_at DESC",
+                (scope.tenant_id, scope.user_id, use_case),
             ).fetchall()
         return [_document_to_conversation(dict(row)) for row in rows]
     rows = get_container().query_items(
         query=(
-            "SELECT c.id, c.title, c.use_case, c.created_at, c.updated_at FROM c "
+            "SELECT c.id, c.conversation_id, c.title, c.use_case, c.created_at, c.updated_at FROM c "
             "WHERE c.document_type = @document_type AND "
+            "c.tenant_id = @tenant_id AND c.owner_id = @owner_id AND "
             "((IS_DEFINED(c.use_case) AND c.use_case = @use_case) OR "
             "(@use_case = 'text_chat' AND NOT IS_DEFINED(c.use_case))) "
             "ORDER BY c.updated_at DESC"
         ),
         parameters=[
             {"name": "@document_type", "value": CONVERSATION_TYPE},
+            {"name": "@tenant_id", "value": scope.tenant_id},
+            {"name": "@owner_id", "value": scope.user_id},
             {"name": "@use_case", "value": use_case},
         ],
-        enable_cross_partition_query=True,
+        partition_key=scope.owner_key,
     )
     return [_document_to_conversation(row) for row in rows]
 
 
-def create_conversation(title: str | None = None, use_case: str = "text_chat") -> Conversation:
+def create_conversation(
+    scope: UserScope,
+    title: str | None = None,
+    use_case: str = "text_chat",
+) -> Conversation:
     conversation_id = str(uuid.uuid4())
     now = _utc_now()
     document = {
-        "id": conversation_id,
-        "partition_key": conversation_id,
+        "id": _scoped_document_id(scope, conversation_id),
+        "conversation_id": conversation_id,
+        "partition_key": scope.owner_key,
         "document_type": CONVERSATION_TYPE,
+        "tenant_id": scope.tenant_id,
+        "owner_id": scope.user_id,
         "title": _normalize_title(title),
         "use_case": use_case,
         "created_at": now,
@@ -89,8 +101,13 @@ def create_conversation(title: str | None = None, use_case: str = "text_chat") -
     if persistence_backend() == "sqlite":
         with connect() as connection:
             connection.execute(
-                "INSERT INTO conversations (id, title, use_case, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (conversation_id, document["title"], use_case, now, now),
+                "INSERT INTO conversations "
+                "(id, tenant_id, owner_id, title, use_case, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    conversation_id, scope.tenant_id, scope.user_id,
+                    document["title"], use_case, now, now,
+                ),
             )
     else:
         get_container().create_item(document)
@@ -98,74 +115,98 @@ def create_conversation(title: str | None = None, use_case: str = "text_chat") -
 
 
 def get_or_create_conversation(
+    scope: UserScope,
     conversation_id: str | None,
     title_seed: str | None = None,
     use_case: str = "text_chat",
 ) -> Conversation:
     if conversation_id:
-        conversation = get_conversation(conversation_id)
+        conversation = get_conversation(scope, conversation_id)
         if conversation is None:
             raise ValueError("Conversation not found.")
         if conversation.use_case != use_case:
             raise ValueError("Conversation belongs to a different use case.")
         return conversation
-    return create_conversation(title_seed, use_case)
+    return create_conversation(scope, title_seed, use_case)
 
 
-def get_conversation(conversation_id: str) -> Conversation | None:
+def get_conversation(scope: UserScope, conversation_id: str) -> Conversation | None:
     if persistence_backend() == "sqlite":
         with connect() as connection:
             row = connection.execute(
-                "SELECT * FROM conversations WHERE id = ?", (conversation_id,)
+                "SELECT * FROM conversations WHERE id = ? AND tenant_id = ? AND owner_id = ?",
+                (conversation_id, scope.tenant_id, scope.user_id),
             ).fetchone()
         return _document_to_conversation(dict(row)) if row else None
     try:
         document = get_container().read_item(
-            item=conversation_id,
-            partition_key=conversation_id,
+            item=_scoped_document_id(scope, conversation_id),
+            partition_key=scope.owner_key,
         )
     except CosmosResourceNotFoundError:
         return None
-    if document.get("document_type") != CONVERSATION_TYPE:
+    if (
+        document.get("document_type") != CONVERSATION_TYPE
+        or document.get("tenant_id") != scope.tenant_id
+        or document.get("owner_id") != scope.user_id
+    ):
         return None
     return _document_to_conversation(document)
 
 
-def get_conversation_messages(conversation_id: str) -> list[ConversationMessage]:
+def get_conversation_messages(
+    scope: UserScope,
+    conversation_id: str,
+) -> list[ConversationMessage]:
     if persistence_backend() == "sqlite":
         with connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at ASC",
-                (conversation_id,),
+                "SELECT * FROM conversation_messages WHERE conversation_id = ? "
+                "AND tenant_id = ? AND owner_id = ? ORDER BY created_at ASC, id ASC",
+                (conversation_id, scope.tenant_id, scope.user_id),
             ).fetchall()
         return [_sqlite_row_to_message(row) for row in rows]
     rows = get_container().query_items(
         query=(
             "SELECT * FROM c WHERE c.document_type = @document_type "
+            "AND c.conversation_id = @conversation_id "
             "ORDER BY c.created_at ASC"
         ),
-        parameters=[{"name": "@document_type", "value": MESSAGE_TYPE}],
-        partition_key=conversation_id,
+        parameters=[
+            {"name": "@document_type", "value": MESSAGE_TYPE},
+            {"name": "@conversation_id", "value": conversation_id},
+        ],
+        partition_key=scope.owner_key,
     )
     return [_document_to_message(row) for row in rows]
 
 
-def delete_conversation(conversation_id: str) -> bool:
+def delete_conversation(scope: UserScope, conversation_id: str) -> bool:
     if persistence_backend() == "sqlite":
         with connect() as connection:
-            cursor = connection.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+            cursor = connection.execute(
+                "DELETE FROM conversations WHERE id = ? AND tenant_id = ? AND owner_id = ?",
+                (conversation_id, scope.tenant_id, scope.user_id),
+            )
         return cursor.rowcount > 0
-    if get_conversation(conversation_id) is None:
+    if get_conversation(scope, conversation_id) is None:
         return False
     container = get_container()
-    for message in get_conversation_messages(conversation_id):
-        container.delete_item(item=message.id, partition_key=conversation_id)
-    container.delete_item(item=conversation_id, partition_key=conversation_id)
+    for message in get_conversation_messages(scope, conversation_id):
+        container.delete_item(
+            item=_scoped_document_id(scope, message.id),
+            partition_key=scope.owner_key,
+        )
+    container.delete_item(
+        item=_scoped_document_id(scope, conversation_id),
+        partition_key=scope.owner_key,
+    )
     return True
 
 
 def get_usage_metrics(
     *,
+    scope: UserScope,
     days: int,
     model: str | None = None,
     input_token_cost_per_1k: float = 0,
@@ -192,9 +233,14 @@ def get_usage_metrics(
     if persistence_backend() == "sqlite":
         query = (
             "SELECT model, duration_ms, usage_json, created_at FROM conversation_messages "
-            "WHERE role = 'assistant' AND model IS NOT NULL AND created_at >= ?"
+            "WHERE tenant_id = ? AND owner_id = ? AND role = 'assistant' "
+            "AND model IS NOT NULL AND created_at >= ?"
         )
-        values: list[Any] = [f"{start_date.isoformat()}T00:00:00+00:00"]
+        values: list[Any] = [
+            scope.tenant_id,
+            scope.user_id,
+            f"{start_date.isoformat()}T00:00:00+00:00",
+        ]
         if model:
             query += " AND model = ?"
             values.append(model)
@@ -210,6 +256,8 @@ def get_usage_metrics(
         {"name": "@document_type", "value": MESSAGE_TYPE},
         {"name": "@role", "value": "assistant"},
         {"name": "@start", "value": f"{start_date.isoformat()}T00:00:00+00:00"},
+        {"name": "@tenant_id", "value": scope.tenant_id},
+        {"name": "@owner_id", "value": scope.user_id},
     ]
         model_filter = ""
         if model:
@@ -219,11 +267,12 @@ def get_usage_metrics(
             query=(
                 "SELECT c.model, c.duration_ms, c.usage, c.created_at FROM c "
                 "WHERE c.document_type = @document_type AND c.role = @role "
+                "AND c.tenant_id = @tenant_id AND c.owner_id = @owner_id "
                 "AND IS_DEFINED(c.model) AND NOT IS_NULL(c.model) AND c.created_at >= @start"
                 f"{model_filter} ORDER BY c.created_at ASC"
             ),
             parameters=parameters,
-            enable_cross_partition_query=True,
+            partition_key=scope.owner_key,
         )
 
     models: set[str] = set()
@@ -293,6 +342,7 @@ def get_usage_metrics(
 
 def append_message(
     *,
+    scope: UserScope,
     conversation_id: str,
     role: MessageRole,
     content: str,
@@ -308,9 +358,12 @@ def append_message(
     message_id = str(uuid.uuid4())
     now = _utc_now()
     document = {
-        "id": message_id,
-        "partition_key": conversation_id,
+        "id": _scoped_document_id(scope, message_id),
+        "message_id": message_id,
+        "partition_key": scope.owner_key,
         "document_type": MESSAGE_TYPE,
+        "tenant_id": scope.tenant_id,
+        "owner_id": scope.user_id,
         "conversation_id": conversation_id,
         "role": role,
         "content": content,
@@ -329,20 +382,23 @@ def append_message(
             connection.execute(
                 """
                 INSERT INTO conversation_messages (
-                    id, conversation_id, role, content, model, api_surface, duration_ms, error,
+                    id, conversation_id, tenant_id, owner_id, role, content, model, api_surface, duration_ms, error,
                     usage_json, guardrail_variant, guardrail_policy_name, guardrail_results_json,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    message_id, conversation_id, role, content, model, api_surface, duration_ms,
+                    message_id, conversation_id, scope.tenant_id, scope.user_id,
+                    role, content, model, api_surface, duration_ms,
                     error, json.dumps(usage) if usage is not None else None, guardrail_variant,
                     guardrail_policy_name,
                     json.dumps(guardrail_results) if guardrail_results is not None else None, now,
                 ),
             )
             connection.execute(
-                "UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conversation_id)
+                "UPDATE conversations SET updated_at = ? WHERE id = ? "
+                "AND tenant_id = ? AND owner_id = ?",
+                (now, conversation_id, scope.tenant_id, scope.user_id),
             )
     else:
         container = get_container()
@@ -352,24 +408,25 @@ def append_message(
             (
                 "patch",
                 (
-                    conversation_id,
+                    _scoped_document_id(scope, conversation_id),
                     [{"op": "replace", "path": "/updated_at", "value": now}],
                 ),
             ),
         ],
-        partition_key=conversation_id,
+        partition_key=scope.owner_key,
     )
     return _document_to_message(document)
 
 
 def build_model_history(
+    scope: UserScope,
     conversation_id: str,
     model: str,
     guardrail_variant: GuardrailVariant | None = None,
     guardrail_policy_name: str | None = None,
 ) -> list[dict[str, str]]:
     history: list[dict[str, str]] = []
-    for message in get_conversation_messages(conversation_id):
+    for message in get_conversation_messages(scope, conversation_id):
         if message.error:
             continue
         if message.role == "user":
@@ -422,7 +479,7 @@ def _normalize_title(title: str | None) -> str:
 
 def _document_to_conversation(document: dict[str, Any]) -> Conversation:
     return Conversation(
-        id=document["id"],
+        id=document.get("conversation_id") or document["id"],
         title=document["title"],
         use_case=document.get("use_case") or "text_chat",
         created_at=document["created_at"],
@@ -432,7 +489,7 @@ def _document_to_conversation(document: dict[str, Any]) -> Conversation:
 
 def _document_to_message(document: dict[str, Any]) -> ConversationMessage:
     return ConversationMessage(
-        id=document["id"],
+        id=document.get("message_id") or document["id"],
         conversation_id=document["conversation_id"],
         role=document["role"],
         content=document["content"],
@@ -462,3 +519,7 @@ def _sqlite_row_to_message(row: Any) -> ConversationMessage:
 def _usage_value(usage: dict[str, Any], key: str) -> int:
     value = usage.get(key)
     return int(value) if isinstance(value, int | float) else 0
+
+
+def _scoped_document_id(scope: UserScope, document_id: str) -> str:
+    return f"{scope.owner_key}:{document_id}"

@@ -5,13 +5,15 @@ from azure.cosmos import CosmosClient, PartitionKey
 from app.azure_credential import get_azure_credential
 
 PARTITION_KEY_PATH = "/partition_key"
+CONTAINER_SCHEMA_VERSION = "v2"
 
 
 @lru_cache(maxsize=1)
 def get_container():
     endpoint = os.getenv("AZURE_COSMOS_ENDPOINT", "").strip()
     database_name = os.getenv("AZURE_COSMOS_DATABASE_NAME", "").strip()
-    container_name = os.getenv("AZURE_COSMOS_CONTAINER_NAME", "foundry-chat-app").strip()
+    base_container_name = os.getenv("AZURE_COSMOS_CONTAINER_NAME", "foundry-chat-app").strip()
+    container_name = f"{base_container_name}-{CONTAINER_SCHEMA_VERSION}"
     if not endpoint or not database_name or not container_name:
         raise RuntimeError(
             "Cosmos DB is not configured. Set AZURE_COSMOS_ENDPOINT, "

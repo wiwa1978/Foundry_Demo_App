@@ -32,7 +32,8 @@ def test_auth_me_returns_public_unauthenticated_contract(monkeypatch):
 
 @patch("app.main.list_conversations")
 @patch("app.main._is_entra_auth_enabled", return_value=False)
-def test_conversation_list_contract(_mock_auth_enabled, mock_list_conversations):
+def test_conversation_list_contract(_mock_auth_enabled, mock_list_conversations, monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     mock_list_conversations.return_value = [
         Conversation(
             id="conversation-1",
@@ -57,7 +58,10 @@ def test_conversation_list_contract(_mock_auth_enabled, mock_list_conversations)
             }
         ]
     }
-    mock_list_conversations.assert_called_once_with("text_chat")
+    scope, use_case = mock_list_conversations.call_args.args
+    assert scope.tenant_id == "local-demo"
+    assert scope.user_id == "local-demo"
+    assert use_case == "text_chat"
 
 
 @patch("app.main._is_entra_auth_enabled", return_value=False)
