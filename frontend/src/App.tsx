@@ -934,53 +934,70 @@ export default function App() {
       return;
     }
 
-    const controller = new AbortController();
-    tracedFetch(
-      "/api/models",
-      { signal: controller.signal },
-      { label: "Discover Foundry deployments", responseKind: "json" },
-    )
-      .then(async (response) => {
-        const data = (await response.json()) as ModelsResponse;
-        if (!response.ok) {
-          throw new Error("Failed to discover Foundry deployments.");
-        }
-        if (data.models.length) {
-          setModels(data.models);
-          const modalities = data.model_modalities ?? Object.fromEntries(
-            data.models.map((model) => [model, isImageModelName(model) ? ["image"] : ["text"]]),
-          );
-          setModelModalities(modalities as Record<string, ModelModality[]>);
-          const imageModels = data.models.filter((model) => modalities[model]?.includes("image"));
-          setImageModel((current) =>
-            current && imageModels.includes(current) ? current : imageModels[0] ?? "",
-          );
-          setSelectedImageModels((current) => {
-            const retained = imageModels.filter((model) => current.has(model));
-            return new Set((retained.length ? retained : imageModels).slice(0, maxImageComparisonModelCount));
-          });
-          setActiveModel((current) =>
-            current && data.models.includes(current) ? current : data.models[0],
-          );
-          setSelectedModels((current) => {
-            const textModels = data.models.filter((model) => modalities[model]?.includes("text"));
-            const retained = textModels.filter((model) => current.has(model));
-            return new Set(
-              (retained.length ? retained : textModels.slice(0, defaultComparisonModelCount))
-                .slice(0, maxComparisonModelCount),
+    let controller: AbortController | null = null;
+    const refreshModels = () => {
+      controller?.abort();
+      controller = new AbortController();
+      tracedFetch(
+        "/api/models",
+        { signal: controller.signal },
+        { label: "Discover Foundry deployments", responseKind: "json" },
+      )
+        .then(async (response) => {
+          const data = (await response.json()) as ModelsResponse;
+          if (!response.ok) {
+            throw new Error("Failed to discover Foundry deployments.");
+          }
+          if (data.models.length) {
+            setModels(data.models);
+            const modalities = data.model_modalities ?? Object.fromEntries(
+              data.models.map((model) => [model, isImageModelName(model) ? ["image"] : ["text"]]),
             );
-          });
-        }
-        if (data.discovery_error) {
-          console.warn("Foundry deployment discovery unavailable:", data.discovery_error);
-        }
-      })
-      .catch((error: Error) => {
-        if (error.name !== "AbortError") {
-          console.warn("Foundry deployment discovery failed:", error.message);
-        }
-      });
-    return () => controller.abort();
+            setModelModalities(modalities as Record<string, ModelModality[]>);
+            const imageModels = data.models.filter((model) => modalities[model]?.includes("image"));
+            setImageModel((current) =>
+              current && imageModels.includes(current) ? current : imageModels[0] ?? "",
+            );
+            setSelectedImageModels((current) => {
+              const retained = imageModels.filter((model) => current.has(model));
+              return new Set((retained.length ? retained : imageModels).slice(0, maxImageComparisonModelCount));
+            });
+            setActiveModel((current) =>
+              current && data.models.includes(current) ? current : data.models[0],
+            );
+            setSelectedModels((current) => {
+              const textModels = data.models.filter((model) => modalities[model]?.includes("text"));
+              const retained = textModels.filter((model) => current.has(model));
+              return new Set(
+                (retained.length ? retained : textModels.slice(0, defaultComparisonModelCount))
+                  .slice(0, maxComparisonModelCount),
+              );
+            });
+          }
+          if (data.discovery_error) {
+            console.warn("Foundry deployment discovery unavailable:", data.discovery_error);
+          }
+        })
+        .catch((error: Error) => {
+          if (error.name !== "AbortError") {
+            console.warn("Foundry deployment discovery failed:", error.message);
+          }
+        });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshModels();
+      }
+    };
+
+    refreshModels();
+    const refreshInterval = window.setInterval(refreshModels, 30_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(refreshInterval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      controller?.abort();
+    };
   }, [canUseProtectedApis]);
 
   useEffect(() => {
@@ -5532,7 +5549,7 @@ function TextToImageWorkspace({
                 className="mx-auto max-h-[68vh] w-auto rounded-2xl object-contain shadow-2xl"
               />
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-                <span>{result.model} · {result.width} × {result.height} · {(result.duration_ms / 1000).toFixed(1)}s</span>
+                <span>{result.model} · {result.width} × {result.height} · Generation time: {(result.duration_ms / 1000).toFixed(1)}s</span>
                 <a
                   href={imageUrl}
                   download="foundry-generated-image.png"
@@ -5750,7 +5767,7 @@ function ImageComparisonPane({
             </div>
             <img src={imageUrl} alt={result.prompt || "AI-generated image"} className="mx-auto max-h-[52vh] w-auto rounded-xl object-contain shadow-xl" />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <span>{result.width} × {result.height} · {(result.duration_ms / 1000).toFixed(1)}s</span>
+              <span>{result.width} × {result.height} · Generation time: {(result.duration_ms / 1000).toFixed(1)}s</span>
               <a href={imageUrl} download={`${model}-generated-image.png`} className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground">
                 <Download className="h-3.5 w-3.5" /> Download
               </a>
