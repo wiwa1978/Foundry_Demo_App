@@ -31,6 +31,7 @@ def initialize_sqlite_store() -> None:
             CREATE TABLE IF NOT EXISTS conversations (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
+                use_case TEXT NOT NULL DEFAULT 'text_chat',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -66,6 +67,9 @@ def initialize_sqlite_store() -> None:
             );
             """
         )
+        _add_missing_columns(connection, "conversations", {
+            "use_case": "TEXT NOT NULL DEFAULT 'text_chat'",
+        })
         _add_missing_columns(connection, "conversation_messages", {
             "guardrail_variant": "TEXT",
             "guardrail_policy_name": "TEXT",

@@ -2,7 +2,7 @@ import os
 from functools import lru_cache
 
 from azure.cosmos import CosmosClient, PartitionKey
-from azure.identity import DefaultAzureCredential
+from app.azure_credential import get_azure_credential
 
 PARTITION_KEY_PATH = "/partition_key"
 
@@ -19,7 +19,7 @@ def get_container():
         )
 
     key = os.getenv("AZURE_COSMOS_KEY", "").strip()
-    credential = key or DefaultAzureCredential()
+    credential = key or get_azure_credential()
     client = CosmosClient(endpoint, credential=credential)
     database = client.get_database_client(database_name)
 

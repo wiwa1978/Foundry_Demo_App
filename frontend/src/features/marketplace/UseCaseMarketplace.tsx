@@ -1,4 +1,4 @@
-import { Bot, FileText, GitCompareArrows, Mic, Sparkles, X } from "lucide-react";
+import { Bot, FileText, GitCompareArrows, Image, Mic, Sparkles, X } from "lucide-react";
 
 import type { UseCaseId, UseCaseModule } from "@/app/types";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +43,7 @@ export function UseCaseMarketplace({
           </button>
         </header>
 
-        <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-3 p-5 md:grid-cols-2 lg:grid-cols-4">
           {useCases.map((useCase) => {
             const selected = useCase.id === activeUseCase;
             return (
@@ -92,6 +92,8 @@ function UseCaseIcon({ useCase }: { useCase: UseCaseModule }) {
         <Mic className={className} />
       ) : useCase.icon === "documents" ? (
         <FileText className={className} />
+      ) : useCase.icon === "image" ? (
+        <Image className={className} />
       ) : useCase.icon === "voiceWave" ? (
         <SoundWaveIcon className="h-5" />
       ) : (

@@ -140,6 +140,13 @@ param foundryRealtimeEndpoint string = ''
 @description('Foundry realtime model deployment name.')
 param foundryRealtimeModel string = 'gpt-realtime-2.1'
 
+@description('Azure AI Speech resource endpoint for the Transcribe use case.')
+param azureSpeechEndpoint string = ''
+
+@secure()
+@description('Azure AI Speech resource key for the Transcribe use case.')
+param azureSpeechKey string = ''
+
 @description('Resource group containing the existing shared Cosmos DB account.')
 param cosmosResourceGroupName string
 
@@ -283,6 +290,8 @@ module containerApp 'modules/container-app.bicep' = {
     foundryEmbeddingModel: foundryEmbeddingModel
     foundryRealtimeEndpoint: foundryRealtimeEndpoint
     foundryRealtimeModel: foundryRealtimeModel
+    azureSpeechEndpoint: azureSpeechEndpoint
+    azureSpeechKey: azureSpeechKey
     cosmosEndpoint: 'https://${cosmosAccountName}.documents.azure.com:443/'
     cosmosDatabaseName: cosmosDatabaseName
     cosmosContainerName: cosmosContainerName

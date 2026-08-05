@@ -5,14 +5,17 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 import json
+import tempfile
+import threading
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from azure.identity import get_bearer_token_provider
 from openai import OpenAI
 
+from app.azure_credential import get_azure_credential
 from app.model_settings import list_models
 
 SAMPLING_UNSUPPORTED_MODEL_PREFIXES = ("gpt-5", "gpt5", "o1", "o3", "o4")
@@ -28,6 +31,9 @@ class FoundrySettings:
     transcription_model: str
     tts_model: str
     tts_voice: str
+    speech_endpoint: str | None
+    speech_key: str | None
+    speech_transcription_model: str
 
     @property
     def is_configured(self) -> bool:
@@ -40,6 +46,10 @@ class FoundrySettings:
     @property
     def is_traditional_voice_configured(self) -> bool:
         return bool(self.endpoint and self.transcription_model and self.tts_model)
+
+    @property
+    def is_speech_transcription_configured(self) -> bool:
+        return bool(self.speech_endpoint)
 
     @property
     def auth_mode(self) -> str:
@@ -91,6 +101,11 @@ def load_settings() -> FoundrySettings:
             or "gpt-4o-mini-tts"
         ),
         tts_voice=os.getenv("FOUNDRY_TTS_VOICE") or "alloy",
+        speech_endpoint=os.getenv("AZURE_SPEECH_ENDPOINT"),
+        speech_key=os.getenv("AZURE_SPEECH_KEY"),
+        speech_transcription_model=(
+            os.getenv("AZURE_SPEECH_TRANSCRIPTION_MODEL") or "MAI-Transcribe-1.5"
+        ),
     )
 
 
@@ -409,7 +424,7 @@ def _normalize_realtime_endpoint(endpoint_value: str) -> str:
 def _create_openai_client(settings: FoundrySettings) -> Iterator[OpenAI]:
     endpoint = _normalize_endpoint(settings.endpoint or "")
     token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
+        get_azure_credential(),
         "https://ai.azure.com/.default",
     )
     with OpenAI(
@@ -417,6 +432,65 @@ def _create_openai_client(settings: FoundrySettings) -> Iterator[OpenAI]:
         api_key=token_provider,
     ) as openai_client:
         yield openai_client
+
+
+def generate_image(*, model: str, prompt: str, width: int, height: int) -> dict[str, Any]:
+    settings = load_settings()
+    if not settings.is_configured:
+        raise RuntimeError(
+            "Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env."
+        )
+
+    endpoint = _normalize_endpoint(settings.endpoint or "")
+    parsed = urlparse(endpoint)
+    url = f"{parsed.scheme}://{parsed.netloc}/mai/v1/images/generations"
+    token = get_azure_credential().get_token(
+        "https://cognitiveservices.azure.com/.default"
+    ).token
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "width": width,
+        "height": height,
+    }
+    request = Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    started = time.perf_counter()
+    try:
+        with urlopen(request, timeout=180) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        try:
+            error = json.loads(detail)
+            detail = error.get("error", {}).get("message") or error.get("detail") or detail
+        except json.JSONDecodeError:
+            pass
+        raise RuntimeError(f"MAI image generation failed ({exc.code}): {detail}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Could not reach the MAI image generation endpoint: {exc.reason}") from exc
+
+    image = next(
+        (item for item in result.get("data", []) if item.get("b64_json")),
+        None,
+    )
+    if image is None:
+        raise RuntimeError("MAI image generation returned no image data.")
+    return {
+        "model": model,
+        "image_base64": image["b64_json"],
+        "mime_type": "image/png",
+        "width": width,
+        "height": height,
+        "duration_ms": round((time.perf_counter() - started) * 1000),
+    }
 
 
 def complete_chat(
@@ -579,6 +653,81 @@ def transcribe_audio(
         },
     }
 
+
+def transcribe_speech_audio(
+    *,
+    audio: bytes,
+    language: str = "en-US",
+) -> dict[str, Any]:
+    settings = load_settings()
+    if not settings.is_speech_transcription_configured:
+        raise RuntimeError("Azure Speech transcription is not configured. Set AZURE_SPEECH_ENDPOINT.")
+    if not audio:
+        raise RuntimeError("Recorded audio was empty.")
+
+    import azure.cognitiveservices.speech as speechsdk
+
+    started = time.perf_counter()
+    if settings.speech_key:
+        speech_config = speechsdk.SpeechConfig(
+            subscription=settings.speech_key,
+            endpoint=settings.speech_endpoint,
+        )
+    else:
+        speech_config = speechsdk.SpeechConfig(
+            token_credential=get_azure_credential(),
+            endpoint=settings.speech_endpoint,
+        )
+    speech_config.speech_recognition_language = language
+    segments: list[str] = []
+    done = threading.Event()
+    error: list[str] = []
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as audio_file:
+        audio_file.write(audio)
+        audio_path = audio_file.name
+
+    try:
+        audio_config = speechsdk.audio.AudioConfig(filename=audio_path)
+        recognizer = speechsdk.SpeechRecognizer(
+            speech_config=speech_config,
+            audio_config=audio_config,
+        )
+
+        def recognized(evt: Any) -> None:
+            if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech and evt.result.text:
+                segments.append(evt.result.text.strip())
+
+        def canceled(evt: Any) -> None:
+            if evt.reason == speechsdk.CancellationReason.Error:
+                error.append(evt.error_details or "Azure Speech recognition was canceled.")
+            done.set()
+
+        recognizer.recognized.connect(recognized)
+        recognizer.session_stopped.connect(lambda _evt: done.set())
+        recognizer.canceled.connect(canceled)
+        recognizer.start_continuous_recognition()
+        if not done.wait(timeout=300):
+            raise RuntimeError("Azure Speech transcription timed out.")
+        recognizer.stop_continuous_recognition()
+    finally:
+        try:
+            os.unlink(audio_path)
+        except OSError:
+            pass
+
+    if error:
+        raise RuntimeError(error[0])
+
+    text = " ".join(segment for segment in segments if segment).strip()
+    return {
+        "model": settings.speech_transcription_model,
+        "text": text,
+        "language": language,
+        "duration_ms": round((time.perf_counter() - started) * 1000),
+        "segments": segments,
+    }
+
     with _create_openai_client(settings) as openai_client:
         response = openai_client.audio.transcriptions.create(
             model=transcription_model,
@@ -708,8 +857,7 @@ def create_realtime_client_secret(
         },
     }
 
-    with DefaultAzureCredential() as credential:
-        bearer_token = credential.get_token("https://ai.azure.com/.default").token
+    bearer_token = get_azure_credential().get_token("https://ai.azure.com/.default").token
 
     request = Request(
         token_url,

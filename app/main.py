@@ -9,9 +9,9 @@ from typing import Annotated, Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.conversation_store import (
     append_message,
@@ -52,10 +52,12 @@ from app.foundry_client import (
     build_foundry_request_trace,
     complete_chat,
     create_realtime_client_secret,
+    generate_image,
     load_settings,
     stream_chat,
     synthesize_speech,
     transcribe_audio,
+    transcribe_speech_audio,
 )
 from app.model_settings import (
     DEPLOYMENT_DEFAULT_GUARDRAIL,
@@ -67,12 +69,28 @@ from app.model_settings import (
     save_model_settings,
     settings_to_dict,
 )
+from app.local_auth import (
+    AUTH_FLOW_COOKIE,
+    AUTH_SESSION_COOKIE,
+    complete_auth_flow,
+    create_auth_flow,
+    decode_cookie,
+    encode_cookie,
+    is_local_auth_configured,
+    user_from_claims,
+)
 
 load_dotenv()
 
 app = FastAPI(title="Foundry Chat App")
 REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
-PUBLIC_API_PATHS = {"/api/auth/me", "/api/config"}
+PUBLIC_API_PATHS = {
+    "/api/auth/me",
+    "/api/auth/login",
+    "/api/auth/callback",
+    "/api/auth/logout",
+    "/api/config",
+}
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
@@ -83,7 +101,11 @@ if (FRONTEND_DIST / "assets").exists():
 
 
 def _is_entra_auth_enabled() -> bool:
-    return os.getenv("ENTRA_AUTH_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+    return is_local_auth_configured() or os.getenv("ENTRA_AUTH_ENABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 def _decode_client_principal(request: Request) -> dict | None:
@@ -99,6 +121,9 @@ def _decode_client_principal(request: Request) -> dict | None:
 
 
 def _authenticated_user_from_request(request: Request) -> dict | None:
+    local_user = decode_cookie(request.cookies.get(AUTH_SESSION_COOKIE)) if is_local_auth_configured() else None
+    if local_user:
+        return {key: value for key, value in local_user.items() if key != "exp"}
     principal = _decode_client_principal(request)
     user_name = request.headers.get("x-ms-client-principal-name")
     user_id = request.headers.get("x-ms-client-principal-id")
@@ -158,6 +183,7 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     reasoning_effort: str | None = None
     guardrail_comparison: bool = False
+    use_case: str = "text_chat"
 
     @field_validator("model", "prompt")
     @classmethod
@@ -179,6 +205,7 @@ class DocumentQuestionRequest(BaseModel):
     conversation_id: str | None = None
     reasoning_effort: str | None = None
     guardrail_comparison: bool = False
+    use_case: str = "document_qa"
 
     @field_validator("model", "prompt")
     @classmethod
@@ -199,6 +226,7 @@ class CompareRequest(BaseModel):
     prompt: str = Field(min_length=1)
     conversation_id: str | None = None
     reasoning_effort: str | None = None
+    use_case: str = "comparison"
 
     @field_validator("models")
     @classmethod
@@ -220,6 +248,27 @@ class CompareRequest(BaseModel):
     @classmethod
     def normalize_reasoning_effort(cls, value: str | None) -> str | None:
         return _normalize_reasoning_effort(value)
+
+
+class ImageGenerationRequest(BaseModel):
+    model: str = Field(min_length=1)
+    prompt: str = Field(min_length=1)
+    width: Annotated[int, Field(ge=768)] = 1024
+    height: Annotated[int, Field(ge=768)] = 1024
+
+    @field_validator("model", "prompt")
+    @classmethod
+    def trim_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Value cannot be blank.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_pixel_count(self) -> "ImageGenerationRequest":
+        if self.width * self.height > 1_048_576:
+            raise ValueError("Image dimensions cannot exceed 1,048,576 total pixels.")
+        return self
 
 
 class ModelSettingsRequest(BaseModel):
@@ -361,6 +410,8 @@ def get_config() -> dict:
         "transcription_model": settings.transcription_model,
         "tts_model": settings.tts_model,
         "tts_voice": settings.tts_voice,
+        "is_speech_transcription_configured": settings.is_speech_transcription_configured,
+        "speech_transcription_model": settings.speech_transcription_model,
     }
 
 
@@ -370,6 +421,55 @@ def get_authenticated_user(request: Request) -> dict:
     if user is None:
         return {"authenticated": False, "entra_auth_enabled": _is_entra_auth_enabled()}
     return {**user, "entra_auth_enabled": _is_entra_auth_enabled()}
+
+
+@app.get("/api/auth/login")
+def login(request: Request):
+    if not is_local_auth_configured():
+        return RedirectResponse("/.auth/login/aad?post_login_redirect_uri=/")
+    flow = create_auth_flow()
+    response = RedirectResponse(flow["auth_uri"])
+    response.set_cookie(
+        AUTH_FLOW_COOKIE,
+        encode_cookie(flow, lifetime_seconds=600),
+        max_age=600,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+    )
+    return response
+
+
+@app.get("/api/auth/callback")
+def auth_callback(request: Request):
+    flow = decode_cookie(request.cookies.get(AUTH_FLOW_COOKIE))
+    if not flow:
+        raise HTTPException(status_code=400, detail="The local sign-in session expired. Try again.")
+    try:
+        claims = complete_auth_flow(flow, dict(request.query_params))
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    response = RedirectResponse("/")
+    response.delete_cookie(AUTH_FLOW_COOKIE)
+    response.set_cookie(
+        AUTH_SESSION_COOKIE,
+        encode_cookie(user_from_claims(claims), lifetime_seconds=8 * 60 * 60),
+        max_age=8 * 60 * 60,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+    )
+    return response
+
+
+@app.get("/api/auth/logout")
+def logout():
+    if not is_local_auth_configured():
+        return RedirectResponse("/.auth/logout?post_logout_redirect_uri=/")
+    response = RedirectResponse("/")
+    response.delete_cookie(AUTH_SESSION_COOKIE)
+    response.delete_cookie(AUTH_FLOW_COOKIE)
+    return response
 
 
 @app.get("/api/model-settings")
@@ -466,7 +566,34 @@ def get_models() -> dict:
             if model.strip()
         )
     )
-    return {"models": models, "deployments": deployments, "discovery_error": None}
+    return {
+        "models": models,
+        "deployments": deployments,
+        "model_modalities": {
+            model: list(get_model_settings(model).modalities) for model in models
+        },
+        "discovery_error": None,
+    }
+
+
+@app.post("/api/images/generate")
+async def post_image_generation(request: ImageGenerationRequest) -> dict:
+    configured_for_images = "image" in get_model_settings(request.model).modalities
+    if not configured_for_images and "mai-image" not in request.model.lower():
+        raise HTTPException(
+            status_code=400,
+            detail=f"{request.model} is not configured with the image capability.",
+        )
+    try:
+        return await asyncio.to_thread(
+            generate_image,
+            model=request.model,
+            prompt=request.prompt,
+            width=request.width,
+            height=request.height,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/api/realtime/session")
@@ -499,6 +626,7 @@ async def post_traditional_voice(
     model: str = Form(...),
     conversation_id: str | None = Form(None),
     reasoning_effort: str | None = Form(None),
+    use_case: str = Form("traditional_voice"),
 ) -> dict:
     model = model.strip()
     if not model:
@@ -519,7 +647,7 @@ async def post_traditional_voice(
         if not transcript:
             raise RuntimeError("Foundry transcription did not return any text.")
 
-        conversation = get_or_create_conversation(conversation_id, transcript)
+        conversation = get_or_create_conversation(conversation_id, transcript, use_case)
         model_settings = get_model_settings(model)
         variants = _guardrail_variants(model_settings, False)
         histories = _guardrail_histories(conversation.id, model, variants)
@@ -589,22 +717,52 @@ async def post_traditional_voice(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@app.post("/api/transcriptions")
+async def post_transcription(
+    audio: UploadFile = File(...),
+    language: str = Form("en-US"),
+) -> dict:
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=422, detail="Recorded audio was empty.")
+    try:
+        result = await asyncio.to_thread(
+            transcribe_speech_audio,
+            audio=audio_bytes,
+            language=language.strip() or "en-US",
+        )
+        if not result["text"]:
+            raise RuntimeError("Azure Speech did not recognize any speech in the audio.")
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @app.get("/api/conversations")
-def get_conversations() -> dict:
-    return {"conversations": [conversation_to_dict(item) for item in list_conversations()]}
+def get_conversations(use_case: str = Query("text_chat")) -> dict:
+    return {
+        "conversations": [
+            conversation_to_dict(item) for item in list_conversations(use_case)
+        ]
+    }
 
 
 @app.post("/api/conversations")
-def post_conversation() -> dict:
-    conversation = create_conversation()
+def post_conversation(use_case: str = Query("text_chat")) -> dict:
+    conversation = create_conversation(use_case=use_case)
     return {"conversation": conversation_to_dict(conversation), "messages": []}
 
 
 @app.get("/api/conversations/{conversation_id}")
-def get_conversation_by_id(conversation_id: str) -> dict:
+def get_conversation_by_id(
+    conversation_id: str,
+    use_case: str = Query("text_chat"),
+) -> dict:
     conversation = get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found.")
+    if conversation.use_case != use_case:
+        raise HTTPException(status_code=404, detail="Conversation not found for this use case.")
     messages = get_conversation_messages(conversation_id)
     return {
         "conversation": conversation_to_dict(conversation),
@@ -847,7 +1005,9 @@ def _run_and_store_variant(
 @app.post("/api/chat")
 async def chat(request: ChatRequest) -> dict:
     try:
-        conversation = get_or_create_conversation(request.conversation_id, request.prompt)
+        conversation = get_or_create_conversation(
+            request.conversation_id, request.prompt, request.use_case
+        )
         model_settings = get_model_settings(request.model)
         variants = _guardrail_variants(model_settings, request.guardrail_comparison)
         histories = _guardrail_histories(conversation.id, request.model, variants)
@@ -890,7 +1050,9 @@ async def chat(request: ChatRequest) -> dict:
 @app.post("/api/chat/stream")
 def chat_stream(request: ChatRequest) -> StreamingResponse:
     try:
-        conversation = get_or_create_conversation(request.conversation_id, request.prompt)
+        conversation = get_or_create_conversation(
+            request.conversation_id, request.prompt, request.use_case
+        )
         model_settings = get_model_settings(request.model)
         variants = _guardrail_variants(model_settings, request.guardrail_comparison)
         histories = _guardrail_histories(conversation.id, request.model, variants)
@@ -1018,7 +1180,9 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
 @app.post("/api/documents/ask/stream")
 def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
     try:
-        conversation = get_or_create_conversation(request.conversation_id, request.prompt)
+        conversation = get_or_create_conversation(
+            request.conversation_id, request.prompt, request.use_case
+        )
         retrieval = retrieve_document_chunks(request.prompt)
         chunks = retrieval["chunks"]
         grounded_prompt = build_grounded_prompt(request.prompt, chunks)
@@ -1158,7 +1322,9 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
 @app.post("/api/compare")
 async def compare(request: CompareRequest) -> dict:
     try:
-        conversation = get_or_create_conversation(request.conversation_id, request.prompt)
+        conversation = get_or_create_conversation(
+            request.conversation_id, request.prompt, request.use_case
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

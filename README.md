@@ -54,7 +54,7 @@ A lightweight local app for chatting with and comparing Microsoft Foundry model 
 
    Your signed-in user needs access to the Foundry project, such as the **Foundry User** role.
 
-5. Copy `.env.example` to `.env` and set your Foundry project endpoint. `FOUNDRY_MODELS` is optional and only seeds the local model registry on startup.
+5. Copy `.env.example` to `.env` and set your Foundry project endpoint. Local development uses SQLite by default, so Cosmos DB settings can be left unset. `FOUNDRY_MODELS` is optional and only seeds the model registry on startup.
 
    ```powershell
    Copy-Item .env.example .env
@@ -94,15 +94,32 @@ uvicorn app.main:app --reload
 
 Then open http://127.0.0.1:8000.
 
+### Local Microsoft sign-in
+
+Local sign-in uses a confidential Microsoft Entra web app because Azure Container Apps' `/.auth`
+endpoints do not exist on a developer machine.
+
+1. Create or select an app registration in Microsoft Entra ID.
+2. Under **Authentication**, add the Web redirect URI `http://localhost:5173/api/auth/callback`.
+3. Under **Certificates & secrets**, create a client secret and copy its value.
+4. Add the five `ENTRA_LOCAL_*` values shown in `.env.example` to `.env`.
+5. Run FastAPI on port 8000 and Vite on port 5173, then open `http://localhost:5173`.
+
+Use `localhost` consistently rather than mixing it with `127.0.0.1`, because the temporary sign-in
+cookie is scoped to the browser host. The local session is stored in an HTTP-only signed cookie and
+expires after eight hours.
+
 ## Configuration
 
 | Variable | Description |
 | --- | --- |
+| `PERSISTENCE_BACKEND` | Persistence provider: `sqlite` (default, recommended locally) or `cosmos` (used by Azure deployments). |
+| `SQLITE_DATABASE_PATH` | Optional SQLite file path. Defaults to `data/foundry_chat.sqlite3`. |
 | `FOUNDRY_PROJECT_ENDPOINT` | Microsoft Foundry project endpoint, usually `https://<resource>.services.ai.azure.com/api/projects/<project-name>`. The app derives the OpenAI-compatible `/openai/v1` model endpoint from this value for inference. `AZURE_AI_PROJECT_ENDPOINT` and `AZURE_AIPROJECT_ENDPOINT` are also accepted. |
 | `FOUNDRY_OPENAI_ENDPOINT` | Optional compatibility fallback if you want to provide the direct endpoint explicitly, usually `https://<resource>.services.ai.azure.com/openai/v1`. `AZURE_OPENAI_ENDPOINT` is also accepted. |
-| `FOUNDRY_MODELS` | Optional comma-separated deployment names used to seed the Cosmos DB model registry. New deployments and local endpoints are stored in the database, so this does not need to be updated after setup. |
-| `AZURE_COSMOS_ENDPOINT` | Required Cosmos DB for NoSQL account endpoint. The app authenticates with `DefaultAzureCredential` unless `AZURE_COSMOS_KEY` is set. |
-| `AZURE_COSMOS_DATABASE_NAME` | Required shared Cosmos DB database name. |
+| `FOUNDRY_MODELS` | Optional comma-separated deployment names used to seed the configured model registry. New deployments and local endpoints are stored in the database, so this does not need to be updated after setup. |
+| `AZURE_COSMOS_ENDPOINT` | Required when `PERSISTENCE_BACKEND=cosmos`. Cosmos DB for NoSQL account endpoint. The app authenticates with `DefaultAzureCredential` unless `AZURE_COSMOS_KEY` is set. |
+| `AZURE_COSMOS_DATABASE_NAME` | Required when using Cosmos. Shared Cosmos DB database name. |
 | `AZURE_COSMOS_CONTAINER_NAME` | App-specific container name. Defaults to `foundry-chat-app`; use a different container for each app sharing the database. The container partition key must be `/partition_key`. |
 | `AZURE_COSMOS_CREATE_CONTAINER` | Optional. Set to `true` only when the current identity/key may create containers. Normally infrastructure provisions the container. |
 | `AZURE_COSMOS_KEY` | Optional account key for local development or the Cosmos emulator. Omit in Azure and use managed identity. |
@@ -114,10 +131,18 @@ Then open http://127.0.0.1:8000.
 | `FOUNDRY_EMBEDDING_DIMENSIONS` | Optional embedding dimension override when reusing a pre-created index. When omitted, the app uses the dimensions returned by Foundry when the first document is uploaded. |
 | `FOUNDRY_REALTIME_ENDPOINT` | Optional OpenAI-compatible endpoint for the Realtime voice demo, usually `https://<resource>.services.ai.azure.com/openai/v1`. Defaults to `FOUNDRY_PROJECT_ENDPOINT` when omitted by deriving `/openai/v1` from the project endpoint. `AZURE_OPENAI_ENDPOINT` is also accepted. |
 | `FOUNDRY_REALTIME_MODEL` | Optional realtime deployment name used by the voice demo. Defaults to a realtime model in `FOUNDRY_MODELS`, or `gpt-realtime-2.1`. |
-| `FOUNDRY_TRANSCRIPTION_MODEL` | Optional transcription deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-transcribe`. |
+| `FOUNDRY_TRANSCRIPTION_MODEL` | Optional OpenAI-compatible transcription deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-transcribe`. |
 | `FOUNDRY_TTS_MODEL` | Optional text-to-speech deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-tts`. |
 | `FOUNDRY_TTS_VOICE` | Optional TTS voice name for the traditional voice pipeline. Defaults to `alloy`. |
-| `ENTRA_AUTH_ENABLED` | Optional flag used by the deployed backend. Set to `true` with Azure Container Apps authentication to require a signed-in Microsoft Entra user for protected `/api/*` routes. Local development can omit it. |
+| `AZURE_SPEECH_ENDPOINT` | Azure AI Speech endpoint for the standalone Transcribe use case. |
+| `AZURE_SPEECH_KEY` | Optional Azure AI Speech resource key fallback. By default the app uses Microsoft Entra ID through Azure CLI locally and managed identity in Azure. |
+| `AZURE_SPEECH_TRANSCRIPTION_MODEL` | Display name for the Speech transcription model. Defaults to `MAI-Transcribe-1.5`. |
+| `ENTRA_AUTH_ENABLED` | Optional flag used by the deployed backend. Set to `true` with Azure Container Apps authentication to require a signed-in Microsoft Entra user for protected `/api/*` routes. |
+| `ENTRA_LOCAL_CLIENT_ID` | Client ID of a confidential Microsoft Entra web app used for local sign-in. Do not use the workload identity client ID. |
+| `ENTRA_LOCAL_CLIENT_SECRET` | Client secret value for the local web app registration. Keep it only in `.env`. |
+| `ENTRA_LOCAL_TENANT_ID` | Microsoft Entra tenant ID for local sign-in. |
+| `ENTRA_LOCAL_REDIRECT_URI` | Exact registered web redirect URI, normally `http://localhost:5173/api/auth/callback` when using Vite. |
+| `ENTRA_LOCAL_SESSION_SECRET` | Random value of at least 32 characters used to sign local HTTP-only session cookies. |
 | `FOUNDRY_INPUT_TOKEN_COST_PER_1K` | Optional input-token price per 1K tokens used by the Model metrics dashboard to estimate cost. Defaults to `0`. |
 | `FOUNDRY_OUTPUT_TOKEN_COST_PER_1K` | Optional output-token price per 1K tokens used by the Model metrics dashboard to estimate cost. Defaults to `0`. |
 | `FOUNDRY_SUBSCRIPTION_ID` | Optional Azure subscription ID used for automatic deployment discovery and the Admin deployment UI. `AZURE_SUBSCRIPTION_ID` is also accepted. |
@@ -160,6 +185,7 @@ The top bar includes a **Use cases** marketplace. Use cases are local UI presets
 | **Side by Side comparison** | Opens the comparison workspace and shows model multi-select controls. |
 | **Browser based voice** | Keeps the text chat workspace and exposes browser dictation/readback controls. |
 | **STT -> Chat -> TTS** | Opens the traditional Foundry voice pipeline workspace. |
+| **Transcribe** | Records or uploads audio and returns a transcript using Azure AI Speech and `MAI-Transcribe-1.5`. |
 | **Realtime Speech in / Speech out** | Opens the Foundry Realtime WebRTC workspace. |
 
 Settings, API trace, metrics, previous conversations, and model settings remain available outside the marketplace because they are shared app capabilities.
@@ -291,6 +317,8 @@ The **Use cases** marketplace exposes two Foundry-backed voice patterns:
 | Realtime speech-in/speech-out | Browser opens WebRTC to Foundry Realtime using a short-lived client secret -> microphone audio streams to the realtime deployment -> the browser plays the model's audio response. | A low-latency native voice interaction with a realtime deployment such as `gpt-realtime-2.1`. |
 
 The traditional pipeline does not use browser speech recognition or OS voices. The browser only records microphone audio and plays the audio returned by Foundry TTS. Configure it with `FOUNDRY_TRANSCRIPTION_MODEL`, `FOUNDRY_TTS_MODEL`, and `FOUNDRY_TTS_VOICE`.
+
+The standalone Transcribe use case uses Azure AI Speech rather than the OpenAI-compatible audio API. Set `AZURE_SPEECH_ENDPOINT` to the resource custom domain, such as `https://<resource>.cognitiveservices.azure.com/`, and grant the caller the **Cognitive Services Speech User** role on that Foundry resource. Local development uses the signed-in Azure CLI identity; Container Apps uses its managed identity. `AZURE_SPEECH_KEY` remains an optional fallback only when API key authentication is enabled.
 
 The Realtime demo asks the backend for a short-lived Realtime client secret using Microsoft Entra ID, opens a browser WebRTC connection to `/openai/v1/realtime/calls`, streams microphone audio to the `FOUNDRY_REALTIME_MODEL` deployment, and plays the model's audio response. If you only set `FOUNDRY_PROJECT_ENDPOINT`, the app derives the OpenAI-compatible base URL from it. You can also set `FOUNDRY_REALTIME_ENDPOINT` explicitly to the endpoint shown by Foundry, such as `https://<resource>.services.ai.azure.com/openai/v1`.
 

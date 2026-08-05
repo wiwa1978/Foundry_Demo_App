@@ -72,6 +72,21 @@ class SqliteRepositoryTests(unittest.TestCase):
         self.assertEqual(loaded.guardrail_policy_names, ("deployment_default", "strict"))
         self.assertEqual(list_models(), ["gpt-test"])
 
+    def test_conversations_are_filtered_by_use_case(self) -> None:
+        legacy_chat = create_conversation("Chat")
+        document_chat = create_conversation("Documents", use_case="document_qa")
+
+        self.assertEqual([item.id for item in list_conversations("text_chat")], [legacy_chat.id])
+        self.assertEqual(
+            [item.id for item in list_conversations("document_qa")],
+            [document_chat.id],
+        )
+
+    def test_mai_image_model_defaults_to_image_capability(self) -> None:
+        settings = get_model_settings("MAI-Image-2.5")
+
+        self.assertEqual(settings.modalities, ("image",))
+
 
 if __name__ == "__main__":
     unittest.main()

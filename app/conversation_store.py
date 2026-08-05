@@ -20,6 +20,7 @@ MESSAGE_TYPE = "conversation_message"
 class Conversation:
     id: str
     title: str
+    use_case: str
     created_at: str
     updated_at: str
 
@@ -48,25 +49,32 @@ def initialize_conversation_database() -> None:
         initialize_sqlite_store()
 
 
-def list_conversations() -> list[Conversation]:
+def list_conversations(use_case: str = "text_chat") -> list[Conversation]:
     if persistence_backend() == "sqlite":
         with connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM conversations ORDER BY updated_at DESC"
+                "SELECT * FROM conversations WHERE use_case = ? ORDER BY updated_at DESC",
+                (use_case,),
             ).fetchall()
         return [_document_to_conversation(dict(row)) for row in rows]
     rows = get_container().query_items(
         query=(
-            "SELECT c.id, c.title, c.created_at, c.updated_at FROM c "
-            "WHERE c.document_type = @document_type ORDER BY c.updated_at DESC"
+            "SELECT c.id, c.title, c.use_case, c.created_at, c.updated_at FROM c "
+            "WHERE c.document_type = @document_type AND "
+            "((IS_DEFINED(c.use_case) AND c.use_case = @use_case) OR "
+            "(@use_case = 'text_chat' AND NOT IS_DEFINED(c.use_case))) "
+            "ORDER BY c.updated_at DESC"
         ),
-        parameters=[{"name": "@document_type", "value": CONVERSATION_TYPE}],
+        parameters=[
+            {"name": "@document_type", "value": CONVERSATION_TYPE},
+            {"name": "@use_case", "value": use_case},
+        ],
         enable_cross_partition_query=True,
     )
     return [_document_to_conversation(row) for row in rows]
 
 
-def create_conversation(title: str | None = None) -> Conversation:
+def create_conversation(title: str | None = None, use_case: str = "text_chat") -> Conversation:
     conversation_id = str(uuid.uuid4())
     now = _utc_now()
     document = {
@@ -74,14 +82,15 @@ def create_conversation(title: str | None = None) -> Conversation:
         "partition_key": conversation_id,
         "document_type": CONVERSATION_TYPE,
         "title": _normalize_title(title),
+        "use_case": use_case,
         "created_at": now,
         "updated_at": now,
     }
     if persistence_backend() == "sqlite":
         with connect() as connection:
             connection.execute(
-                "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (conversation_id, document["title"], now, now),
+                "INSERT INTO conversations (id, title, use_case, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (conversation_id, document["title"], use_case, now, now),
             )
     else:
         get_container().create_item(document)
@@ -91,13 +100,16 @@ def create_conversation(title: str | None = None) -> Conversation:
 def get_or_create_conversation(
     conversation_id: str | None,
     title_seed: str | None = None,
+    use_case: str = "text_chat",
 ) -> Conversation:
     if conversation_id:
         conversation = get_conversation(conversation_id)
         if conversation is None:
             raise ValueError("Conversation not found.")
+        if conversation.use_case != use_case:
+            raise ValueError("Conversation belongs to a different use case.")
         return conversation
-    return create_conversation(title_seed)
+    return create_conversation(title_seed, use_case)
 
 
 def get_conversation(conversation_id: str) -> Conversation | None:
@@ -412,6 +424,7 @@ def _document_to_conversation(document: dict[str, Any]) -> Conversation:
     return Conversation(
         id=document["id"],
         title=document["title"],
+        use_case=document.get("use_case") or "text_chat",
         created_at=document["created_at"],
         updated_at=document["updated_at"],
     )

@@ -37,6 +37,7 @@ env:
   FOUNDRY_MODELS:              ${{ vars.FOUNDRY_MODELS }}
   FOUNDRY_EMBEDDING_MODEL:     ${{ vars.FOUNDRY_EMBEDDING_MODEL || 'text-embedding-3-small' }}
   FOUNDRY_REALTIME_MODEL:      ${{ vars.FOUNDRY_REALTIME_MODEL || 'gpt-realtime-2.1' }}
+  AZURE_SPEECH_ENDPOINT:       ${{ vars.AZURE_SPEECH_ENDPOINT }}
   AZURE_STORAGE_CONTAINER_NAME: ${{ vars.AZURE_STORAGE_CONTAINER_NAME }}
   AZURE_SEARCH_INDEX_NAME:     ${{ vars.AZURE_SEARCH_INDEX_NAME || 'foundry-document-rag' }}
   AZURE_COSMOS_ACCOUNT_NAME:   ${{ vars.AZURE_COSMOS_ACCOUNT_NAME || 'aifoundrydemo66fbcosmosdb' }}
@@ -89,6 +90,7 @@ jobs:
               foundryModels="${{ env.FOUNDRY_MODELS }}" \
               foundryEmbeddingModel="${{ env.FOUNDRY_EMBEDDING_MODEL }}" \
               foundryRealtimeModel="${{ env.FOUNDRY_REALTIME_MODEL }}" \
+              azureSpeechEndpoint="${{ env.AZURE_SPEECH_ENDPOINT }}" \
               storageContainerName="${{ env.AZURE_STORAGE_CONTAINER_NAME }}" \
               searchIndexName="${{ env.AZURE_SEARCH_INDEX_NAME }}" \
               cosmosAccountName="${{ env.AZURE_COSMOS_ACCOUNT_NAME }}" \

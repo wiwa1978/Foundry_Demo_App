@@ -4,10 +4,12 @@ export type UseCaseId =
   | "comparison"
   | "browser_voice"
   | "traditional_voice"
-  | "realtime_voice";
+  | "transcribe"
+  | "realtime_voice"
+  | "text_to_image";
 
-export type UseCaseIconName = "chat" | "comparison" | "browserVoice" | "documents" | "voiceWave";
-export type UseCaseWorkspace = "chat" | "comparison" | "traditionalVoice" | "realtimeVoice";
+export type UseCaseIconName = "chat" | "comparison" | "browserVoice" | "documents" | "image" | "voiceWave";
+export type UseCaseWorkspace = "chat" | "comparison" | "image" | "traditionalVoice" | "realtimeVoice" | "transcribe";
 
 export type UseCaseModule = {
   id: UseCaseId;

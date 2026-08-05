@@ -66,6 +66,13 @@ param foundryRealtimeEndpoint string = ''
 @description('Foundry realtime model deployment name.')
 param foundryRealtimeModel string = 'gpt-realtime-2.1'
 
+@description('Azure AI Speech resource endpoint for the Transcribe use case.')
+param azureSpeechEndpoint string = ''
+
+@secure()
+@description('Azure AI Speech resource key for the Transcribe use case.')
+param azureSpeechKey string = ''
+
 @description('Shared Cosmos DB account endpoint.')
 param cosmosEndpoint string
 
@@ -275,19 +282,27 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           identity: appIdentity.id
         }
       ]
-      secrets: enableEntraAuthentication ? [
-        {
-          name: entraAuthenticationSecretName
-          value: entraAuthenticationClientSecret
-        }
-      ] : []
+      secrets: concat(
+        enableEntraAuthentication ? [
+          {
+            name: entraAuthenticationSecretName
+            value: entraAuthenticationClientSecret
+          }
+        ] : [],
+        !empty(azureSpeechKey) ? [
+          {
+            name: 'azure-speech-key'
+            value: azureSpeechKey
+          }
+        ] : []
+      )
     }
     template: {
       containers: [
         {
           name: 'foundry-chat-app'
           image: containerImage
-          env: [
+          env: concat([
             {
               name: 'AZURE_CLIENT_ID'
               value: appIdentity.properties.clientId
@@ -352,7 +367,21 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_COSMOS_CONTAINER_NAME'
               value: cosmosContainerName
             }
-          ]
+          ], !empty(azureSpeechEndpoint) ? [
+            {
+              name: 'AZURE_SPEECH_ENDPOINT'
+              value: azureSpeechEndpoint
+            }
+            {
+              name: 'AZURE_SPEECH_TRANSCRIPTION_MODEL'
+              value: 'MAI-Transcribe-1.5'
+            }
+          ] : [], !empty(azureSpeechKey) ? [
+            {
+              name: 'AZURE_SPEECH_KEY'
+              secretRef: 'azure-speech-key'
+            }
+          ] : [])
           resources: {
             cpu: json(containerCpu)
             memory: containerMemory

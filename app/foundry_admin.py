@@ -2,7 +2,7 @@ import os
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from azure.identity import DefaultAzureCredential
+from app.azure_credential import get_azure_credential
 
 
 @dataclass(frozen=True)
@@ -174,7 +174,7 @@ def _create_management_client(config: FoundryAdminConfig) -> Any:
         ) from exc
 
     return CognitiveServicesManagementClient(
-        DefaultAzureCredential(),
+        get_azure_credential(),
         config.subscription_id,
     )
 
@@ -183,12 +183,23 @@ def _guardrail_policy_to_dict(policy: Any) -> dict[str, Any]:
     properties = getattr(policy, "properties", None)
     policy_type = str(getattr(properties, "type", "") or "")
     name = str(getattr(policy, "name", "") or "")
+    content_filters = getattr(properties, "content_filters", None) or []
     return {
         "id": getattr(policy, "id", None),
         "name": name,
         "type": policy_type,
         "mode": str(getattr(properties, "mode", "") or ""),
         "base_policy_name": getattr(properties, "base_policy_name", None),
+        "content_filters": [
+            {
+                "name": str(getattr(content_filter, "name", "") or ""),
+                "source": str(getattr(content_filter, "source", "") or ""),
+                "enabled": bool(getattr(content_filter, "enabled", False)),
+                "blocking": bool(getattr(content_filter, "blocking", False)),
+                "severity_threshold": getattr(content_filter, "severity_threshold", None),
+            }
+            for content_filter in content_filters
+        ],
         "is_selectable": bool(name)
         and "systemmanaged" not in policy_type.replace("_", "").lower()
         and not name.lower().startswith("microsoft."),

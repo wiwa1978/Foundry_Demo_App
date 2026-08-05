@@ -300,7 +300,10 @@ def _default_api_surface(model: str) -> str:
 
 def _default_modalities(model: str) -> tuple[str, ...]:
     normalized_model = model.strip().lower()
-    if any(token in normalized_model for token in ("dall-e", "gpt-image", "imagen", "vision")):
+    if any(
+        token in normalized_model
+        for token in ("dall-e", "gpt-image", "imagen", "mai-image", "vision")
+    ):
         return ("image",)
     if any(
         token in normalized_model

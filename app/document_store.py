@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from azure.core.exceptions import ResourceNotFoundError
-from azure.identity import DefaultAzureCredential
+from app.azure_credential import get_azure_credential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
@@ -359,14 +359,14 @@ def _create_search_client(settings: RagSearchSettings) -> SearchClient:
     return SearchClient(
         endpoint=settings.endpoint or "",
         index_name=settings.index_name,
-        credential=DefaultAzureCredential(),
+        credential=get_azure_credential(),
     )
 
 
 def _ensure_search_index(settings: RagSearchSettings, embedding_dimensions: int) -> None:
     index_client = SearchIndexClient(
         endpoint=settings.endpoint or "",
-        credential=DefaultAzureCredential(),
+        credential=get_azure_credential(),
     )
     fields = [
         SimpleField(name="id", type=SearchFieldDataType.String, key=True, filterable=True),
@@ -414,7 +414,7 @@ def _upload_original_document(
 ) -> str:
     blob_service_client = BlobServiceClient(
         account_url=settings.storage_account_url or "",
-        credential=DefaultAzureCredential(),
+        credential=get_azure_credential(),
     )
     try:
         container_client = blob_service_client.get_container_client(settings.storage_container_name)
@@ -437,7 +437,7 @@ def _upload_original_document(
 def _delete_original_document(settings: RagSearchSettings, blob_name: str) -> None:
     blob_service_client = BlobServiceClient(
         account_url=settings.storage_account_url or "",
-        credential=DefaultAzureCredential(),
+        credential=get_azure_credential(),
     )
     blob_client = blob_service_client.get_blob_client(
         container=settings.storage_container_name,

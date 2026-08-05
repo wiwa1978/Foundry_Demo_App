@@ -27,6 +27,7 @@ var searchServiceContributorRoleId    = '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
 var cognitiveServicesUserRoleId       = 'a97b65f3-24c7-4388-baec-2e87135dc908'
 var cognitiveServicesOpenAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 var azureAiDeveloperRoleId            = '64702f94-c441-49e6-a78b-ef80e0188fee'
+var cognitiveServicesSpeechUserRoleId = 'f2dc8367-1007-4938-bd23-fe263f013447'
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: containerRegistryName
@@ -121,5 +122,15 @@ resource foundryAiDeveloper 'Microsoft.Authorization/roleAssignments@2022-04-01'
     principalId: principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureAiDeveloperRoleId)
+  }
+}
+
+resource foundrySpeechUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, principalId, cognitiveServicesSpeechUserRoleId)
+  scope: foundryAccount
+  properties: {
+    principalId: principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesSpeechUserRoleId)
   }
 }
