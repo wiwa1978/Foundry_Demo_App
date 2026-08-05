@@ -203,6 +203,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           env: [
             { name: 'AZURE_CLIENT_ID',              value: appIdentity.properties.clientId }
             { name: 'ENTRA_AUTH_ENABLED',           value: string(enableEntraAuthentication) }
+            { name: 'FOUNDRY_SUBSCRIPTION_ID',      value: subscription().subscriptionId }
+            { name: 'FOUNDRY_RESOURCE_GROUP',       value: sharedResourceGroupName }
+            { name: 'FOUNDRY_ACCOUNT_NAME',         value: foundryAccountName }
             { name: 'FOUNDRY_PROJECT_ENDPOINT',     value: foundryProjectEndpoint }
             { name: 'FOUNDRY_OPENAI_ENDPOINT',      value: foundryOpenAiEndpoint }
             { name: 'FOUNDRY_MODELS',               value: foundryModels }

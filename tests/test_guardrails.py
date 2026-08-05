@@ -5,9 +5,16 @@ from app.conversation_store import build_model_history
 from app.foundry_admin import (
     get_deployment_guardrail_policy,
     guardrail_policy_exists,
+    list_foundry_deployments,
     list_guardrail_policies,
 )
 from app.foundry_client import complete_chat
+from app.main import _guardrail_variants
+from app.model_settings import (
+    DEPLOYMENT_DEFAULT_GUARDRAIL,
+    ModelSettings,
+    _document_to_settings,
+)
 
 
 def _policy(name: str, policy_type: str) -> SimpleNamespace:
@@ -57,6 +64,51 @@ def test_policy_validation_rejects_system_policy(mock_list):
 
     assert guardrail_policy_exists("strict-demo") is True
     assert guardrail_policy_exists("Microsoft.DefaultV2") is False
+
+
+@patch("app.foundry_admin._create_management_client")
+@patch("app.foundry_admin.load_admin_config")
+def test_lists_usable_foundry_deployments(mock_config, mock_client):
+    mock_config.return_value = SimpleNamespace(
+        is_configured=True,
+        subscription_id="subscription",
+        resource_group="group",
+        account_name="account",
+    )
+    client = MagicMock()
+    client.deployments.list.return_value = [
+        SimpleNamespace(
+            name="gpt-b",
+            properties=SimpleNamespace(
+                provisioning_state="Succeeded",
+                model=SimpleNamespace(name="gpt-5", version="2026-01-01"),
+            ),
+        ),
+        SimpleNamespace(
+            name="failed-model",
+            properties=SimpleNamespace(
+                provisioning_state="Failed",
+                model=SimpleNamespace(name="gpt-4o", version="2024-11-20"),
+            ),
+        ),
+        SimpleNamespace(
+            name="gpt-a",
+            properties=SimpleNamespace(
+                provisioning_state="Succeeded",
+                model=SimpleNamespace(name="gpt-4o", version="2024-11-20"),
+            ),
+        ),
+    ]
+    mock_client.return_value = client
+
+    deployments = list_foundry_deployments()
+
+    assert [deployment["name"] for deployment in deployments] == ["gpt-a", "gpt-b"]
+    assert deployments[1]["model_name"] == "gpt-5"
+    client.deployments.list.assert_called_once_with(
+        resource_group_name="group",
+        account_name="account",
+    )
 
 
 @patch("app.foundry_admin._create_management_client")
@@ -139,6 +191,7 @@ def test_history_keeps_guardrail_variants_separate(mock_messages):
             model="gpt-demo" if role == "assistant" else None,
             error=None,
             guardrail_variant=variant,
+            guardrail_policy_name=None,
         )
 
     mock_messages.return_value = [
@@ -167,3 +220,61 @@ def test_history_keeps_guardrail_variants_separate(mock_messages):
         "default answer",
         "legacy answer",
     ]
+
+
+def test_guardrail_variants_use_two_selected_policies():
+    settings = ModelSettings(
+        model="gpt-demo",
+        guardrail_policy_names=(DEPLOYMENT_DEFAULT_GUARDRAIL, "strict-demo"),
+    )
+
+    assert _guardrail_variants(settings, True) == [
+        ("policy_1", None),
+        ("policy_2", "strict-demo"),
+    ]
+    assert _guardrail_variants(settings, False) == [(None, None)]
+
+
+def test_legacy_guardrail_setting_migrates_to_default_vs_custom():
+    settings = _document_to_settings(
+        {
+            "model": "gpt-demo",
+            "api_surface": "responses",
+            "modalities": ["text"],
+            "system_prompt": "help",
+            "temperature": 0.7,
+            "top_p": 1,
+            "max_tokens": 100,
+            "repetition_penalty": 1,
+            "guardrails_enabled": True,
+            "guardrail_policy_name": "strict-demo",
+        }
+    )
+
+    assert settings.guardrail_policy_names == (
+        DEPLOYMENT_DEFAULT_GUARDRAIL,
+        "strict-demo",
+    )
+
+
+@patch("app.conversation_store.get_conversation_messages")
+def test_history_follows_policy_name_when_slots_change(mock_messages):
+    def message(role, content, variant=None, policy_name=None):
+        return SimpleNamespace(
+            role=role,
+            content=content,
+            model="gpt-demo" if role == "assistant" else None,
+            error=None,
+            guardrail_variant=variant,
+            guardrail_policy_name=policy_name,
+        )
+
+    mock_messages.return_value = [
+        message("user", "question"),
+        message("assistant", "strict answer", "policy_1", "strict-demo"),
+        message("assistant", "lenient answer", "policy_2", "lenient-demo"),
+    ]
+
+    strict = build_model_history("conversation", "gpt-demo", "policy_2", "strict-demo")
+
+    assert [item["content"] for item in strict] == ["question", "strict answer"]

@@ -76,6 +76,11 @@ type ConfigResponse = {
   tts_voice: string | null;
 };
 
+type ModelsResponse = {
+  models: string[];
+  discovery_error: string | null;
+};
+
 type AuthResponse = {
   authenticated: boolean;
   entra_auth_enabled: boolean;
@@ -91,6 +96,9 @@ type Usage = {
   total_tokens: number | null;
 };
 
+type GuardrailVariant = "baseline" | "guarded" | "policy_1" | "policy_2";
+const deploymentDefaultGuardrail = "deployment_default";
+
 type ModelResult = {
   model: string;
   api_surface?: "responses" | "chat_completions";
@@ -98,7 +106,7 @@ type ModelResult = {
   duration_ms?: number;
   usage?: Usage;
   error?: string;
-  guardrail_variant?: "baseline" | "guarded" | null;
+  guardrail_variant?: GuardrailVariant | null;
   guardrail_policy_name?: string | null;
   guardrail_results?: Record<string, unknown> | null;
 };
@@ -112,8 +120,7 @@ type ModelSettings = {
   top_p: number;
   max_tokens: number;
   repetition_penalty: number;
-  guardrails_enabled: boolean;
-  guardrail_policy_name: string | null;
+  guardrail_policy_names: string[];
 };
 
 type ChatMessage = {
@@ -126,7 +133,7 @@ type ChatMessage = {
   duration_ms?: number;
   usage?: Usage;
   error?: string;
-  guardrail_variant?: "baseline" | "guarded" | null;
+  guardrail_variant?: GuardrailVariant | null;
   guardrail_policy_name?: string | null;
   guardrail_results?: Record<string, unknown> | null;
 };
@@ -146,7 +153,7 @@ type DeploymentGuardrailPolicy = {
 };
 
 type Theme = "light" | "dark";
-type ViewMode = "chat" | "metrics" | "settings";
+type ViewMode = "chat" | "metrics" | "settings" | "model-settings";
 type ModelModality = "text" | "image" | "voice";
 type ReasoningEffort = "default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
@@ -236,7 +243,7 @@ type StoredMessage = {
   duration_ms: number | null;
   usage: Usage | null;
   error: string | null;
-  guardrail_variant: "baseline" | "guarded" | null;
+  guardrail_variant: GuardrailVariant | null;
   guardrail_policy_name: string | null;
   guardrail_results: Record<string, unknown> | null;
   created_at: string;
@@ -315,7 +322,7 @@ type ChatStreamEvent =
       conversation: Conversation;
       user_message: StoredMessage;
       guardrail_comparison?: boolean;
-      guardrail_policy_name?: string | null;
+      guardrail_policy_names?: string[];
     }
   | {
       type: "foundry_request";
@@ -461,8 +468,7 @@ const defaultSettings: Omit<ModelSettings, "model"> = {
   top_p: 1,
   max_tokens: 1024,
   repetition_penalty: 1,
-  guardrails_enabled: false,
-  guardrail_policy_name: null,
+  guardrail_policy_names: [deploymentDefaultGuardrail, ""],
 };
 
 const defaultDeploymentDraft: AdminDeploymentDraft = {
@@ -524,6 +530,9 @@ export default function App() {
     useState<DeploymentGuardrailPolicy | null>(null);
   const [guardrailPoliciesLoading, setGuardrailPoliciesLoading] = useState(false);
   const [settingsError, setSettingsError] = useState("");
+  const [guardrailComparisonEnabled, setGuardrailComparisonEnabled] = useState(false);
+  const [activeGuardrailPolicies, setActiveGuardrailPolicies] = useState<string[]>([]);
+  const [guardrailComparisonError, setGuardrailComparisonError] = useState("");
   const [conversationMenu, setConversationMenu] = useState<ContextMenuState | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminConfig, setAdminConfig] = useState<AdminConfig | null>(null);
@@ -594,6 +603,12 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    setGuardrailComparisonEnabled(false);
+    setActiveGuardrailPolicies([]);
+    setGuardrailComparisonError("");
+  }, [activeModel]);
+
+  useEffect(() => {
     tracedFetch("/api/config", {}, { label: "Load Foundry config", responseKind: "json" })
       .then((response) => response.json())
       .then((data: ConfigResponse) => {
@@ -652,6 +667,44 @@ export default function App() {
       return;
     }
     void refreshConversations();
+  }, [canUseProtectedApis]);
+
+  useEffect(() => {
+    if (!canUseProtectedApis) {
+      return;
+    }
+
+    const controller = new AbortController();
+    tracedFetch(
+      "/api/models",
+      { signal: controller.signal },
+      { label: "Discover Foundry deployments", responseKind: "json" },
+    )
+      .then(async (response) => {
+        const data = (await response.json()) as ModelsResponse;
+        if (!response.ok) {
+          throw new Error("Failed to discover Foundry deployments.");
+        }
+        if (data.models.length) {
+          setModels(data.models);
+          setActiveModel((current) =>
+            current && data.models.includes(current) ? current : data.models[0],
+          );
+          setSelectedModels((current) => {
+            const retained = data.models.filter((model) => current.has(model));
+            return new Set(retained.length ? retained : data.models);
+          });
+        }
+        if (data.discovery_error) {
+          console.warn("Foundry deployment discovery unavailable:", data.discovery_error);
+        }
+      })
+      .catch((error: Error) => {
+        if (error.name !== "AbortError") {
+          console.warn("Foundry deployment discovery failed:", error.message);
+        }
+      });
+    return () => controller.abort();
   }, [canUseProtectedApis]);
 
   useEffect(() => {
@@ -1009,6 +1062,7 @@ export default function App() {
     }
 
     setSettingsModel(model);
+    setActiveView("model-settings");
     setSettingsDraft(null);
     setSettingsError("");
     setGuardrailPoliciesLoading(true);
@@ -1057,6 +1111,36 @@ export default function App() {
       setSettingsError(error instanceof Error ? error.message : "Failed to load settings.");
     } finally {
       setGuardrailPoliciesLoading(false);
+    }
+  }
+
+  async function toggleGuardrailComparison() {
+    if (guardrailComparisonEnabled) {
+      setGuardrailComparisonEnabled(false);
+      setGuardrailComparisonError("");
+      return;
+    }
+
+    setGuardrailComparisonError("");
+    try {
+      const response = await tracedFetch(
+        `/api/model-settings?model=${encodeURIComponent(activeModel)}`,
+        {},
+        { label: "Load guardrail comparison settings", responseKind: "json" },
+      );
+      const settings = (await response.json()) as ModelSettings & { detail?: string };
+      if (!response.ok) {
+        throw new Error(settings.detail ?? "Failed to load guardrail settings.");
+      }
+      if (settings.guardrail_policy_names.length !== 2) {
+        throw new Error("Configure two guardrails in model settings before enabling this test.");
+      }
+      setActiveGuardrailPolicies(settings.guardrail_policy_names);
+      setGuardrailComparisonEnabled(true);
+    } catch (error) {
+      setGuardrailComparisonError(
+        error instanceof Error ? error.message : "Failed to enable guardrail comparison.",
+      );
     }
   }
 
@@ -1777,7 +1861,6 @@ export default function App() {
 
       const saved = await response.json();
       setSettingsDraft(saved);
-      setSettingsModel(null);
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : "Failed to save settings.");
     } finally {
@@ -1839,10 +1922,10 @@ export default function App() {
     const userPrompt = prompt.trim();
     const pendingUser = createUserMessage(userPrompt);
     const pendingAssistant = createAssistantMessage({ model: activeModel, content: "Thinking..." });
-    const pendingGuarded = createAssistantMessage({
+    const pendingPolicy2 = createAssistantMessage({
       model: activeModel,
-      content: "Applying custom guardrail...",
-      guardrail_variant: "guarded",
+      content: "Running guardrail 2...",
+      guardrail_variant: "policy_2",
     });
     let receivedDelta = false;
     setPrompt("");
@@ -1855,6 +1938,7 @@ export default function App() {
         prompt: userPrompt,
         conversation_id: currentConversationId,
         reasoning_effort: reasoningEffort === "default" ? null : reasoningEffort,
+        guardrail_comparison: guardrailComparisonEnabled,
       };
       const response = await tracedFetch("/api/chat/stream", {
         method: "POST",
@@ -1884,7 +1968,11 @@ export default function App() {
                 return {
                   ...message,
                   api_surface: event.api_surface,
-                  guardrail_variant: event.guardrail_comparison ? ("baseline" as const) : null,
+                  guardrail_variant: event.guardrail_comparison ? ("policy_1" as const) : null,
+                  guardrail_policy_name:
+                    event.guardrail_policy_names?.[0] === deploymentDefaultGuardrail
+                      ? null
+                      : event.guardrail_policy_names?.[0],
                 };
               }
               return message;
@@ -1893,9 +1981,12 @@ export default function App() {
               ? [
                   ...updated,
                   {
-                    ...pendingGuarded,
+                    ...pendingPolicy2,
                     api_surface: event.api_surface,
-                    guardrail_policy_name: event.guardrail_policy_name,
+                    guardrail_policy_name:
+                      event.guardrail_policy_names?.[1] === deploymentDefaultGuardrail
+                        ? null
+                        : event.guardrail_policy_names?.[1],
                   },
                 ]
               : updated;
@@ -1907,8 +1998,9 @@ export default function App() {
           setCurrentConversationId(event.conversation.id);
           upsertConversation(event.conversation);
           const targetId =
+            event.result.guardrail_variant === "policy_2" ||
             event.result.guardrail_variant === "guarded"
-              ? pendingGuarded.id
+              ? pendingPolicy2.id
               : pendingAssistant.id;
           setMessages((current) =>
             current.map((message) =>
@@ -2010,10 +2102,10 @@ export default function App() {
     const userPrompt = prompt.trim();
     const pendingUser = createUserMessage(userPrompt);
     const pendingAssistant = createAssistantMessage({ model: activeModel, content: "Retrieving documents..." });
-    const pendingGuarded = createAssistantMessage({
+    const pendingPolicy2 = createAssistantMessage({
       model: activeModel,
-      content: "Applying custom guardrail to retrieved context...",
-      guardrail_variant: "guarded",
+      content: "Running guardrail 2 against retrieved context...",
+      guardrail_variant: "policy_2",
     });
     let receivedDelta = false;
     setPrompt("");
@@ -2026,6 +2118,7 @@ export default function App() {
         prompt: userPrompt,
         conversation_id: currentConversationId,
         reasoning_effort: reasoningEffort === "default" ? null : reasoningEffort,
+        guardrail_comparison: guardrailComparisonEnabled,
       };
       const response = await tracedFetch("/api/documents/ask/stream", {
         method: "POST",
@@ -2056,7 +2149,11 @@ export default function App() {
                   ...message,
                   api_surface: event.api_surface,
                   content: "Reading retrieved document excerpts...",
-                  guardrail_variant: event.guardrail_comparison ? ("baseline" as const) : null,
+                  guardrail_variant: event.guardrail_comparison ? ("policy_1" as const) : null,
+                  guardrail_policy_name:
+                    event.guardrail_policy_names?.[0] === deploymentDefaultGuardrail
+                      ? null
+                      : event.guardrail_policy_names?.[0],
                 };
               }
               return message;
@@ -2065,9 +2162,12 @@ export default function App() {
               ? [
                   ...updated,
                   {
-                    ...pendingGuarded,
+                    ...pendingPolicy2,
                     api_surface: event.api_surface,
-                    guardrail_policy_name: event.guardrail_policy_name,
+                    guardrail_policy_name:
+                      event.guardrail_policy_names?.[1] === deploymentDefaultGuardrail
+                        ? null
+                        : event.guardrail_policy_names?.[1],
                   },
                 ]
               : updated;
@@ -2079,8 +2179,9 @@ export default function App() {
           setCurrentConversationId(event.conversation.id);
           upsertConversation(event.conversation);
           const targetId =
+            event.result.guardrail_variant === "policy_2" ||
             event.result.guardrail_variant === "guarded"
-              ? pendingGuarded.id
+              ? pendingPolicy2.id
               : pendingAssistant.id;
           setMessages((current) =>
             current.map((message) =>
@@ -2274,7 +2375,10 @@ export default function App() {
         ...assistantMessages.map(mapStoredMessage),
       ]);
       speakResponses(
-        assistantMessages.filter((message: StoredMessage) => message.guardrail_variant !== "guarded"),
+        assistantMessages.filter(
+          (message: StoredMessage) =>
+            message.guardrail_variant !== "guarded" && message.guardrail_variant !== "policy_2",
+        ),
       );
     } finally {
       setIsRunning(false);
@@ -2809,6 +2913,46 @@ export default function App() {
             </SidebarSection>
           </div>
           ) : null}
+
+          {activeView === "chat" && activeUseCaseDetails.workspace === "chat" ? (
+            <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
+              <SidebarSection title="Guardrail test">
+                <button
+                  type="button"
+                  onClick={() => void toggleGuardrailComparison()}
+                  disabled={!activeModel || isRunning}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60",
+                    guardrailComparisonEnabled
+                      ? "border-slate-400 bg-slate-100 dark:border-[#77777d] dark:bg-[#505056]"
+                      : "border-slate-200 bg-white hover:bg-slate-50 dark:border-[#606066] dark:bg-[#29292c] dark:hover:bg-[#45454a]",
+                  )}
+                >
+                  <span className="flex min-w-0 items-center gap-2 text-sm">
+                    <GitCompareArrows className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Side-by-side guardrails</span>
+                  </span>
+                  <Badge variant="outline" className="shrink-0">
+                    {guardrailComparisonEnabled ? "On" : "Off"}
+                  </Badge>
+                </button>
+                {guardrailComparisonEnabled ? (
+                  <div className="mt-2 grid gap-1 text-xs text-slate-500 dark:text-slate-400">
+                    {activeGuardrailPolicies.map((policy, index) => (
+                      <div key={`${policy}-${index}`} className="truncate">
+                        Guardrail {index + 1}: {formatConfiguredGuardrail(policy)}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {guardrailComparisonError ? (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                    {guardrailComparisonError}
+                  </p>
+                ) : null}
+              </SidebarSection>
+            </div>
+          ) : null}
           </div>
           <div className="mt-4 flex shrink-0 justify-center border-t pt-4 dark:border-[#55555a]">
             <FoundryStatusPill config={config} />
@@ -2825,6 +2969,8 @@ export default function App() {
                   ? "Model metrics"
                   : activeView === "settings"
                     ? "Settings"
+                    : activeView === "model-settings"
+                      ? "Model settings"
                     : activeUseCaseDetails.title}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -2832,6 +2978,8 @@ export default function App() {
                   ? "Usage and performance from saved local chat history"
                   : activeView === "settings"
                     ? "Deployment shortcuts and future app-level settings"
+                    : activeView === "model-settings"
+                      ? `Configure ${settingsModel ?? activeModel}`
                     : activeUseCaseDetails.workspace === "comparison"
                       ? `Comparing ${selected.length} model endpoint${selected.length === 1 ? "" : "s"}`
                       : activeUseCase === "document_qa"
@@ -2845,14 +2993,16 @@ export default function App() {
               </p>
             </div>
             <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-              <button
-                type="button"
-                onClick={() => void openSettings(activeModel)}
-                className="rounded p-1 hover:bg-slate-100 dark:hover:bg-[#45454a]"
-                aria-label="Open active model settings"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
+              {activeView !== "model-settings" ? (
+                <button
+                  type="button"
+                  onClick={() => void openSettings(activeModel)}
+                  className="rounded p-1 hover:bg-slate-100 dark:hover:bg-[#45454a]"
+                  aria-label="Open active model settings"
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
+              ) : null}
               <GitCompareArrows
                 className={cn(
                   "h-4 w-4",
@@ -2919,6 +3069,29 @@ export default function App() {
               onAddModel={() => void addModel()}
               onOpenAdmin={() => void openAdmin()}
             />
+          ) : activeView === "model-settings" && settingsModel ? (
+            <ModelSettingsPage
+              model={settingsModel}
+              draft={settingsDraft}
+              saving={isSavingSettings}
+              policies={guardrailPolicies}
+              deploymentPolicy={deploymentGuardrailPolicy}
+              policiesLoading={guardrailPoliciesLoading}
+              error={settingsError}
+              onClose={() => {
+                setSettingsModel(null);
+                setActiveView("chat");
+              }}
+              onSave={() => void saveSettings()}
+              onReset={() =>
+                setSettingsDraft((current) =>
+                  current ? { model: current.model, ...defaultSettings } : current,
+                )
+              }
+              onChange={(patch) =>
+                setSettingsDraft((current) => (current ? { ...current, ...patch } : current))
+              }
+            />
           ) : activeUseCaseDetails.workspace === "comparison" ? (
             <ComparisonWorkspace
               allModels={models}
@@ -2968,6 +3141,20 @@ export default function App() {
                 />
               </div>
             </div>
+          ) : guardrailComparisonEnabled && activeUseCaseDetails.workspace === "chat" ? (
+            <GuardrailComparisonWorkspace
+              model={activeModel}
+              policyNames={activeGuardrailPolicies}
+              messages={messages}
+              prompt={prompt}
+              isRunning={isRunning}
+              canSubmit={canSubmit}
+              onPromptChange={setPrompt}
+              onSubmit={() =>
+                activeUseCase === "document_qa" ? void runDocumentChat() : void runChat()
+              }
+              onOpenSettings={() => void openSettings(activeModel)}
+            />
           ) : (
             <>
               <div className="flex-1 overflow-auto p-5">
@@ -3095,28 +3282,6 @@ export default function App() {
           )}
         </section>
       </div>
-
-      {settingsModel ? (
-        <SettingsModal
-          model={settingsModel}
-          draft={settingsDraft}
-          saving={isSavingSettings}
-          policies={guardrailPolicies}
-          deploymentPolicy={deploymentGuardrailPolicy}
-          policiesLoading={guardrailPoliciesLoading}
-          error={settingsError}
-          onClose={() => setSettingsModel(null)}
-          onSave={() => void saveSettings()}
-          onReset={() =>
-            setSettingsDraft((current) =>
-              current ? { model: current.model, ...defaultSettings } : current,
-            )
-          }
-          onChange={(patch) =>
-            setSettingsDraft((current) => (current ? { ...current, ...patch } : current))
-          }
-        />
-      ) : null}
 
       {adminOpen ? (
         <AdminDeploymentModal
@@ -3362,12 +3527,8 @@ function TraditionalVoiceHero({
                   className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-[#606066] dark:bg-[#45454a]"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={variant.guardrail_variant === "guarded" ? "default" : "outline"}>
-                      {variant.guardrail_variant === "guarded"
-                        ? variant.guardrail_policy_name ?? "Custom guardrail"
-                        : variant.guardrail_variant === "baseline"
-                          ? "Deployment default"
-                          : "Assistant response"}
+                    <Badge variant="outline">
+                      {formatGuardrailLabel(variant)}
                     </Badge>
                     <span className="text-xs text-slate-500 dark:text-slate-400">
                       {variant.duration_ms ?? 0} ms chat
@@ -4190,7 +4351,7 @@ function ChatMessageHistory({ messages }: { messages: ChatMessage[] }) {
             <ChatBubble message={turn.user} />
             {isGuardrailComparison ? (
               <div className="grid gap-4 lg:grid-cols-2">
-                {(["baseline", "guarded"] as const).map((variant) => {
+                {(["policy_1", "policy_2", "baseline", "guarded"] as const).map((variant) => {
                   const response = turn.responses.find(
                     (item) => item.guardrail_variant === variant,
                   );
@@ -4245,10 +4406,8 @@ function ChatBubble({ message }: { message: ChatMessage }) {
             <Badge variant="secondary">{formatApiSurface(message.api_surface)}</Badge>
           ) : null}
           {!isUser && message.guardrail_variant ? (
-            <Badge variant={message.guardrail_variant === "guarded" ? "default" : "outline"}>
-              {message.guardrail_variant === "guarded"
-                ? message.guardrail_policy_name ?? "Custom guardrail"
-                : "Deployment default"}
+            <Badge variant="outline">
+              {formatGuardrailLabel(message)}
             </Badge>
           ) : null}
           {!isUser && message.duration_ms ? (
@@ -4304,6 +4463,158 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+type GuardrailComparisonWorkspaceProps = {
+  model: string;
+  policyNames: string[];
+  messages: ChatMessage[];
+  prompt: string;
+  isRunning: boolean;
+  canSubmit: boolean;
+  onPromptChange: (value: string) => void;
+  onSubmit: () => void;
+  onOpenSettings: () => void;
+};
+
+function GuardrailComparisonWorkspace({
+  model,
+  policyNames,
+  messages,
+  prompt,
+  isRunning,
+  canSubmit,
+  onPromptChange,
+  onSubmit,
+  onOpenSettings,
+}: GuardrailComparisonWorkspaceProps) {
+  const turns = groupComparisonTurns(messages);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-slate-100/70 dark:bg-[#303033]">
+      <div className="flex-1 overflow-x-auto p-4">
+        <div className="grid h-full min-w-[44rem] grid-cols-2 gap-4">
+          {(["policy_1", "policy_2"] as const).map((variant, index) => (
+            <GuardrailComparisonPane
+              key={variant}
+              model={model}
+              title={`Guardrail ${index + 1}`}
+              policyName={policyNames[index] ?? deploymentDefaultGuardrail}
+              variant={variant}
+              turns={turns}
+              prompt={prompt}
+              isRunning={isRunning}
+              canSubmit={canSubmit}
+              onPromptChange={onPromptChange}
+              onSubmit={onSubmit}
+              onOpenSettings={onOpenSettings}
+            />
+          ))}
+        </div>
+      </div>
+      <p className="border-t bg-white px-4 py-2 text-center text-xs text-slate-500 dark:border-[#55555a] dark:bg-[#29292c] dark:text-slate-400">
+        Both panes use {model} with the same prompt and model parameters. Only the guardrail policy differs.
+      </p>
+    </div>
+  );
+}
+
+function GuardrailComparisonPane({
+  model,
+  title,
+  policyName,
+  variant,
+  turns,
+  prompt,
+  isRunning,
+  canSubmit,
+  onPromptChange,
+  onSubmit,
+  onOpenSettings,
+}: {
+  model: string;
+  title: string;
+  policyName: string;
+  variant: "policy_1" | "policy_2";
+  turns: Array<{ user: ChatMessage; responses: ChatMessage[] }>;
+  prompt: string;
+  isRunning: boolean;
+  canSubmit: boolean;
+  onPromptChange: (value: string) => void;
+  onSubmit: () => void;
+  onOpenSettings: () => void;
+}) {
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+      className="flex min-h-0 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm dark:border-[#606066] dark:bg-[#39393d]"
+    >
+      <header className="flex items-center gap-3 border-b px-3 py-3 dark:border-[#55555a]">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold">{title}</div>
+          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+            {formatConfiguredGuardrail(policyName)} · {model}
+          </div>
+        </div>
+        <Button type="button" variant="outline" size="icon" onClick={onOpenSettings}>
+          <Settings className="h-4 w-4" />
+        </Button>
+      </header>
+
+      <div className="flex-1 overflow-auto bg-slate-50 p-4 dark:bg-[#303033]">
+        {turns.length ? (
+          <div className="grid gap-4">
+            {turns.map((turn) => {
+              const response = turn.responses.find((item) => item.guardrail_variant === variant);
+              return (
+                <section key={turn.user.id} className="grid gap-2">
+                  <div className="ml-auto max-w-[90%] rounded-2xl bg-blue-600 px-3 py-2 text-sm leading-6 text-white shadow-sm dark:bg-[#505056]">
+                    {turn.user.content}
+                  </div>
+                  {response ? (
+                    <ComparisonModelResponse message={response} />
+                  ) : (
+                    <div className="rounded-2xl border bg-white px-3 py-2 text-sm text-slate-500 shadow-sm dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-400">
+                      {isRunning ? `Running ${title.toLowerCase()}...` : "Waiting for a response..."}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center text-center">
+            <div className="max-w-xs">
+              <GitCompareArrows className="mx-auto mb-3 h-8 w-8 text-slate-300 dark:text-[#77777d]" />
+              <h3 className="text-sm font-semibold">Ready for {title}</h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {formatConfiguredGuardrail(policyName)}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <footer className="border-t bg-white p-3 dark:border-[#55555a] dark:bg-[#29292c]">
+        <Textarea
+          aria-label={`Prompt for ${title}`}
+          placeholder="Ask both guardrails..."
+          value={prompt}
+          rows={3}
+          onChange={(event) => onPromptChange(event.target.value)}
+          className="min-h-20 resize-none"
+        />
+        <div className="mt-2 flex justify-end">
+          <Button type="submit" size="icon" disabled={!canSubmit}>
+            {isRunning ? <RotateCcw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </Button>
+        </div>
+      </footer>
+    </form>
   );
 }
 
@@ -4551,10 +4862,8 @@ function ComparisonModelResponse({ message }: { message: ChatMessage }) {
           <Badge variant="secondary">{formatApiSurface(message.api_surface)}</Badge>
         ) : null}
         {message.guardrail_variant ? (
-          <Badge variant={message.guardrail_variant === "guarded" ? "default" : "outline"}>
-            {message.guardrail_variant === "guarded"
-              ? message.guardrail_policy_name ?? "Custom guardrail"
-              : "Deployment default"}
+          <Badge variant="outline">
+            {formatGuardrailLabel(message)}
           </Badge>
         ) : null}
         {message.duration_ms ? (
@@ -4594,7 +4903,7 @@ function groupComparisonTurns(messages: ChatMessage[]) {
   return turns;
 }
 
-type SettingsModalProps = {
+type ModelSettingsPageProps = {
   model: string;
   draft: ModelSettings | null;
   saving: boolean;
@@ -4608,7 +4917,7 @@ type SettingsModalProps = {
   onChange: (patch: Partial<ModelSettings>) => void;
 };
 
-function SettingsModal({
+function ModelSettingsPage({
   model,
   draft,
   saving,
@@ -4620,7 +4929,10 @@ function SettingsModal({
   onSave,
   onReset,
   onChange,
-}: SettingsModalProps) {
+}: ModelSettingsPageProps) {
+  const [activeTab, setActiveTab] = useState<"general" | "capabilities" | "api" | "guardrails">(
+    "general",
+  );
   const selectablePolicies = policies.filter((policy) => policy.is_selectable);
   function toggleModality(modality: ModelModality) {
     if (!draft) {
@@ -4633,27 +4945,55 @@ function SettingsModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#303033]/60 p-4">
-      <Card className="max-h-[90vh] w-full max-w-2xl overflow-auto bg-white text-slate-950 dark:border-[#606066] dark:bg-[#39393d] dark:text-slate-50">
-        <CardHeader className="border-b">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle>Model settings</CardTitle>
-              <CardDescription>{model}</CardDescription>
-            </div>
-            <button
-              type="button"
-              className="rounded p-1 hover:bg-slate-100 dark:hover:bg-[#45454a]"
-              onClick={onClose}
-            >
-              <X className="h-4 w-4" />
-            </button>
+    <div className="flex-1 overflow-auto bg-slate-50 p-5 dark:bg-[#303033]">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-xl font-semibold">Configure {model}</h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Settings are stored for this deployment endpoint.
+            </p>
           </div>
-        </CardHeader>
+          <Button type="button" variant="outline" onClick={onClose}>
+            <X className="h-4 w-4" />
+            Back to chat
+          </Button>
+        </div>
 
-        {draft ? (
-          <>
-            <CardContent className="grid gap-6 pt-6">
+        <div
+          className="mb-4 flex gap-1 overflow-x-auto rounded-xl border bg-white p-1.5 shadow-sm dark:border-[#606066] dark:bg-[#39393d]"
+          role="tablist"
+          aria-label="Model settings sections"
+        >
+          {[
+            { value: "general" as const, label: "General" },
+            { value: "capabilities" as const, label: "Capabilities" },
+            { value: "api" as const, label: "API surface" },
+            { value: "guardrails" as const, label: "Guardrails" },
+          ].map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.value}
+              onClick={() => setActiveTab(tab.value)}
+              className={cn(
+                "whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition",
+                activeTab === tab.value
+                  ? "bg-blue-50 text-blue-700 shadow-sm dark:bg-[#505056] dark:text-slate-50"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-[#45454a] dark:hover:text-slate-100",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
+          {draft ? (
+            <>
+              <CardContent className="grid gap-6 pt-6">
+              {activeTab === "api" ? (
               <section className="grid gap-2">
                 <div>
                   <h3 className="font-semibold">API surface</h3>
@@ -4675,79 +5015,75 @@ function SettingsModal({
                   <option value="chat_completions">Chat Completions API</option>
                 </select>
               </section>
+              ) : null}
 
-              <section className="grid gap-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4 dark:border-violet-500/40 dark:bg-violet-500/10">
-                <div className="flex items-start justify-between gap-4">
+              {activeTab === "guardrails" ? (
+              <section className="grid gap-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4 dark:border-[#606066] dark:bg-[#45454a]">
+                <div>
                   <div>
-                    <h3 className="font-semibold">Guardrail experiment</h3>
+                    <h3 className="font-semibold">Guardrail comparison policies</h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Compare the deployment default with a custom Foundry guardrail using the same
-                      model and prompt.
+                      Select the two policies available to the guardrail test on the chat page.
                     </p>
                   </div>
-                  <label className="flex shrink-0 items-center gap-2 text-sm font-medium">
-                    <input
-                      type="checkbox"
-                      checked={draft.guardrails_enabled}
-                      onChange={(event) =>
-                        onChange({
-                          guardrails_enabled: event.target.checked,
-                          guardrail_policy_name: event.target.checked
-                            ? draft.guardrail_policy_name
-                            : null,
-                        })
-                      }
-                      className="h-4 w-4 accent-blue-600"
-                    />
-                    Enabled
-                  </label>
                 </div>
-                <div className="rounded-lg border border-blue-200 bg-white/80 px-3 py-2 dark:border-violet-500/30 dark:bg-[#29292c]">
+                <div className="rounded-lg border border-blue-200 bg-white/80 px-3 py-2 dark:border-[#606066] dark:bg-[#29292c]">
                   <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     Deployment guardrail
                   </p>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <Badge variant="outline">
-                      {deploymentPolicy?.policy_name ?? "Service default"}
+                      {deploymentPolicy?.policy_name ?? "Microsoft.DefaultV2"}
                     </Badge>
                     <span className="text-xs text-slate-500 dark:text-slate-400">
                       Currently assigned to {model}
                     </span>
                   </div>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="guardrail-policy">Custom guardrail</Label>
-                  <select
-                    id="guardrail-policy"
-                    value={draft.guardrail_policy_name ?? ""}
-                    disabled={!draft.guardrails_enabled || policiesLoading}
-                    onChange={(event) =>
-                      onChange({ guardrail_policy_name: event.target.value || null })
-                    }
-                    className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
-                  >
-                    <option value="">
-                      {policiesLoading ? "Loading Foundry guardrails..." : "Select a guardrail"}
-                    </option>
-                    {selectablePolicies.map((policy) => (
-                      <option key={policy.name} value={policy.name}>
-                        {policy.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Baseline: deployment-assigned Microsoft default policy. Custom policies are
-                    retrieved live from Foundry.
+                <div className="grid gap-4 md:grid-cols-2">
+                  {[0, 1].map((index) => (
+                    <div key={index} className="grid gap-2">
+                      <Label htmlFor={`guardrail-policy-${index}`}>Guardrail {index + 1}</Label>
+                      <select
+                        id={`guardrail-policy-${index}`}
+                        value={draft.guardrail_policy_names[index] ?? ""}
+                        disabled={policiesLoading}
+                        onChange={(event) => {
+                          const guardrail_policy_names = [...draft.guardrail_policy_names];
+                          guardrail_policy_names[index] = event.target.value;
+                          onChange({ guardrail_policy_names });
+                        }}
+                        className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+                      >
+                        <option value="">
+                          {policiesLoading ? "Loading Foundry guardrails..." : "Select a guardrail"}
+                        </option>
+                        <option value={deploymentDefaultGuardrail}>
+                          Deployment default ({deploymentPolicy?.policy_name ?? "Microsoft.DefaultV2"})
+                        </option>
+                        {selectablePolicies.map((policy) => (
+                          <option key={policy.name} value={policy.name}>
+                            {policy.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                  <p className="text-xs text-slate-500 md:col-span-2 dark:text-slate-400">
+                    Custom policies are retrieved live from Foundry. The same model settings and
+                    prompt are used for both requests.
                   </p>
                   {!policiesLoading && !selectablePolicies.length ? (
                     <p className="text-xs text-amber-700 dark:text-amber-300">
                       No custom guardrails are available. This deployment continues to use{" "}
-                      {deploymentPolicy?.policy_name ?? "its service default"}.
+                      {deploymentPolicy?.policy_name ?? "Microsoft.DefaultV2"}.
                     </p>
                   ) : null}
                 </div>
               </section>
+              ) : null}
 
+              {activeTab === "capabilities" ? (
               <section className="grid gap-2">
                 <div>
                   <h3 className="font-semibold">Model capabilities</h3>
@@ -4765,7 +5101,7 @@ function SettingsModal({
                       className={cn(
                         "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm capitalize transition",
                         draft.modalities.includes(modality)
-                          ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200"
+                          ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-[#77777d] dark:bg-[#505056] dark:text-slate-50"
                           : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-[#606066] dark:text-slate-300 dark:hover:bg-[#45454a]",
                       )}
                     >
@@ -4775,7 +5111,10 @@ function SettingsModal({
                   ))}
                 </div>
               </section>
+              ) : null}
 
+              {activeTab === "general" ? (
+              <>
               <section className="grid gap-2">
                 <div>
                   <h3 className="font-semibold">Instructions</h3>
@@ -4834,6 +5173,8 @@ function SettingsModal({
                   onChange={(repetition_penalty) => onChange({ repetition_penalty })}
                 />
               </section>
+              </>
+              ) : null}
             </CardContent>
 
             {error ? (
@@ -4842,21 +5183,22 @@ function SettingsModal({
               </div>
             ) : null}
 
-            <CardFooter className="flex flex-col gap-3 border-t bg-slate-50 sm:flex-row sm:justify-between dark:border-[#55555a] dark:bg-[#29292c]">
+            <CardFooter className="flex flex-col gap-3 border-t bg-slate-50 py-5 sm:flex-row sm:justify-between dark:border-[#55555a] dark:bg-[#29292c]">
               <Button type="button" variant="outline" onClick={onReset}>
                 <RotateCcw className="h-4 w-4" />
                 Reset to defaults
               </Button>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={onClose}>
-                  Close
-                </Button>
                 <Button
                   type="button"
                   onClick={onSave}
+                  className="dark:bg-[#505056] dark:text-slate-50 dark:hover:bg-[#606066]"
                   disabled={
                     saving ||
-                    (draft.guardrails_enabled && !draft.guardrail_policy_name)
+                    (draft.guardrail_policy_names.length !== 2 ||
+                      draft.guardrail_policy_names.some((policy) => !policy) ||
+                      draft.guardrail_policy_names[0].toLowerCase() ===
+                        draft.guardrail_policy_names[1].toLowerCase())
                   }
                 >
                   {saving ? "Saving..." : "Save settings"}
@@ -4869,7 +5211,8 @@ function SettingsModal({
             Loading settings...
           </CardContent>
         )}
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -5397,6 +5740,24 @@ function formatApiSurface(apiSurface: string) {
     return "Embeddings API";
   }
   return apiSurface;
+}
+
+function formatGuardrailLabel(message: {
+  guardrail_variant?: GuardrailVariant | null;
+  guardrail_policy_name?: string | null;
+}) {
+  const slot = message.guardrail_variant === "policy_2" ? "Guardrail 2" : "Guardrail 1";
+  if (message.guardrail_variant === "baseline") {
+    return "Deployment default";
+  }
+  if (message.guardrail_variant === "guarded") {
+    return message.guardrail_policy_name ?? "Custom guardrail";
+  }
+  return `${slot}: ${message.guardrail_policy_name ?? "Deployment default"}`;
+}
+
+function formatConfiguredGuardrail(policyName: string) {
+  return policyName === deploymentDefaultGuardrail ? "Deployment default" : policyName;
 }
 
 function formatUsage(usage?: Usage) {

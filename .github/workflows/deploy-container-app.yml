@@ -84,6 +84,7 @@ jobs:
             --parameters \
               sharedResourceGroupName="${{ env.SHARED_RESOURCE_GROUP_NAME }}" \
               containerAppsEnvironmentId="${{ env.CONTAINER_APPS_ENV_ID }}" \
+              foundryAccountName="${{ env.FOUNDRY_ACCOUNT_NAME }}" \
               foundryProjectEndpoint="${{ env.FOUNDRY_PROJECT_ENDPOINT }}" \
               foundryModels="${{ env.FOUNDRY_MODELS }}" \
               foundryEmbeddingModel="${{ env.FOUNDRY_EMBEDDING_MODEL }}" \

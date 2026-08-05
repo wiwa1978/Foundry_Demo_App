@@ -8,7 +8,7 @@ from azure.cosmos.exceptions import CosmosResourceNotFoundError
 from app.cosmos_store import get_container, initialize_cosmos_store
 
 MessageRole = Literal["user", "assistant"]
-GuardrailVariant = Literal["baseline", "guarded"]
+GuardrailVariant = Literal["baseline", "guarded", "policy_1", "policy_2"]
 CONVERSATION_TYPE = "conversation"
 MESSAGE_TYPE = "conversation_message"
 
@@ -280,6 +280,7 @@ def build_model_history(
     conversation_id: str,
     model: str,
     guardrail_variant: GuardrailVariant | None = None,
+    guardrail_policy_name: str | None = None,
 ) -> list[dict[str, str]]:
     history: list[dict[str, str]] = []
     for message in get_conversation_messages(conversation_id):
@@ -287,12 +288,31 @@ def build_model_history(
             continue
         if message.role == "user":
             history.append({"role": "user", "content": message.content})
-        elif message.model == model and (
-            message.guardrail_variant is None
-            or message.guardrail_variant == (guardrail_variant or "baseline")
+        elif message.model == model and _matches_guardrail_history(
+            message,
+            guardrail_variant,
+            guardrail_policy_name,
         ):
             history.append({"role": "assistant", "content": message.content})
     return history
+
+
+def _matches_guardrail_history(
+    message: ConversationMessage,
+    guardrail_variant: GuardrailVariant | None,
+    guardrail_policy_name: str | None,
+) -> bool:
+    if guardrail_policy_name:
+        return (message.guardrail_policy_name or "").lower() == guardrail_policy_name.lower()
+    if guardrail_variant in {"policy_1", "policy_2"}:
+        return message.guardrail_policy_name is None and message.guardrail_variant in {
+            None,
+            "baseline",
+            guardrail_variant,
+        }
+    return message.guardrail_variant is None or message.guardrail_variant == (
+        guardrail_variant or "baseline"
+    )
 
 
 def conversation_to_dict(conversation: Conversation) -> dict[str, Any]:

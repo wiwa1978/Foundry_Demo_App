@@ -120,11 +120,13 @@ Then open http://127.0.0.1:8000.
 | `ENTRA_AUTH_ENABLED` | Optional flag used by the deployed backend. Set to `true` with Azure Container Apps authentication to require a signed-in Microsoft Entra user for protected `/api/*` routes. Local development can omit it. |
 | `FOUNDRY_INPUT_TOKEN_COST_PER_1K` | Optional input-token price per 1K tokens used by the Model metrics dashboard to estimate cost. Defaults to `0`. |
 | `FOUNDRY_OUTPUT_TOKEN_COST_PER_1K` | Optional output-token price per 1K tokens used by the Model metrics dashboard to estimate cost. Defaults to `0`. |
-| `FOUNDRY_SUBSCRIPTION_ID` | Optional Azure subscription ID used by the Admin deployment UI. `AZURE_SUBSCRIPTION_ID` is also accepted. |
-| `FOUNDRY_RESOURCE_GROUP` | Optional resource group for the Foundry/Azure AI resource used by the Admin deployment UI. `AZURE_RESOURCE_GROUP` is also accepted. |
-| `FOUNDRY_ACCOUNT_NAME` | Optional Foundry/Azure AI resource name used by the Admin deployment UI. `AZURE_AI_ACCOUNT_NAME` and `AZURE_OPENAI_RESOURCE_NAME` are also accepted. |
+| `FOUNDRY_SUBSCRIPTION_ID` | Optional Azure subscription ID used for automatic deployment discovery and the Admin deployment UI. `AZURE_SUBSCRIPTION_ID` is also accepted. |
+| `FOUNDRY_RESOURCE_GROUP` | Optional resource group for automatic deployment discovery and the Admin deployment UI. `AZURE_RESOURCE_GROUP` is also accepted. |
+| `FOUNDRY_ACCOUNT_NAME` | Optional Foundry/Azure AI resource name used for automatic deployment discovery and the Admin deployment UI. `AZURE_AI_ACCOUNT_NAME` and `AZURE_OPENAI_RESOURCE_NAME` are also accepted. |
 
 Deployment names must match models you deployed in Microsoft Foundry.
+
+When the three management settings above are configured, the app queries Foundry on each site load and merges active deployments into every model dropdown. The app identity needs permission to read deployments on the Foundry resource. Manually registered and `FOUNDRY_MODELS` entries remain available if discovery is unavailable.
 
 The recommended configuration uses `FOUNDRY_PROJECT_ENDPOINT` as the single Foundry endpoint. For model calls, the backend derives the OpenAI-compatible base URL by replacing the project path with `/openai/v1`, then creates an `OpenAI` client with `DefaultAzureCredential()` and uses `responses.create` or `chat.completions.create` for each selected deployment.
 

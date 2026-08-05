@@ -11,6 +11,7 @@ API_SURFACES = {"responses", "chat_completions"}
 MODEL_MODALITIES = {"text", "image", "voice"}
 MODEL_SETTINGS_PARTITION = "model-settings"
 MODEL_SETTINGS_TYPE = "model_settings"
+DEPLOYMENT_DEFAULT_GUARDRAIL = "deployment_default"
 
 
 @dataclass(frozen=True)
@@ -23,8 +24,7 @@ class ModelSettings:
     top_p: float = 1.0
     max_tokens: int = 1024
     repetition_penalty: float = 1.0
-    guardrails_enabled: bool = False
-    guardrail_policy_name: str | None = None
+    guardrail_policy_names: tuple[str, ...] = ()
 
 
 def initialize_database() -> None:
@@ -78,9 +78,8 @@ def save_model_settings(settings: ModelSettings) -> ModelSettings:
         top_p=settings.top_p,
         max_tokens=settings.max_tokens,
         repetition_penalty=settings.repetition_penalty,
-        guardrails_enabled=settings.guardrails_enabled,
-        guardrail_policy_name=_normalize_guardrail_policy_name(
-            settings.guardrail_policy_name
+        guardrail_policy_names=_normalize_guardrail_policy_names(
+            settings.guardrail_policy_names
         ),
     )
     get_container().upsert_item(_settings_document(normalized))
@@ -116,8 +115,7 @@ def _settings_document(settings: ModelSettings) -> dict[str, Any]:
         "top_p": settings.top_p,
         "max_tokens": settings.max_tokens,
         "repetition_penalty": settings.repetition_penalty,
-        "guardrails_enabled": settings.guardrails_enabled,
-        "guardrail_policy_name": settings.guardrail_policy_name,
+        "guardrail_policy_names": list(settings.guardrail_policy_names),
         "updated_at": datetime.now(UTC).isoformat(),
     }
 
@@ -128,6 +126,16 @@ def _model_document_id(model: str) -> str:
 
 
 def _document_to_settings(document: dict[str, Any]) -> ModelSettings:
+    policy_names = document.get("guardrail_policy_names")
+    if policy_names is None:
+        legacy_policy_name = _normalize_guardrail_policy_name(
+            document.get("guardrail_policy_name")
+        )
+        policy_names = (
+            [DEPLOYMENT_DEFAULT_GUARDRAIL, legacy_policy_name]
+            if legacy_policy_name
+            else []
+        )
     return ModelSettings(
         model=document["model"],
         api_surface=_normalize_api_surface(document.get("api_surface", "responses")),
@@ -137,10 +145,7 @@ def _document_to_settings(document: dict[str, Any]) -> ModelSettings:
         top_p=document["top_p"],
         max_tokens=document["max_tokens"],
         repetition_penalty=document["repetition_penalty"],
-        guardrails_enabled=bool(document.get("guardrails_enabled", False)),
-        guardrail_policy_name=_normalize_guardrail_policy_name(
-            document.get("guardrail_policy_name")
-        ),
+        guardrail_policy_names=_normalize_guardrail_policy_names(policy_names),
     )
 
 
@@ -179,6 +184,14 @@ def _normalize_guardrail_policy_name(policy_name: str | None) -> str | None:
         return None
     normalized_name = policy_name.strip()
     return normalized_name or None
+
+
+def _normalize_guardrail_policy_names(policy_names: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    return tuple(
+        normalized
+        for policy_name in policy_names
+        if (normalized := _normalize_guardrail_policy_name(policy_name)) is not None
+    )
 
 
 def _normalize_modalities(modalities: tuple[str, ...] | list[str]) -> tuple[str, ...]:

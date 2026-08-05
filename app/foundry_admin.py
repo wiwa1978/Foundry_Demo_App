@@ -74,6 +74,29 @@ def list_guardrail_policies() -> list[dict[str, Any]]:
     )
 
 
+def list_foundry_deployments() -> list[dict[str, Any]]:
+    config = load_admin_config()
+    if not config.is_configured:
+        raise RuntimeError(
+            "Foundry deployment discovery is not configured. Set "
+            f"{', '.join(config.missing)} in the environment."
+        )
+
+    deployments = _create_management_client(config).deployments.list(
+        resource_group_name=config.resource_group,
+        account_name=config.account_name,
+    )
+    return sorted(
+        (
+            deployment
+            for deployment in (_deployment_summary(item) for item in deployments)
+            if deployment["name"]
+            and deployment["provisioning_state"].lower() not in {"canceled", "failed"}
+        ),
+        key=lambda deployment: deployment["name"].lower(),
+    )
+
+
 def guardrail_policy_exists(policy_name: str) -> bool:
     normalized_name = policy_name.strip().lower()
     return any(
@@ -169,6 +192,19 @@ def _guardrail_policy_to_dict(policy: Any) -> dict[str, Any]:
         "is_selectable": bool(name)
         and "systemmanaged" not in policy_type.replace("_", "").lower()
         and not name.lower().startswith("microsoft."),
+    }
+
+
+def _deployment_summary(deployment: Any) -> dict[str, Any]:
+    properties = getattr(deployment, "properties", None)
+    model = getattr(properties, "model", None)
+    return {
+        "name": str(getattr(deployment, "name", "") or ""),
+        "model_name": getattr(model, "name", None),
+        "model_version": getattr(model, "version", None),
+        "provisioning_state": str(
+            getattr(properties, "provisioning_state", "") or ""
+        ),
     }
 
 

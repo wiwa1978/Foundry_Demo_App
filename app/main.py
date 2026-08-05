@@ -45,6 +45,7 @@ from app.foundry_admin import (
     get_deployment_guardrail_policy,
     guardrail_policy_exists,
     load_admin_config,
+    list_foundry_deployments,
     list_guardrail_policies,
 )
 from app.foundry_client import (
@@ -57,6 +58,7 @@ from app.foundry_client import (
     transcribe_audio,
 )
 from app.model_settings import (
+    DEPLOYMENT_DEFAULT_GUARDRAIL,
     MODEL_MODALITIES,
     ModelSettings,
     get_model_settings,
@@ -155,6 +157,7 @@ class ChatRequest(BaseModel):
     prompt: str = Field(min_length=1)
     conversation_id: str | None = None
     reasoning_effort: str | None = None
+    guardrail_comparison: bool = False
 
     @field_validator("model", "prompt")
     @classmethod
@@ -175,6 +178,7 @@ class DocumentQuestionRequest(BaseModel):
     prompt: str = Field(min_length=1)
     conversation_id: str | None = None
     reasoning_effort: str | None = None
+    guardrail_comparison: bool = False
 
     @field_validator("model", "prompt")
     @classmethod
@@ -227,8 +231,7 @@ class ModelSettingsRequest(BaseModel):
     top_p: Annotated[float, Field(gt=0, le=1)] = 1.0
     max_tokens: Annotated[int, Field(ge=1, le=4096)] = 1024
     repetition_penalty: Annotated[float, Field(ge=1, le=2)] = 1.0
-    guardrails_enabled: bool = False
-    guardrail_policy_name: str | None = None
+    guardrail_policy_names: list[str] = Field(default_factory=list)
 
     @field_validator("model")
     @classmethod
@@ -260,13 +263,10 @@ class ModelSettingsRequest(BaseModel):
             )
         return modalities
 
-    @field_validator("guardrail_policy_name")
+    @field_validator("guardrail_policy_names")
     @classmethod
-    def trim_guardrail_policy_name(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        value = value.strip()
-        return value or None
+    def trim_guardrail_policy_names(cls, value: list[str]) -> list[str]:
+        return [policy_name.strip() for policy_name in value if policy_name.strip()]
 
 
 class ModelRegistrationRequest(BaseModel):
@@ -382,22 +382,36 @@ def get_settings(model: str) -> dict:
 
 @app.put("/api/model-settings")
 def put_settings(request: ModelSettingsRequest) -> dict:
-    if request.guardrails_enabled:
-        if not request.guardrail_policy_name:
+    if request.guardrail_policy_names:
+        if len(request.guardrail_policy_names) != 2:
+            raise HTTPException(status_code=400, detail="Select two guardrails for comparison.")
+        if request.guardrail_policy_names[0].lower() == request.guardrail_policy_names[1].lower():
             raise HTTPException(
                 status_code=400,
-                detail="Select a custom guardrail before enabling comparison.",
+                detail="Select two different guardrails for comparison.",
             )
         try:
-            policy_exists = guardrail_policy_exists(request.guardrail_policy_name)
+            missing_policies = [
+                policy_name
+                for policy_name in request.guardrail_policy_names
+                if policy_name != DEPLOYMENT_DEFAULT_GUARDRAIL
+                and not guardrail_policy_exists(policy_name)
+            ]
         except Exception as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
-        if not policy_exists:
+        if missing_policies:
             raise HTTPException(
                 status_code=400,
-                detail="The selected custom guardrail no longer exists or is not selectable.",
+                detail="A selected guardrail no longer exists or is not selectable.",
             )
-    settings = save_model_settings(ModelSettings(**request.model_dump()))
+    settings = save_model_settings(
+        ModelSettings(
+            **{
+                **request.model_dump(exclude={"guardrail_policy_names"}),
+                "guardrail_policy_names": tuple(request.guardrail_policy_names),
+            }
+        )
+    )
     return settings_to_dict(settings)
 
 
@@ -432,6 +446,29 @@ def post_model(request: ModelRegistrationRequest) -> dict:
     }
 
 
+@app.get("/api/models")
+def get_models() -> dict:
+    configured_models = load_settings().models
+    try:
+        deployments = list_foundry_deployments()
+    except Exception as exc:
+        return {
+            "models": configured_models,
+            "deployments": [],
+            "discovery_error": str(exc),
+        }
+
+    discovered_models = [deployment["name"] for deployment in deployments]
+    models = list(
+        dict.fromkeys(
+            model
+            for model in [*discovered_models, *configured_models]
+            if model.strip()
+        )
+    )
+    return {"models": models, "deployments": deployments, "discovery_error": None}
+
+
 @app.post("/api/realtime/session")
 async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
     try:
@@ -449,16 +486,8 @@ async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
         return {
             **session,
             "guardrail_comparison_available": False,
-            "configured_guardrail_policy_name": (
-                model_settings.guardrail_policy_name
-                if model_settings.guardrails_enabled
-                else None
-            ),
-            "guardrail_status": (
-                "Realtime uses the deployment-assigned policy; request-level comparison is unavailable."
-                if model_settings.guardrails_enabled
-                else "Realtime uses the deployment-assigned policy."
-            ),
+            "configured_guardrail_policy_name": None,
+            "guardrail_status": "Realtime uses the deployment-assigned policy.",
         }
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -492,11 +521,8 @@ async def post_traditional_voice(
 
         conversation = get_or_create_conversation(conversation_id, transcript)
         model_settings = get_model_settings(model)
-        variants = _guardrail_variants(model_settings)
-        histories = {
-            variant: build_model_history(conversation.id, model, variant)
-            for variant, _ in variants
-        }
+        variants = _guardrail_variants(model_settings, False)
+        histories = _guardrail_histories(conversation.id, model, variants)
         user_message = append_message(
             conversation_id=conversation.id,
             role="user",
@@ -696,17 +722,39 @@ async def post_admin_deployment(request: AdminDeploymentRequest) -> dict:
     }
 
 
-def _guardrail_variants(model_settings: ModelSettings) -> list[tuple[str | None, str | None]]:
-    if not model_settings.guardrails_enabled:
+def _guardrail_variants(
+    model_settings: ModelSettings,
+    enabled: bool,
+) -> list[tuple[str | None, str | None]]:
+    if not enabled:
         return [(None, None)]
-    if not model_settings.guardrail_policy_name:
+    if len(model_settings.guardrail_policy_names) != 2:
         raise ValueError(
-            f"Guardrail comparison is enabled for {model_settings.model}, but no policy is selected."
+            f"Guardrail comparison is enabled for {model_settings.model}, but two policies are not selected."
         )
     return [
-        ("baseline", None),
-        ("guarded", model_settings.guardrail_policy_name),
+        (
+            f"policy_{index + 1}",
+            None if policy_name == DEPLOYMENT_DEFAULT_GUARDRAIL else policy_name,
+        )
+        for index, policy_name in enumerate(model_settings.guardrail_policy_names)
     ]
+
+
+def _guardrail_histories(
+    conversation_id: str,
+    model: str,
+    variants: list[tuple[str | None, str | None]],
+) -> dict[str | None, list[dict[str, str]]]:
+    return {
+        variant: build_model_history(
+            conversation_id,
+            model,
+            variant,
+            policy_name,
+        )
+        for variant, policy_name in variants
+    }
 
 
 def _guardrail_error_details(exc: Exception) -> dict[str, Any] | None:
@@ -801,11 +849,8 @@ async def chat(request: ChatRequest) -> dict:
     try:
         conversation = get_or_create_conversation(request.conversation_id, request.prompt)
         model_settings = get_model_settings(request.model)
-        variants = _guardrail_variants(model_settings)
-        histories = {
-            variant: build_model_history(conversation.id, request.model, variant)
-            for variant, _ in variants
-        }
+        variants = _guardrail_variants(model_settings, request.guardrail_comparison)
+        histories = _guardrail_histories(conversation.id, request.model, variants)
         user_message = append_message(
             conversation_id=conversation.id,
             role="user",
@@ -847,11 +892,8 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
     try:
         conversation = get_or_create_conversation(request.conversation_id, request.prompt)
         model_settings = get_model_settings(request.model)
-        variants = _guardrail_variants(model_settings)
-        histories = {
-            variant: build_model_history(conversation.id, request.model, variant)
-            for variant, _ in variants
-        }
+        variants = _guardrail_variants(model_settings, request.guardrail_comparison)
+        histories = _guardrail_histories(conversation.id, request.model, variants)
         user_message = append_message(
             conversation_id=conversation.id,
             role="user",
@@ -870,11 +912,11 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                     get_conversation(conversation.id) or conversation
                 ),
                 "user_message": message_to_dict(user_message),
-                "guardrail_comparison": model_settings.guardrails_enabled,
-                "guardrail_policy_name": model_settings.guardrail_policy_name,
+                "guardrail_comparison": request.guardrail_comparison,
+                "guardrail_policy_names": list(model_settings.guardrail_policy_names),
             }
         )
-        if model_settings.guardrails_enabled:
+        if request.guardrail_comparison:
             with ThreadPoolExecutor(max_workers=2) as executor:
                 futures = {
                     executor.submit(
@@ -981,11 +1023,8 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
         chunks = retrieval["chunks"]
         grounded_prompt = build_grounded_prompt(request.prompt, chunks)
         model_settings = get_model_settings(request.model)
-        variants = _guardrail_variants(model_settings)
-        histories = {
-            variant: build_model_history(conversation.id, request.model, variant)
-            for variant, _ in variants
-        }
+        variants = _guardrail_variants(model_settings, request.guardrail_comparison)
+        histories = _guardrail_histories(conversation.id, request.model, variants)
         user_message = append_message(
             conversation_id=conversation.id,
             role="user",
@@ -1007,8 +1046,8 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                     get_conversation(conversation.id) or conversation
                 ),
                 "user_message": message_to_dict(user_message),
-                "guardrail_comparison": model_settings.guardrails_enabled,
-                "guardrail_policy_name": model_settings.guardrail_policy_name,
+                "guardrail_comparison": request.guardrail_comparison,
+                "guardrail_policy_names": list(model_settings.guardrail_policy_names),
             }
         )
         yield _sse(
@@ -1018,7 +1057,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                 "embedding": retrieval["embedding"],
             }
         )
-        if model_settings.guardrails_enabled:
+        if request.guardrail_comparison:
             with ThreadPoolExecutor(max_workers=2) as executor:
                 futures = [
                     executor.submit(
@@ -1127,13 +1166,18 @@ async def compare(request: CompareRequest) -> dict:
         model: get_model_settings(model) for model in request.models
     }
     variants_by_model = {
-        model: _guardrail_variants(model_settings)
+        model: _guardrail_variants(model_settings, False)
         for model, model_settings in model_settings_by_name.items()
     }
     histories = {
-        (model, variant): build_model_history(conversation.id, model, variant)
+        (model, variant): build_model_history(
+            conversation.id,
+            model,
+            variant,
+            policy_name,
+        )
         for model, variants in variants_by_model.items()
-        for variant, _ in variants
+        for variant, policy_name in variants
     }
     user_message = append_message(
         conversation_id=conversation.id,
@@ -1164,7 +1208,7 @@ async def compare(request: CompareRequest) -> dict:
         return {
             "model": model,
             "guardrail_comparison": True,
-            "guardrail_policy_name": model_settings.guardrail_policy_name,
+            "guardrail_policy_names": list(model_settings.guardrail_policy_names),
             "variants": variant_results,
         }
 
