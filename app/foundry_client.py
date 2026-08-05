@@ -653,6 +653,30 @@ def transcribe_audio(
         },
     }
 
+    with _create_openai_client(settings) as openai_client:
+        response = openai_client.audio.transcriptions.create(
+            model=transcription_model,
+            file=audio_file,
+        )
+
+    text = getattr(response, "text", "") or ""
+    return {
+        "model": transcription_model,
+        "text": text,
+        "duration_ms": round((time.perf_counter() - started) * 1000),
+        "foundry_request": {
+            "api_surface": "audio_transcriptions",
+            "method": "POST",
+            "path": "/audio/transcriptions",
+            "payload": request,
+        },
+        "foundry_response": {
+            "api_surface": "audio_transcriptions",
+            "payload": _serialize_openai_payload(response),
+            "extracted": {"text": text},
+        },
+    }
+
 
 def transcribe_speech_audio(
     *,
@@ -727,31 +751,6 @@ def transcribe_speech_audio(
         "duration_ms": round((time.perf_counter() - started) * 1000),
         "segments": segments,
     }
-
-    with _create_openai_client(settings) as openai_client:
-        response = openai_client.audio.transcriptions.create(
-            model=transcription_model,
-            file=audio_file,
-        )
-
-    text = getattr(response, "text", "") or ""
-    return {
-        "model": transcription_model,
-        "text": text,
-        "duration_ms": round((time.perf_counter() - started) * 1000),
-        "foundry_request": {
-            "api_surface": "audio_transcriptions",
-            "method": "POST",
-            "path": "/audio/transcriptions",
-            "payload": request,
-        },
-        "foundry_response": {
-            "api_surface": "audio_transcriptions",
-            "payload": _serialize_openai_payload(response),
-            "extracted": {"text": text},
-        },
-    }
-
 
 def synthesize_speech(
     *,
