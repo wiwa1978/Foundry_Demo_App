@@ -92,7 +92,7 @@ param azureSpeechEndpoint string = ''
 param azureSpeechKey string = ''
 
 @description('Enable Microsoft Entra sign-in through Azure Container Apps authentication.')
-param enableEntraAuthentication bool = false
+param enableEntraAuthentication bool = true
 
 @description('Application client ID of the Entra app registration used by Container Apps authentication.')
 param entraAuthenticationClientId string = ''
@@ -218,7 +218,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           env: concat([
             { name: 'AZURE_CLIENT_ID',              value: appIdentity.properties.clientId }
             { name: 'PERSISTENCE_BACKEND',           value: 'cosmos' }
-            { name: 'ENTRA_AUTH_ENABLED',           value: string(enableEntraAuthentication) }
+            { name: 'APP_AUTH_MODE',                value: enableEntraAuthentication ? 'container_apps' : 'disabled' }
             { name: 'FOUNDRY_SUBSCRIPTION_ID',      value: subscription().subscriptionId }
             { name: 'FOUNDRY_RESOURCE_GROUP',       value: sharedResourceGroupName }
             { name: 'FOUNDRY_ACCOUNT_NAME',         value: foundryAccountName }
@@ -242,6 +242,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AZURE_SPEECH_KEY',             secretRef: 'azure-speech-key' }
           ] : [])
           resources: { cpu: json('0.5'), memory: '1Gi' }
+          probes: [
+            {
+              type: 'Liveness'
+              httpGet: { path: '/api/health', port: 8000 }
+              initialDelaySeconds: 10
+              periodSeconds: 30
+            }
+            {
+              type: 'Readiness'
+              httpGet: { path: '/api/health', port: 8000 }
+              initialDelaySeconds: 5
+              periodSeconds: 10
+            }
+          ]
         }
       ]
       scale: {

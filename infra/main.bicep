@@ -160,7 +160,7 @@ param cosmosDatabaseName string
 param cosmosContainerName string = 'foundry-chat-app'
 
 @description('Enable Microsoft Entra sign-in through Azure Container Apps authentication.')
-param enableEntraAuthentication bool = false
+param enableEntraAuthentication bool = true
 
 @description('Application client ID of the Entra app registration used by Container Apps authentication.')
 param entraAuthenticationClientId string = ''

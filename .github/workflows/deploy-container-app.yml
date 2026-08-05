@@ -43,7 +43,7 @@ env:
   AZURE_COSMOS_ACCOUNT_NAME:   ${{ vars.AZURE_COSMOS_ACCOUNT_NAME || 'aifoundrydemo66fbcosmosdb' }}
   AZURE_COSMOS_DATABASE_NAME:  ${{ vars.AZURE_COSMOS_DATABASE_NAME || 'apps-db-shared' }}
   AZURE_COSMOS_CONTAINER_NAME: ${{ vars.AZURE_COSMOS_CONTAINER_NAME || 'foundry-chat-app' }}
-  ENABLE_ENTRA_AUTHENTICATION: ${{ vars.ENABLE_ENTRA_AUTHENTICATION || 'false' }}
+  ENABLE_ENTRA_AUTHENTICATION: ${{ vars.ENABLE_ENTRA_AUTHENTICATION || 'true' }}
   ENTRA_AUTH_CLIENT_ID:        ${{ vars.ENTRA_AUTH_CLIENT_ID }}
   ENTRA_AUTH_TENANT_ID:        ${{ vars.ENTRA_AUTH_TENANT_ID || vars.AZURE_TENANT_ID }}
   IMAGE_NAME: foundry-chat-app
@@ -80,7 +80,17 @@ jobs:
 
       - name: Deploy infrastructure
         if: ${{ github.event_name == 'push' || inputs.deploy_infra }}
+        env:
+          ENTRA_AUTH_CLIENT_SECRET: ${{ secrets.ENTRA_AUTH_CLIENT_SECRET }}
         run: |
+          if [ "${{ env.ENABLE_ENTRA_AUTHENTICATION }}" != "true" ]; then
+            echo "Azure deployment requires ENABLE_ENTRA_AUTHENTICATION=true." >&2
+            exit 1
+          fi
+          if [ -z "${{ env.ENTRA_AUTH_CLIENT_ID }}" ] || [ -z "${{ env.ENTRA_AUTH_TENANT_ID }}" ] || [ -z "$ENTRA_AUTH_CLIENT_SECRET" ]; then
+            echo "Azure deployment requires Entra client ID, tenant ID, and client secret." >&2
+            exit 1
+          fi
           az deployment group create \
             --resource-group "${{ env.RESOURCE_GROUP_NAME }}" \
             --name "foundry-chat-app-infra" \
@@ -102,7 +112,7 @@ jobs:
               cosmosContainerName="${{ env.AZURE_COSMOS_CONTAINER_NAME }}" \
               enableEntraAuthentication="${{ env.ENABLE_ENTRA_AUTHENTICATION }}" \
               entraAuthenticationClientId="${{ env.ENTRA_AUTH_CLIENT_ID }}" \
-              entraAuthenticationClientSecret="${{ secrets.ENTRA_AUTH_CLIENT_SECRET }}" \
+              entraAuthenticationClientSecret="$ENTRA_AUTH_CLIENT_SECRET" \
               entraAuthenticationTenantId="${{ env.ENTRA_AUTH_TENANT_ID }}" \
               containerAppName="${{ env.CONTAINER_APP_NAME }}" \
             --output table

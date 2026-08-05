@@ -83,7 +83,7 @@ param cosmosDatabaseName string
 param cosmosContainerName string
 
 @description('Enable Microsoft Entra sign-in through Azure Container Apps authentication.')
-param enableEntraAuthentication bool = false
+param enableEntraAuthentication bool = true
 
 @description('Application client ID of the Entra app registration used by Container Apps authentication.')
 param entraAuthenticationClientId string = ''
@@ -323,8 +323,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: 'cosmos'
             }
             {
-              name: 'ENTRA_AUTH_ENABLED'
-              value: string(enableEntraAuthentication)
+              name: 'APP_AUTH_MODE'
+              value: enableEntraAuthentication ? 'container_apps' : 'disabled'
             }
             {
               name: 'FOUNDRY_PROJECT_ENDPOINT'
@@ -397,6 +397,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json(containerCpu)
             memory: containerMemory
           }
+          probes: [
+            {
+              type: 'Liveness'
+              httpGet: { path: '/api/health', port: 8000 }
+              initialDelaySeconds: 10
+              periodSeconds: 30
+            }
+            {
+              type: 'Readiness'
+              httpGet: { path: '/api/health', port: 8000 }
+              initialDelaySeconds: 5
+              periodSeconds: 10
+            }
+          ]
         }
       ]
       scale: {
@@ -436,7 +450,7 @@ resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (e
       runtimeVersion: '~1'
     }
     globalValidation: {
-      unauthenticatedClientAction: 'AllowAnonymous'
+      unauthenticatedClientAction: 'RedirectToLoginPage'
       redirectToProvider: 'azureactivedirectory'
     }
     httpSettings: {

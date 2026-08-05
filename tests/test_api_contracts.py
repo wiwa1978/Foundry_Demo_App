@@ -11,6 +11,7 @@ client = TestClient(app)
 
 def test_auth_me_returns_public_unauthenticated_contract(monkeypatch):
     for name in (
+        "APP_AUTH_MODE",
         "ENTRA_AUTH_ENABLED",
         "ENTRA_LOCAL_CLIENT_ID",
         "ENTRA_LOCAL_CLIENT_SECRET",

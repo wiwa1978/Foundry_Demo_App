@@ -1255,6 +1255,8 @@ export default function App() {
     apiTraceSequence.current += 1;
     return {
       ...entry,
+      request: redactTracePayload(entry.request),
+      response: redactTracePayload(entry.response),
       id: `trace-${apiTraceSequence.current}`,
       timestamp: new Date().toISOString(),
     };
@@ -1364,7 +1366,9 @@ export default function App() {
     try {
       const response = await fetch(url, init);
       const durationMs = Math.round(performance.now() - started);
-      const responsePayload = await readTraceResponse(response, options.responseKind);
+      const responsePayload = options.traceResponse === false
+        ? undefined
+        : await readTraceResponse(response, options.responseKind);
       updateApiTrace(traceId, {
         status: response.status,
         durationMs,
@@ -7973,6 +7977,39 @@ function parseRequestBody(body: BodyInit | null | undefined) {
   } catch {
     return body;
   }
+}
+
+const sensitiveTraceKeys = new Set([
+  "audio",
+  "audio_base64",
+  "b64_json",
+  "content",
+  "delta",
+  "input",
+  "instructions",
+  "messages",
+  "prompt",
+  "system_prompt",
+  "text",
+  "token",
+]);
+
+function redactTracePayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.slice(0, 100).map(redactTracePayload);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        sensitiveTraceKeys.has(key.toLowerCase()) ? "[redacted]" : redactTracePayload(item),
+      ]),
+    );
+  }
+  if (typeof value === "string" && value.length > 500) {
+    return `[redacted ${value.length} characters]`;
+  }
+  return value;
 }
 
 function base64ToBlob(base64: string, mimeType: string) {

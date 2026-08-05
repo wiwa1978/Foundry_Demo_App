@@ -2,9 +2,11 @@ import asyncio
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import logging
 import os
 from pathlib import Path
-from typing import Annotated, Any
+import threading
+from typing import Annotated, Any, Callable, Iterator, TypeVar
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
@@ -83,17 +85,30 @@ from app.local_auth import (
     user_from_claims,
 )
 from app.live_interpreter import LiveInterpreterSession
+from app.security import AuthMode, auth_mode, authenticated_user, websocket_origin_allowed
 
 load_dotenv()
 
 app = FastAPI(title="Foundry Chat App")
+logger = logging.getLogger(__name__)
 REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
+MAX_PROMPT_LENGTH = 20_000
+MAX_INSTRUCTIONS_LENGTH = 20_000
+MAX_MODEL_NAME_LENGTH = 200
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+MAX_DOCUMENT_FILES = 10
+MAX_DOCUMENT_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_WEBSOCKET_MESSAGE_BYTES = 1024 * 1024
+MODEL_CALL_CONCURRENCY = max(1, int(os.getenv("MODEL_CALL_CONCURRENCY", "8")))
+model_call_semaphore = threading.BoundedSemaphore(MODEL_CALL_CONCURRENCY)
+T = TypeVar("T")
 PUBLIC_API_PATHS = {
     "/api/auth/me",
     "/api/auth/login",
     "/api/auth/callback",
     "/api/auth/logout",
     "/api/config",
+    "/api/health",
 }
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -105,58 +120,39 @@ if (FRONTEND_DIST / "assets").exists():
 
 
 def _is_entra_auth_enabled() -> bool:
-    return is_local_auth_configured() or os.getenv("ENTRA_AUTH_ENABLED", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
+    return auth_mode() is not AuthMode.DISABLED
 
 
-def _decode_client_principal(request: Request) -> dict | None:
-    encoded_principal = request.headers.get("x-ms-client-principal")
-    if not encoded_principal:
-        return None
-    try:
-        decoded = base64.b64decode(encoded_principal).decode("utf-8")
-        principal = json.loads(decoded)
-    except (ValueError, json.JSONDecodeError):
-        return None
-    return principal if isinstance(principal, dict) else None
+def _authenticated_user_from_request(request: Request | WebSocket) -> dict | None:
+    return authenticated_user(request)
 
 
-def _authenticated_user_from_request(request: Request) -> dict | None:
-    local_user = decode_cookie(request.cookies.get(AUTH_SESSION_COOKIE)) if is_local_auth_configured() else None
-    if local_user:
-        return {key: value for key, value in local_user.items() if key != "exp"}
-    principal = _decode_client_principal(request)
-    user_name = request.headers.get("x-ms-client-principal-name")
-    user_id = request.headers.get("x-ms-client-principal-id")
-    provider = request.headers.get("x-ms-client-principal-idp")
-    if principal:
-        claims = principal.get("claims") if isinstance(principal.get("claims"), list) else []
-        claim_lookup = {
-            str(claim.get("typ")): str(claim.get("val"))
-            for claim in claims
-            if isinstance(claim, dict) and claim.get("typ") and claim.get("val")
-        }
-        return {
-            "authenticated": True,
-            "name": principal.get("userDetails") or user_name,
-            "user_id": principal.get("userId") or user_id,
-            "identity_provider": principal.get("identityProvider") or provider,
-            "email": claim_lookup.get("preferred_username")
-            or claim_lookup.get("email")
-            or user_name,
-        }
-    if user_name or user_id:
-        return {
-            "authenticated": True,
-            "name": user_name,
-            "user_id": user_id,
-            "identity_provider": provider,
-            "email": user_name,
-        }
-    return None
+async def _run_model_call(function: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
+    return await asyncio.to_thread(_invoke_model_call, function, args, kwargs)
+
+
+def _invoke_model_call(
+    function: Callable[..., T],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> T:
+    with model_call_semaphore:
+        return function(*args, **kwargs)
+
+
+def _bounded_stream_chat(**kwargs: Any) -> Iterator[dict[str, Any]]:
+    with model_call_semaphore:
+        yield from stream_chat(**kwargs)
+
+
+def _upstream_error(operation: str, exc: Exception) -> HTTPException:
+    logger.exception("%s failed", operation, exc_info=exc)
+    return HTTPException(status_code=502, detail=f"{operation} failed. Try again later.")
+
+
+def _public_provider_error(operation: str, exc: Exception) -> str:
+    logger.exception("%s failed", operation, exc_info=exc)
+    return f"{operation} failed. Try again later."
 
 
 @app.middleware("http")
@@ -182,8 +178,8 @@ def startup() -> None:
 
 
 class ChatRequest(BaseModel):
-    model: str = Field(min_length=1)
-    prompt: str = Field(min_length=1)
+    model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
+    prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
     conversation_id: str | None = None
     reasoning_effort: str | None = None
     guardrail_comparison: bool = False
@@ -204,8 +200,8 @@ class ChatRequest(BaseModel):
 
 
 class DocumentQuestionRequest(BaseModel):
-    model: str = Field(min_length=1)
-    prompt: str = Field(min_length=1)
+    model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
+    prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
     conversation_id: str | None = None
     reasoning_effort: str | None = None
     guardrail_comparison: bool = False
@@ -226,8 +222,8 @@ class DocumentQuestionRequest(BaseModel):
 
 
 class CompareRequest(BaseModel):
-    models: list[str] = Field(min_length=1, max_length=12)
-    prompt: str = Field(min_length=1)
+    models: list[str] = Field(min_length=1, max_length=4)
+    prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
     conversation_id: str | None = None
     reasoning_effort: str | None = None
     use_case: str = "comparison"
@@ -255,8 +251,8 @@ class CompareRequest(BaseModel):
 
 
 class ImageGenerationRequest(BaseModel):
-    model: str = Field(min_length=1)
-    prompt: str = Field(min_length=1)
+    model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
+    prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
     width: Annotated[int, Field(ge=768)] = 1024
     height: Annotated[int, Field(ge=768)] = 1024
 
@@ -276,10 +272,10 @@ class ImageGenerationRequest(BaseModel):
 
 
 class ModelSettingsRequest(BaseModel):
-    model: str = Field(min_length=1)
+    model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
     api_surface: str = "responses"
     modalities: list[str] = Field(default_factory=lambda: ["text"])
-    system_prompt: str = ""
+    system_prompt: str = Field(default="", max_length=MAX_INSTRUCTIONS_LENGTH)
     temperature: Annotated[float, Field(ge=0, le=2)] = 0.7
     top_p: Annotated[float, Field(gt=0, le=1)] = 1.0
     max_tokens: Annotated[int, Field(ge=1, le=4096)] = 1024
@@ -323,7 +319,7 @@ class ModelSettingsRequest(BaseModel):
 
 
 class ModelRegistrationRequest(BaseModel):
-    model: str = Field(min_length=1)
+    model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
 
     @field_validator("model")
     @classmethod
@@ -335,9 +331,12 @@ class ModelRegistrationRequest(BaseModel):
 
 
 class RealtimeSessionRequest(BaseModel):
-    model: str | None = None
-    instructions: str = "You are a helpful Foundry voice assistant. Keep responses concise."
-    voice: str = "alloy"
+    model: str | None = Field(default=None, max_length=MAX_MODEL_NAME_LENGTH)
+    instructions: str = Field(
+        default="You are a helpful Foundry voice assistant. Keep responses concise.",
+        max_length=MAX_INSTRUCTIONS_LENGTH,
+    )
+    voice: str = Field(default="alloy", max_length=100)
 
     @field_validator("model", "instructions", "voice")
     @classmethod
@@ -423,6 +422,11 @@ def get_config() -> dict:
     }
 
 
+@app.get("/api/health")
+def get_health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 @app.get("/api/auth/me")
 def get_authenticated_user(request: Request) -> dict:
     user = _authenticated_user_from_request(request)
@@ -506,7 +510,7 @@ def put_settings(request: ModelSettingsRequest) -> dict:
                 and not guardrail_policy_exists(policy_name)
             ]
         except Exception as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise _upstream_error("Guardrail policy validation", exc) from exc
         if missing_policies:
             raise HTTPException(
                 status_code=400,
@@ -528,7 +532,7 @@ def get_guardrail_policies() -> dict:
     try:
         return {"policies": list_guardrail_policies()}
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Guardrail policy discovery", exc) from exc
 
 
 @app.get("/api/guardrails/deployment-policy")
@@ -538,7 +542,7 @@ def get_guardrail_deployment_policy(model: str = Query(min_length=1)) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Deployment policy lookup", exc) from exc
 
 
 @app.post("/api/models")
@@ -574,7 +578,7 @@ def get_models() -> dict:
                 )
             ),
             "deployments": [],
-            "discovery_error": str(exc),
+            "discovery_error": _public_provider_error("Model discovery", exc),
         }
 
     discovered_models = [deployment["name"] for deployment in deployments]
@@ -630,7 +634,7 @@ async def post_image_generation(request: ImageGenerationRequest) -> dict:
             detail=f"{request.model} is not configured with the image capability.",
         )
     try:
-        return await asyncio.to_thread(
+        return await _run_model_call(
             generate_image,
             model=request.model,
             prompt=request.prompt,
@@ -638,7 +642,7 @@ async def post_image_generation(request: ImageGenerationRequest) -> dict:
             height=request.height,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Image generation", exc) from exc
 
 
 @app.post("/api/images/edit")
@@ -675,7 +679,7 @@ async def post_image_edit(
     if len(image_bytes) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Source image cannot exceed 10 MB.")
     try:
-        return await asyncio.to_thread(
+        return await _run_model_call(
             edit_image,
             model=model,
             prompt=prompt,
@@ -685,13 +689,13 @@ async def post_image_edit(
             height=height,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Image editing", exc) from exc
 
 
 @app.post("/api/realtime/session")
 async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
     try:
-        session = await asyncio.to_thread(
+        session = await _run_model_call(
             create_realtime_client_secret,
             model=request.model,
             instructions=(
@@ -707,7 +711,7 @@ async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
             "guardrail_status": "Realtime uses the deployment-assigned policy.",
         }
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Realtime session creation", exc) from exc
 
 
 @app.post("/api/voice/traditional")
@@ -722,12 +726,14 @@ async def post_traditional_voice(
     if not model:
         raise HTTPException(status_code=422, detail="Model deployment name cannot be blank.")
     normalized_reasoning_effort = _normalize_reasoning_effort(reasoning_effort)
-    audio_bytes = await audio.read()
+    audio_bytes = await audio.read(MAX_AUDIO_BYTES + 1)
     if not audio_bytes:
         raise HTTPException(status_code=422, detail="Recorded audio was empty.")
+    if len(audio_bytes) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Recorded audio cannot exceed 25 MB.")
 
     try:
-        transcription = await asyncio.to_thread(
+        transcription = await _run_model_call(
             transcribe_audio,
             audio=audio_bytes,
             filename=audio.filename or "recording.webm",
@@ -767,12 +773,12 @@ async def post_traditional_voice(
             if result.get("error") or not result.get("content"):
                 return result
             try:
-                speech = await asyncio.to_thread(
+                speech = await _run_model_call(
                     synthesize_speech,
                     text=result["content"],
                 )
             except Exception as exc:
-                return {**result, "speech_error": str(exc)}
+                return {**result, "speech_error": _public_provider_error("Speech synthesis", exc)}
             return {
                 **result,
                 "speech": {
@@ -804,7 +810,7 @@ async def post_traditional_voice(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Traditional voice processing", exc) from exc
 
 
 @app.websocket("/api/voice-live")
@@ -812,9 +818,12 @@ async def voice_live_proxy(websocket: WebSocket) -> None:
     if _is_entra_auth_enabled() and _authenticated_user_from_request(websocket) is None:
         await websocket.close(code=1008, reason="Sign in with Microsoft Entra ID to use this app.")
         return
+    if not websocket_origin_allowed(websocket):
+        await websocket.close(code=1008, reason="WebSocket origin is not allowed.")
+        return
     await websocket.accept(subprotocol="realtime")
     try:
-        connection = await asyncio.to_thread(create_voice_live_connection_info)
+        connection = await _run_model_call(create_voice_live_connection_info)
         async with websocket_connect(
             connection["url"],
             additional_headers={"Authorization": f"Bearer {connection['token']}"},
@@ -826,8 +835,12 @@ async def voice_live_proxy(websocket: WebSocket) -> None:
                     if message["type"] == "websocket.disconnect":
                         return
                     if message.get("text") is not None:
+                        if len(message["text"].encode("utf-8")) > MAX_WEBSOCKET_MESSAGE_BYTES:
+                            raise ValueError("WebSocket message is too large.")
                         await upstream.send(message["text"])
                     elif message.get("bytes") is not None:
+                        if len(message["bytes"]) > MAX_WEBSOCKET_MESSAGE_BYTES:
+                            raise ValueError("WebSocket message is too large.")
                         await upstream.send(message["bytes"])
 
             async def relay_to_browser() -> None:
@@ -850,7 +863,12 @@ async def voice_live_proxy(websocket: WebSocket) -> None:
         pass
     except Exception as exc:
         try:
-            await websocket.send_json({"type": "error", "error": {"message": str(exc)}})
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "error": {"message": _public_provider_error("Voice Live session", exc)},
+                }
+            )
             await websocket.close(code=1011)
         except RuntimeError:
             pass
@@ -860,6 +878,9 @@ async def voice_live_proxy(websocket: WebSocket) -> None:
 async def live_interpreter(websocket: WebSocket) -> None:
     if _is_entra_auth_enabled() and _authenticated_user_from_request(websocket) is None:
         await websocket.close(code=1008, reason="Sign in with Microsoft Entra ID to use this app.")
+        return
+    if not websocket_origin_allowed(websocket):
+        await websocket.close(code=1008, reason="WebSocket origin is not allowed.")
         return
     await websocket.accept()
     session: LiveInterpreterSession | None = None
@@ -896,8 +917,12 @@ async def live_interpreter(websocket: WebSocket) -> None:
             if message["type"] == "websocket.disconnect":
                 break
             if message.get("bytes") is not None:
+                if len(message["bytes"]) > MAX_WEBSOCKET_MESSAGE_BYTES:
+                    raise ValueError("WebSocket message is too large.")
                 session.write(message["bytes"])
             elif message.get("text"):
+                if len(message["text"].encode("utf-8")) > MAX_WEBSOCKET_MESSAGE_BYTES:
+                    raise ValueError("WebSocket message is too large.")
                 control = json.loads(message["text"])
                 if control.get("type") == "stop":
                     break
@@ -905,7 +930,9 @@ async def live_interpreter(websocket: WebSocket) -> None:
         pass
     except Exception as exc:
         try:
-            await websocket.send_json({"type": "error", "error": str(exc)})
+            await websocket.send_json(
+                {"type": "error", "error": _public_provider_error("Live Interpreter", exc)}
+            )
             await websocket.close(code=1011)
         except RuntimeError:
             pass
@@ -922,22 +949,24 @@ async def post_transcription(
     language: str = Form("en-US"),
     model: str = Form(...),
 ) -> dict:
-    audio_bytes = await audio.read()
+    audio_bytes = await audio.read(MAX_AUDIO_BYTES + 1)
     if not audio_bytes:
         raise HTTPException(status_code=422, detail="Recorded audio was empty.")
+    if len(audio_bytes) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Recorded audio cannot exceed 25 MB.")
     try:
         selected_model = model.strip()
         if not selected_model:
             raise ValueError("Transcription model deployment name cannot be blank.")
         if selected_model.lower() == load_settings().speech_transcription_model.lower():
-            result = await asyncio.to_thread(
+            result = await _run_model_call(
                 transcribe_speech_audio,
                 audio=audio_bytes,
                 language=language.strip() or "en-US",
                 model=selected_model,
             )
         else:
-            result = await asyncio.to_thread(
+            result = await _run_model_call(
                 transcribe_audio,
                 audio=audio_bytes,
                 filename=audio.filename or "transcription.wav",
@@ -949,7 +978,7 @@ async def post_transcription(
             raise RuntimeError("The selected model did not recognize any speech in the audio.")
         return result
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Audio transcription", exc) from exc
 
 
 @app.get("/api/conversations")
@@ -996,20 +1025,24 @@ def get_documents() -> dict:
     try:
         return {"documents": [document_to_dict(item) for item in list_rag_documents()]}
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Document listing", exc) from exc
 
 
 @app.post("/api/documents")
 async def post_documents(files: list[UploadFile] = File(...)) -> dict:
     if not files:
         raise HTTPException(status_code=422, detail="Upload at least one document.")
+    if len(files) > MAX_DOCUMENT_FILES:
+        raise HTTPException(status_code=413, detail="Upload at most 10 documents at a time.")
 
     uploaded_documents = []
     embedding_traces = []
     try:
         for file in files:
-            data = await file.read()
-            result = await asyncio.to_thread(
+            data = await file.read(MAX_DOCUMENT_UPLOAD_BYTES + 1)
+            if len(data) > MAX_DOCUMENT_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="Document upload cannot exceed 50 MB.")
+            result = await _run_model_call(
                 add_document,
                 filename=file.filename or "uploaded-document",
                 content_type=file.content_type,
@@ -1020,7 +1053,7 @@ async def post_documents(files: list[UploadFile] = File(...)) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Document upload", exc) from exc
 
     return {
         "documents": uploaded_documents,
@@ -1036,7 +1069,7 @@ def delete_document_by_id(document_id: str) -> dict:
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Document deletion", exc) from exc
     return {"deleted": True}
 
 
@@ -1062,7 +1095,7 @@ def get_admin_deployment_config() -> dict:
 @app.post("/api/admin/deployments")
 async def post_admin_deployment(request: AdminDeploymentRequest) -> dict:
     try:
-        deployment = await asyncio.to_thread(
+        deployment = await _run_model_call(
             create_foundry_deployment,
             FoundryDeploymentRequest(
                 deployment_name=request.deployment_name,
@@ -1086,7 +1119,7 @@ async def post_admin_deployment(request: AdminDeploymentRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Model deployment", exc) from exc
 
     return {
         "deployment": deployment,
@@ -1161,19 +1194,20 @@ def _run_and_store_variant(
         guardrail_policy_name=policy_name,
     )
     try:
-        response = complete_chat(
-            model=model_settings.model,
-            prompt=prompt,
-            api_surface=model_settings.api_surface,
-            system_prompt=system_prompt,
-            temperature=model_settings.temperature,
-            top_p=model_settings.top_p,
-            max_tokens=model_settings.max_tokens,
-            repetition_penalty=model_settings.repetition_penalty,
-            reasoning_effort=reasoning_effort,
-            history=history,
-            guardrail_policy_name=policy_name,
-        )
+        with model_call_semaphore:
+            response = complete_chat(
+                model=model_settings.model,
+                prompt=prompt,
+                api_surface=model_settings.api_surface,
+                system_prompt=system_prompt,
+                temperature=model_settings.temperature,
+                top_p=model_settings.top_p,
+                max_tokens=model_settings.max_tokens,
+                repetition_penalty=model_settings.repetition_penalty,
+                reasoning_effort=reasoning_effort,
+                history=history,
+                guardrail_policy_name=policy_name,
+            )
         assistant_message = append_message(
             conversation_id=conversation_id,
             role="assistant",
@@ -1199,7 +1233,7 @@ def _run_and_store_variant(
             content="",
             model=model_settings.model,
             api_surface=model_settings.api_surface,
-            error=str(exc),
+            error=_public_provider_error("Model request", exc),
             guardrail_variant=variant,
             guardrail_policy_name=policy_name,
             guardrail_results=guardrail_results,
@@ -1207,7 +1241,7 @@ def _run_and_store_variant(
         return {
             "model": model_settings.model,
             "api_surface": model_settings.api_surface,
-            "error": str(exc),
+            "error": "Model request failed. Try again later.",
             "guardrail_variant": variant,
             "guardrail_policy_name": policy_name,
             "guardrail_results": guardrail_results,
@@ -1258,7 +1292,7 @@ async def chat(request: ChatRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Chat request", exc) from exc
 
 
 @app.post("/api/chat/stream")
@@ -1330,7 +1364,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
             return
 
         try:
-            for event in stream_chat(
+            for event in _bounded_stream_chat(
                 model=request.model,
                 prompt=request.prompt,
                 api_surface=model_settings.api_surface,
@@ -1375,12 +1409,12 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                 content="",
                 model=request.model,
                 api_surface=model_settings.api_surface,
-                error=str(exc),
+                error=_public_provider_error("Model stream", exc),
             )
             yield _sse(
                 {
                     "type": "error",
-                    "error": str(exc),
+                    "error": "Model stream failed. Try again later.",
                     "conversation": conversation_to_dict(
                         get_conversation(conversation.id) or conversation
                     ),
@@ -1412,7 +1446,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _upstream_error("Document question", exc) from exc
 
     def events():
         yield _sse(
@@ -1472,7 +1506,7 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
             return
 
         try:
-            for event in stream_chat(
+            for event in _bounded_stream_chat(
                 model=request.model,
                 prompt=grounded_prompt,
                 api_surface=model_settings.api_surface,
@@ -1517,12 +1551,12 @@ def document_ask_stream(request: DocumentQuestionRequest) -> StreamingResponse:
                 content="",
                 model=request.model,
                 api_surface=model_settings.api_surface,
-                error=str(exc),
+                error=_public_provider_error("Document answer stream", exc),
             )
             yield _sse(
                 {
                     "type": "error",
-                    "error": str(exc),
+                    "error": "Document answer stream failed. Try again later.",
                     "conversation": conversation_to_dict(
                         get_conversation(conversation.id) or conversation
                     ),

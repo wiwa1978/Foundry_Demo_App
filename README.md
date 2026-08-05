@@ -140,7 +140,9 @@ expires after eight hours.
 | `AZURE_VOICELIVE_ENDPOINT` | Optional Foundry or Speech resource root endpoint for the Voice Live travel concierge. Defaults to `AZURE_SPEECH_ENDPOINT`. |
 | `AZURE_VOICELIVE_MODEL` | Managed Voice Live model name. Defaults to `gpt-realtime`. |
 | `AZURE_VOICELIVE_VOICE` | Azure Speech voice used by Voice Live. Defaults to `en-US-Ava:DragonHDLatestNeural`. |
-| `ENTRA_AUTH_ENABLED` | Optional flag used by the deployed backend. Set to `true` with Azure Container Apps authentication to require a signed-in Microsoft Entra user for protected `/api/*` routes. |
+| `APP_AUTH_MODE` | Authentication mode: `disabled` for local demos only, `local` for the signed-cookie development flow, or `container_apps` for trusted Azure Container Apps identity headers. Azure infrastructure uses `container_apps`. |
+| `ALLOWED_ORIGINS` | Optional comma-separated WebSocket origin allowlist. WebSockets require the request origin to match the host when omitted. |
+| `MODEL_CALL_CONCURRENCY` | Maximum concurrent Foundry model operations per application process. Defaults to `8`. |
 | `ENTRA_LOCAL_CLIENT_ID` | Client ID of a confidential Microsoft Entra web app used for local sign-in. Do not use the workload identity client ID. |
 | `ENTRA_LOCAL_CLIENT_SECRET` | Client secret value for the local web app registration. Keep it only in `.env`. |
 | `ENTRA_LOCAL_TENANT_ID` | Microsoft Entra tenant ID for local sign-in. |

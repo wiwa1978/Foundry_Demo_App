@@ -346,6 +346,35 @@ def build_foundry_stream_response_trace(
     }
 
 
+SENSITIVE_TRACE_KEYS = {
+    "audio",
+    "audio_base64",
+    "b64_json",
+    "content",
+    "delta",
+    "input",
+    "instructions",
+    "messages",
+    "prompt",
+    "system_prompt",
+    "text",
+    "token",
+}
+
+
+def redact_foundry_trace(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: "[redacted]" if key.lower() in SENSITIVE_TRACE_KEYS else redact_foundry_trace(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_foundry_trace(item) for item in value[:100]]
+    if isinstance(value, str) and len(value) > 500:
+        return f"[redacted {len(value)} characters]"
+    return value
+
+
 def _extract_guardrail_results(payload: Any) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         return None
@@ -697,8 +726,8 @@ def complete_chat(
         "usage": _usage_to_dict(usage),
         "guardrail_policy_name": guardrail_policy_name,
         "guardrail_results": foundry_response["extracted"]["guardrail_results"],
-        "foundry_request": foundry_request,
-        "foundry_response": foundry_response,
+        "foundry_request": redact_foundry_trace(foundry_request),
+        "foundry_response": redact_foundry_trace(foundry_response),
     }
 
 
@@ -736,10 +765,8 @@ def create_embeddings(
             "path": "/embeddings",
             "payload": {
                 "model": embedding_model,
-                "input": [
-                    f"{item[:240]}{'...' if len(item) > 240 else ''}"
-                    for item in normalized_inputs
-                ],
+                "input_count": len(normalized_inputs),
+                "input_characters": sum(len(item) for item in normalized_inputs),
             },
         },
         "foundry_response": {
@@ -804,8 +831,8 @@ def transcribe_audio(
         },
         "foundry_response": {
             "api_surface": "audio_transcriptions",
-            "payload": _serialize_openai_payload(response),
-            "extracted": {"text": text},
+            "payload": {"text_characters": len(text)},
+            "extracted": {"text": "[redacted]"},
         },
     }
 
@@ -934,7 +961,7 @@ def synthesize_speech(
             "api_surface": "audio_speech",
             "method": "POST",
             "path": "/audio/speech",
-            "payload": {**request, "input": text[:4000]},
+            "payload": {**request, "input": "[redacted]", "input_characters": len(text)},
         },
         "foundry_response": {
             "api_surface": "audio_speech",
@@ -1088,7 +1115,7 @@ def stream_chat(
         history=history,
         guardrail_policy_name=guardrail_policy_name,
     )
-    yield {"type": "foundry_request", "request": foundry_request}
+    yield {"type": "foundry_request", "request": redact_foundry_trace(foundry_request)}
 
     extra_headers = (
         {"x-policy-id": guardrail_policy_name} if guardrail_policy_name else None
@@ -1102,7 +1129,8 @@ def stream_chat(
                 extra_headers=extra_headers,
             )
             for event in stream:
-                foundry_events.append(event)
+                if len(foundry_events) < 200:
+                    foundry_events.append(event)
                 usage = getattr(event, "usage", None) or usage
                 if not event.choices:
                     continue
@@ -1118,7 +1146,8 @@ def stream_chat(
                 extra_headers=extra_headers,
             )
             for event in stream:
-                foundry_events.append(event)
+                if len(foundry_events) < 200:
+                    foundry_events.append(event)
                 event_type = getattr(event, "type", "")
                 if event_type == "response.output_text.delta":
                     delta = getattr(event, "delta", "")
@@ -1140,7 +1169,7 @@ def stream_chat(
     )
     yield {
         "type": "foundry_response",
-        "response": foundry_response,
+        "response": redact_foundry_trace(foundry_response),
     }
     yield {
         "type": "completed",

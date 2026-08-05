@@ -46,7 +46,7 @@ param foundryEmbeddingModel   = 'text-embedding-3-small'
 param foundryRealtimeEndpoint = ''
 param foundryRealtimeModel    = 'gpt-realtime-2.1'
 
-param enableEntraAuthentication = false
+param enableEntraAuthentication = true
 param entraAuthenticationClientId = ''
 param entraAuthenticationClientSecret = ''
 param entraAuthenticationTenantId = ''
