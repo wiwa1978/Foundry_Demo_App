@@ -4,9 +4,22 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.foundry_client import FoundrySettings, transcribe_audio, transcribe_speech_audio
+from app.main import _is_transcription_model
 
 
 class SpeechTranscriptionTests(unittest.TestCase):
+    def test_recognizes_supported_transcription_model_families(self) -> None:
+        for model in (
+            "GPT-transcribe",
+            "gpt-4o-transcribe",
+            "gpt-4o-mini-transcribe",
+            "MAI-Transcribe-1.5",
+        ):
+            with self.subTest(model=model):
+                self.assertTrue(_is_transcription_model(model))
+
+        self.assertFalse(_is_transcription_model("gpt-5.5"))
+
     @patch("app.foundry_client._create_openai_client")
     @patch("app.foundry_client.load_settings")
     def test_openai_transcription_returns_text_and_trace(
@@ -89,11 +102,13 @@ class SpeechTranscriptionTests(unittest.TestCase):
                 "azure.cognitiveservices.speech": speechsdk,
             },
         ):
-            result = transcribe_speech_audio(audio=b"RIFF-test", language="en-US")
+            result = transcribe_speech_audio(
+                audio=b"RIFF-test", language="en-US", model="MAI-Transcribe-custom"
+            )
 
         self.assertEqual(result["text"], "Hello. World.")
         self.assertEqual(result["segments"], ["Hello.", "World."])
-        self.assertEqual(result["model"], "MAI-Transcribe-1.5")
+        self.assertEqual(result["model"], "MAI-Transcribe-custom")
         speechsdk.SpeechConfig.assert_called_once_with(
             token_credential=get_credential.return_value,
             endpoint="https://speech.example.com/",

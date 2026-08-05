@@ -35,6 +35,9 @@ class FoundrySettings:
     speech_endpoint: str | None
     speech_key: str | None
     speech_transcription_model: str
+    voice_live_endpoint: str | None = None
+    voice_live_model: str = "gpt-realtime"
+    voice_live_voice: str = "en-US-Ava:DragonHDLatestNeural"
 
     @property
     def is_configured(self) -> bool:
@@ -50,6 +53,14 @@ class FoundrySettings:
 
     @property
     def is_speech_transcription_configured(self) -> bool:
+        return bool(self.speech_endpoint)
+
+    @property
+    def is_voice_live_configured(self) -> bool:
+        return bool(self.voice_live_endpoint and self.voice_live_model)
+
+    @property
+    def is_live_interpreter_configured(self) -> bool:
         return bool(self.speech_endpoint)
 
     @property
@@ -106,6 +117,15 @@ def load_settings() -> FoundrySettings:
         speech_key=os.getenv("AZURE_SPEECH_KEY"),
         speech_transcription_model=(
             os.getenv("AZURE_SPEECH_TRANSCRIPTION_MODEL") or "MAI-Transcribe-1.5"
+        ),
+        voice_live_endpoint=(
+            os.getenv("AZURE_VOICELIVE_ENDPOINT")
+            or os.getenv("AZURE_SPEECH_ENDPOINT")
+        ),
+        voice_live_model=os.getenv("AZURE_VOICELIVE_MODEL") or "gpt-realtime",
+        voice_live_voice=(
+            os.getenv("AZURE_VOICELIVE_VOICE")
+            or "en-US-Ava:DragonHDLatestNeural"
         ),
     )
 
@@ -742,9 +762,9 @@ def transcribe_audio(
     model: str | None = None,
 ) -> dict[str, Any]:
     settings = load_settings()
-    if not settings.is_traditional_voice_configured:
+    if not settings.endpoint:
         raise RuntimeError(
-            "Foundry STT/TTS is not configured. Set FOUNDRY_PROJECT_ENDPOINT and audio model deployments."
+            "Foundry transcription is not configured. Set FOUNDRY_PROJECT_ENDPOINT."
         )
 
     transcription_model = (model or settings.transcription_model).strip()
@@ -794,6 +814,7 @@ def transcribe_speech_audio(
     *,
     audio: bytes,
     language: str = "en-US",
+    model: str | None = None,
 ) -> dict[str, Any]:
     settings = load_settings()
     if not settings.is_speech_transcription_configured:
@@ -857,7 +878,7 @@ def transcribe_speech_audio(
 
     text = " ".join(segment for segment in segments if segment).strip()
     return {
-        "model": settings.speech_transcription_model,
+        "model": (model or settings.speech_transcription_model).strip(),
         "text": text,
         "language": language,
         "duration_ms": round((time.perf_counter() - started) * 1000),
@@ -1001,6 +1022,32 @@ def create_realtime_client_secret(
         "model": realtime_model,
         "voice": payload["session"]["audio"]["output"]["voice"],
         "expires_at": data.get("expires_at") or data.get("client_secret", {}).get("expires_at"),
+    }
+
+
+def create_voice_live_connection_info() -> dict[str, str]:
+    settings = load_settings()
+    if not settings.is_voice_live_configured:
+        raise RuntimeError(
+            "Voice Live is not configured. Set AZURE_VOICELIVE_ENDPOINT to the "
+            "Foundry or Azure Speech resource endpoint."
+        )
+
+    endpoint = (settings.voice_live_endpoint or "").rstrip("/")
+    parsed = urlparse(endpoint)
+    if not parsed.scheme or not parsed.netloc:
+        raise RuntimeError("AZURE_VOICELIVE_ENDPOINT must be an absolute HTTPS endpoint.")
+    websocket_scheme = "wss" if parsed.scheme == "https" else "ws"
+    websocket_url = (
+        f"{websocket_scheme}://{parsed.netloc}/voice-live/realtime/calls"
+        f"?api-version=2026-04-10&model={settings.voice_live_model}"
+    )
+    token = get_azure_credential().get_token("https://ai.azure.com/.default").token
+    return {
+        "url": websocket_url,
+        "token": token,
+        "model": settings.voice_live_model,
+        "voice": settings.voice_live_voice,
     }
 
 

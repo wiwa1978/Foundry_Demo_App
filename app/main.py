@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
+from websockets.asyncio.client import connect as websocket_connect
 
 from app.conversation_store import (
     append_message,
@@ -52,6 +53,7 @@ from app.foundry_client import (
     build_foundry_request_trace,
     complete_chat,
     create_realtime_client_secret,
+    create_voice_live_connection_info,
     edit_image,
     generate_image,
     load_settings,
@@ -80,6 +82,7 @@ from app.local_auth import (
     is_local_auth_configured,
     user_from_claims,
 )
+from app.live_interpreter import LiveInterpreterSession
 
 load_dotenv()
 
@@ -413,6 +416,10 @@ def get_config() -> dict:
         "tts_voice": settings.tts_voice,
         "is_speech_transcription_configured": settings.is_speech_transcription_configured,
         "speech_transcription_model": settings.speech_transcription_model,
+        "is_voice_live_configured": settings.is_voice_live_configured,
+        "voice_live_model": settings.voice_live_model,
+        "voice_live_voice": settings.voice_live_voice,
+        "is_live_interpreter_configured": settings.is_live_interpreter_configured,
     }
 
 
@@ -549,12 +556,23 @@ def post_model(request: ModelRegistrationRequest) -> dict:
 
 @app.get("/api/models")
 def get_models() -> dict:
-    configured_models = load_settings().models
+    settings = load_settings()
+    configured_models = settings.models
     try:
         deployments = list_foundry_deployments()
     except Exception as exc:
         return {
             "models": configured_models,
+            "transcription_models": list(
+                dict.fromkeys(
+                    model
+                    for model in (
+                        settings.speech_transcription_model,
+                        settings.transcription_model,
+                    )
+                    if model.strip()
+                )
+            ),
             "deployments": [],
             "discovery_error": str(exc),
         }
@@ -567,14 +585,40 @@ def get_models() -> dict:
             if model.strip()
         )
     )
+    transcription_models = list(
+        dict.fromkeys(
+            [
+                deployment["name"]
+                for deployment in deployments
+                if _is_transcription_model(
+                    deployment.get("model_name") or deployment["name"]
+                )
+                or _is_transcription_model(deployment["name"])
+            ]
+            + [
+                model
+                for model in (
+                    settings.speech_transcription_model,
+                    settings.transcription_model,
+                )
+                if model.strip()
+            ]
+        )
+    )
     return {
         "models": models,
+        "transcription_models": transcription_models,
         "deployments": deployments,
         "model_modalities": {
             model: list(get_model_settings(model).modalities) for model in models
         },
         "discovery_error": None,
     }
+
+
+def _is_transcription_model(model: str) -> bool:
+    normalized_model = model.strip().lower()
+    return "transcribe" in normalized_model or "whisper" in normalized_model
 
 
 @app.post("/api/images/generate")
@@ -765,22 +809,146 @@ async def post_traditional_voice(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@app.websocket("/api/voice-live")
+async def voice_live_proxy(websocket: WebSocket) -> None:
+    if _is_entra_auth_enabled() and _authenticated_user_from_request(websocket) is None:
+        await websocket.close(code=1008, reason="Sign in with Microsoft Entra ID to use this app.")
+        return
+    await websocket.accept(subprotocol="realtime")
+    try:
+        connection = await asyncio.to_thread(create_voice_live_connection_info)
+        async with websocket_connect(
+            connection["url"],
+            additional_headers={"Authorization": f"Bearer {connection['token']}"},
+            subprotocols=["realtime"],
+        ) as upstream:
+            async def relay_to_service() -> None:
+                while True:
+                    message = await websocket.receive()
+                    if message["type"] == "websocket.disconnect":
+                        return
+                    if message.get("text") is not None:
+                        await upstream.send(message["text"])
+                    elif message.get("bytes") is not None:
+                        await upstream.send(message["bytes"])
+
+            async def relay_to_browser() -> None:
+                async for message in upstream:
+                    if isinstance(message, bytes):
+                        await websocket.send_bytes(message)
+                    else:
+                        await websocket.send_text(message)
+
+            tasks = {
+                asyncio.create_task(relay_to_service()),
+                asyncio.create_task(relay_to_browser()),
+            }
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            for task in done:
+                task.result()
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        try:
+            await websocket.send_json({"type": "error", "error": {"message": str(exc)}})
+            await websocket.close(code=1011)
+        except RuntimeError:
+            pass
+
+
+@app.websocket("/api/live-interpreter")
+async def live_interpreter(websocket: WebSocket) -> None:
+    if _is_entra_auth_enabled() and _authenticated_user_from_request(websocket) is None:
+        await websocket.close(code=1008, reason="Sign in with Microsoft Entra ID to use this app.")
+        return
+    await websocket.accept()
+    session: LiveInterpreterSession | None = None
+    sender: asyncio.Task | None = None
+    try:
+        start_message = await websocket.receive_json()
+        if start_message.get("type") != "start":
+            raise ValueError("The first message must start a Live Interpreter session.")
+        session = LiveInterpreterSession(
+            settings=load_settings(),
+            target_language=str(start_message.get("target_language", "")),
+            loop=asyncio.get_running_loop(),
+        )
+        await session.start()
+        await websocket.send_json(
+            {
+                "type": "ready",
+                "input_format": "pcm_s16le_16000_mono",
+                "output_format": "pcm_s16le_16000_mono",
+            }
+        )
+
+        async def send_events() -> None:
+            while True:
+                kind, payload = await session.events.get()
+                if kind == "bytes":
+                    await websocket.send_bytes(payload)
+                else:
+                    await websocket.send_json(payload)
+
+        sender = asyncio.create_task(send_events())
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                break
+            if message.get("bytes") is not None:
+                session.write(message["bytes"])
+            elif message.get("text"):
+                control = json.loads(message["text"])
+                if control.get("type") == "stop":
+                    break
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        try:
+            await websocket.send_json({"type": "error", "error": str(exc)})
+            await websocket.close(code=1011)
+        except RuntimeError:
+            pass
+    finally:
+        if sender:
+            sender.cancel()
+        if session:
+            await session.close()
+
+
 @app.post("/api/transcriptions")
 async def post_transcription(
     audio: UploadFile = File(...),
     language: str = Form("en-US"),
+    model: str = Form(...),
 ) -> dict:
     audio_bytes = await audio.read()
     if not audio_bytes:
         raise HTTPException(status_code=422, detail="Recorded audio was empty.")
     try:
-        result = await asyncio.to_thread(
-            transcribe_speech_audio,
-            audio=audio_bytes,
-            language=language.strip() or "en-US",
-        )
+        selected_model = model.strip()
+        if not selected_model:
+            raise ValueError("Transcription model deployment name cannot be blank.")
+        if selected_model.lower() == load_settings().speech_transcription_model.lower():
+            result = await asyncio.to_thread(
+                transcribe_speech_audio,
+                audio=audio_bytes,
+                language=language.strip() or "en-US",
+                model=selected_model,
+            )
+        else:
+            result = await asyncio.to_thread(
+                transcribe_audio,
+                audio=audio_bytes,
+                filename=audio.filename or "transcription.wav",
+                content_type=audio.content_type,
+                model=selected_model,
+            )
+            result["language"] = language.strip() or "en-US"
         if not result["text"]:
-            raise RuntimeError("Azure Speech did not recognize any speech in the audio.")
+            raise RuntimeError("The selected model did not recognize any speech in the audio.")
         return result
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

@@ -86,10 +86,15 @@ type ConfigResponse = {
   tts_voice: string | null;
   is_speech_transcription_configured: boolean;
   speech_transcription_model: string | null;
+  is_voice_live_configured: boolean;
+  voice_live_model: string | null;
+  voice_live_voice: string | null;
+  is_live_interpreter_configured: boolean;
 };
 
 type ModelsResponse = {
   models: string[];
+  transcription_models?: string[];
   model_modalities?: Record<string, ModelModality[]>;
   discovery_error: string | null;
 };
@@ -495,6 +500,24 @@ type TranscriptionResult = {
   segments: string[];
 };
 
+type VoiceLiveServerEvent = RealtimeServerEvent & {
+  sdp_answer?: string;
+};
+
+type LiveInterpreterServerEvent = {
+  type: "ready" | "translation" | "audio_end" | "session_stopped" | "error";
+  text?: string;
+  detected_language?: string | null;
+  target_language?: string;
+  error?: string;
+};
+
+const liveTranslationLanguages = [
+  ["en", "English"], ["fr", "French"], ["de", "German"], ["es", "Spanish"],
+  ["it", "Italian"], ["nl", "Dutch"], ["pt", "Portuguese"], ["ja", "Japanese"],
+  ["ko", "Korean"], ["zh-Hans", "Chinese (Simplified)"], ["ar", "Arabic"],
+] as const;
+
 type TracedFetchOptions = {
   label?: string;
   request?: unknown;
@@ -712,12 +735,19 @@ function isImageModelName(model: string) {
   );
 }
 
+function isTranscriptionModelName(model: string) {
+  const normalized = model.toLowerCase();
+  return normalized.includes("transcribe") || normalized.includes("whisper");
+}
+
 export default function App() {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [auth, setAuth] = useState<AuthResponse | null>(null);
   const [models, setModels] = useState<string[]>([]);
   const [modelModalities, setModelModalities] = useState<Record<string, ModelModality[]>>({});
   const [activeModel, setActiveModel] = useState("");
+  const [transcriptionModels, setTranscriptionModels] = useState<string[]>([]);
+  const [transcriptionModel, setTranscriptionModel] = useState("");
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [newModel, setNewModel] = useState("");
   const [modelEndpointMessage, setModelEndpointMessage] = useState<StatusMessage | null>(null);
@@ -794,6 +824,25 @@ export default function App() {
   const [realtimeTranscript, setRealtimeTranscript] = useState<RealtimeTranscriptEntry[]>([]);
   const [realtimeSessionModel, setRealtimeSessionModel] = useState<string | null>(null);
   const [realtimeGuardrailStatus, setRealtimeGuardrailStatus] = useState("");
+  const voiceLivePeerRef = useRef<RTCPeerConnection | null>(null);
+  const voiceLiveSocketRef = useRef<WebSocket | null>(null);
+  const voiceLiveMediaStreamRef = useRef<MediaStream | null>(null);
+  const voiceLiveAudioRef = useRef<HTMLAudioElement | null>(null);
+  const voiceLiveTranscriptSequence = useRef(0);
+  const [voiceLiveStatus, setVoiceLiveStatus] = useState<RealtimeStatus>("idle");
+  const [voiceLiveError, setVoiceLiveError] = useState("");
+  const [voiceLiveTranscript, setVoiceLiveTranscript] = useState<RealtimeTranscriptEntry[]>([]);
+  const liveTranslationSocketRef = useRef<WebSocket | null>(null);
+  const liveTranslationMediaStreamRef = useRef<MediaStream | null>(null);
+  const liveTranslationAudioContextRef = useRef<AudioContext | null>(null);
+  const liveTranslationSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const liveTranslationWorkletRef = useRef<AudioWorkletNode | null>(null);
+  const liveTranslationPlayAtRef = useRef(0);
+  const liveTranslationTranscriptSequence = useRef(0);
+  const [liveTranslationStatus, setLiveTranslationStatus] = useState<RealtimeStatus>("idle");
+  const [liveTranslationError, setLiveTranslationError] = useState("");
+  const [liveTranslationTarget, setLiveTranslationTarget] = useState("en");
+  const [liveTranslationTranscript, setLiveTranslationTranscript] = useState<RealtimeTranscriptEntry[]>([]);
   const traditionalMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const traditionalMediaStreamRef = useRef<MediaStream | null>(null);
   const traditionalAudioChunksRef = useRef<Blob[]>([]);
@@ -867,6 +916,13 @@ export default function App() {
       .then((data: ConfigResponse) => {
         const configuredModels = data.models.length ? data.models : ["gpt-4o-mini"];
         setConfig(data);
+        const configuredTranscriptionModels = [
+          data.speech_transcription_model,
+          data.transcription_model,
+          ...configuredModels.filter(isTranscriptionModelName),
+        ].filter((model): model is string => Boolean(model));
+        setTranscriptionModels(Array.from(new Set(configuredTranscriptionModels)));
+        setTranscriptionModel(configuredTranscriptionModels[0] ?? "");
         setModels(configuredModels);
         const inferredModalities = Object.fromEntries(
           configuredModels.map((model) => [model, isImageModelName(model) ? ["image"] : ["text"]]),
@@ -905,6 +961,10 @@ export default function App() {
           tts_voice: null,
           is_speech_transcription_configured: false,
           speech_transcription_model: null,
+          is_voice_live_configured: false,
+          voice_live_model: null,
+          voice_live_voice: null,
+          is_live_interpreter_configured: false,
         });
       });
   }, []);
@@ -978,6 +1038,14 @@ export default function App() {
                   .slice(0, maxComparisonModelCount),
               );
             });
+          }
+          if (data.transcription_models?.length) {
+            setTranscriptionModels(data.transcription_models);
+            setTranscriptionModel((current) =>
+              current && data.transcription_models!.includes(current)
+                ? current
+                : data.transcription_models![0],
+            );
           }
           if (data.discovery_error) {
             console.warn("Foundry deployment discovery unavailable:", data.discovery_error);
@@ -1153,7 +1221,9 @@ export default function App() {
       .slice(0, maxComparisonModelCount),
     [modelModalities, models, selectedModels],
   );
-  const textModels = models.filter((model) => modelModalities[model]?.includes("text"));
+  const textModels = models.filter(
+    (model) => modelModalities[model]?.includes("text") && !transcriptionModels.includes(model),
+  );
   const imageModels = models.filter((model) => modelModalities[model]?.includes("image"));
   const imageEditModels = imageModels.filter((model) => model.toLowerCase().includes("gpt-image"));
   const selectedImages = imageModels
@@ -1173,8 +1243,14 @@ export default function App() {
       setImageModel((current) => current && imageModels.includes(current) ? current : imageModels[0] ?? "");
       return;
     }
+    if (activeUseCaseDetails.workspace === "transcribe") {
+      setTranscriptionModel((current) =>
+        current && transcriptionModels.includes(current) ? current : transcriptionModels[0] ?? "",
+      );
+      return;
+    }
     setActiveModel((current) => current && textModels.includes(current) ? current : textModels[0] ?? "");
-  }, [activeUseCaseDetails.workspace, imageEditModels.join("|"), imageModels.join("|"), textModels.join("|")]);
+  }, [activeUseCaseDetails.workspace, imageEditModels.join("|"), imageModels.join("|"), textModels.join("|"), transcriptionModels.join("|")]);
 
   function createApiTraceEntry(entry: Omit<ApiTraceEntry, "id" | "timestamp">) {
     apiTraceSequence.current += 1;
@@ -1780,6 +1856,12 @@ export default function App() {
     if (nextUseCase.workspace !== "realtimeVoice" && realtimeStatus !== "idle") {
       stopRealtimeSession();
     }
+    if (nextUseCase.workspace !== "voiceLive" && voiceLiveStatus !== "idle") {
+      stopVoiceLiveSession();
+    }
+    if (nextUseCase.workspace !== "liveTranslation" && liveTranslationStatus !== "idle") {
+      stopLiveTranslationSession();
+    }
     if (nextUseCase.workspace !== "traditionalVoice" && traditionalVoiceStatus === "recording") {
       stopTraditionalRecording();
     }
@@ -2239,12 +2321,13 @@ export default function App() {
       const formData = new FormData();
       formData.append("audio", wav, "transcription.wav");
       formData.append("language", transcriptionLanguage);
+      formData.append("model", transcriptionModel);
       const response = await tracedFetch(
         "/api/transcriptions",
         { method: "POST", body: formData },
         {
-          label: "Transcribe audio with Azure Speech",
-          request: { source: sourceName, bytes: wav.size, language: transcriptionLanguage },
+          label: `Transcribe audio with ${transcriptionModel}`,
+          request: { source: sourceName, bytes: wav.size, language: transcriptionLanguage, model: transcriptionModel },
           responseKind: "json",
         },
       );
@@ -2489,6 +2572,266 @@ export default function App() {
       setSettingsError(error instanceof Error ? error.message : "Failed to save settings.");
     } finally {
       setIsSavingSettings(false);
+    }
+  }
+
+  function closeVoiceLiveConnection() {
+    voiceLiveSocketRef.current?.close();
+    voiceLiveSocketRef.current = null;
+    voiceLivePeerRef.current?.getSenders().forEach((sender) => sender.track?.stop());
+    voiceLivePeerRef.current?.close();
+    voiceLivePeerRef.current = null;
+    voiceLiveMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceLiveMediaStreamRef.current = null;
+    if (voiceLiveAudioRef.current) {
+      voiceLiveAudioRef.current.pause();
+      voiceLiveAudioRef.current.srcObject = null;
+      voiceLiveAudioRef.current = null;
+    }
+  }
+
+  function appendVoiceLiveTranscript(source: RealtimeTranscriptEntry["source"], text: string) {
+    const cleaned = text.trim();
+    if (!cleaned) return;
+    voiceLiveTranscriptSequence.current += 1;
+    setVoiceLiveTranscript((current) => [...current, {
+      id: `voice-live-${voiceLiveTranscriptSequence.current}`,
+      source,
+      text: cleaned,
+    }].slice(-8));
+  }
+
+  function handleVoiceLiveEvent(event: VoiceLiveServerEvent) {
+    if (event.type === "conversation.item.input_audio_transcription.completed" && event.transcript) {
+      appendVoiceLiveTranscript("user", event.transcript);
+    } else if ((event.type === "response.audio_transcript.done" || event.type === "response.text.done") && event.transcript) {
+      appendVoiceLiveTranscript("assistant", event.transcript);
+    } else if (event.type === "input_audio_buffer.speech_started") {
+      appendVoiceLiveTranscript("system", "Listening - interrupt at any time");
+    } else if (event.type === "error" || event.type === "rtc.call.error") {
+      setVoiceLiveError(event.error?.message ?? "Voice Live reported an error.");
+    }
+  }
+
+  function stopVoiceLiveSession() {
+    closeVoiceLiveConnection();
+    setVoiceLiveStatus("idle");
+    appendVoiceLiveTranscript("system", "Voice Live session stopped");
+  }
+
+  async function startVoiceLiveSession() {
+    if (voiceLiveStatus !== "idle") {
+      stopVoiceLiveSession();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection || !window.WebSocket) {
+      setVoiceLiveError("This browser does not support the WebRTC APIs required for Voice Live.");
+      return;
+    }
+
+    setVoiceLiveStatus("connecting");
+    setVoiceLiveError("");
+    setVoiceLiveTranscript([]);
+    try {
+      const peerConnection = new RTCPeerConnection();
+      voiceLivePeerRef.current = peerConnection;
+      const audioElement = new Audio();
+      audioElement.autoplay = true;
+      voiceLiveAudioRef.current = audioElement;
+      peerConnection.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        if (remoteStream && voiceLiveAudioRef.current) {
+          voiceLiveAudioRef.current.srcObject = remoteStream;
+          void voiceLiveAudioRef.current.play();
+        }
+      };
+      peerConnection.onconnectionstatechange = () => {
+        if (peerConnection.connectionState === "connected") setVoiceLiveStatus("live");
+        if (peerConnection.connectionState === "failed") {
+          setVoiceLiveError("Voice Live WebRTC connection failed.");
+          stopVoiceLiveSession();
+        }
+      };
+
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+      voiceLiveMediaStreamRef.current = mediaStream;
+      mediaStream.getTracks().forEach((track) => peerConnection.addTrack(track, mediaStream));
+      const dataChannel = peerConnection.createDataChannel("voice-live-events");
+      dataChannel.addEventListener("message", (message) => {
+        try { handleVoiceLiveEvent(JSON.parse(message.data) as VoiceLiveServerEvent); } catch { /* Ignore non-JSON events. */ }
+      });
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      await new Promise<void>((resolve) => {
+        if (peerConnection.iceGatheringState === "complete") return resolve();
+        const listener = () => {
+          if (peerConnection.iceGatheringState === "complete") {
+            peerConnection.removeEventListener("icegatheringstatechange", listener);
+            resolve();
+          }
+        };
+        peerConnection.addEventListener("icegatheringstatechange", listener);
+      });
+      if (!peerConnection.localDescription?.sdp) throw new Error("Browser did not create a Voice Live SDP offer.");
+
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(`${protocol}//${window.location.host}/api/voice-live`, "realtime");
+      voiceLiveSocketRef.current = socket;
+      await new Promise<void>((resolve, reject) => {
+        socket.addEventListener("open", () => resolve(), { once: true });
+        socket.addEventListener("error", () => reject(new Error("Voice Live control channel failed.")), { once: true });
+      });
+
+      const answer = new Promise<string>((resolve, reject) => {
+        socket.addEventListener("message", (message) => {
+          const event = JSON.parse(message.data) as VoiceLiveServerEvent;
+          handleVoiceLiveEvent(event);
+          if (event.type === "rtc.call.sdp.created" && event.sdp_answer) resolve(event.sdp_answer);
+          if (event.type === "error" || event.type === "rtc.call.error") reject(new Error(event.error?.message ?? "Voice Live call setup failed."));
+        });
+      });
+      socket.send(JSON.stringify({
+        type: "rtc.call.sdp.create",
+        sdp_offer: peerConnection.localDescription.sdp,
+        session: {
+          modalities: ["text", "audio"],
+          instructions: "You are Ava, a multilingual travel concierge. Help travelers plan practical trips through natural spoken conversation. Ask one focused question at a time about destination, dates, budget, interests, and accessibility needs. Reply in the language used by the traveler. Never claim that a booking is confirmed; clearly label suggestions and summarize the proposed itinerary before ending.",
+          voice: { type: "azure-standard", name: config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural", temperature: 0.8 },
+          turn_detection: { type: "azure_semantic_vad_multilingual", remove_filler_words: true, interrupt_response: true, create_response: true },
+          input_audio_noise_reduction: { type: "azure_deep_noise_suppression" },
+          input_audio_echo_cancellation: { type: "server_echo_cancellation" },
+        },
+      }));
+      await peerConnection.setRemoteDescription({ type: "answer", sdp: await answer });
+      appendVoiceLiveTranscript("system", `Connected to Voice Live (${config?.voice_live_model ?? "gpt-realtime"})`);
+    } catch (error) {
+      closeVoiceLiveConnection();
+      setVoiceLiveStatus("idle");
+      setVoiceLiveError(error instanceof Error ? error.message : "Failed to start Voice Live.");
+    }
+  }
+
+  function appendLiveTranslation(text: string, detectedLanguage?: string | null) {
+    const cleaned = text.trim();
+    if (!cleaned) return;
+    liveTranslationTranscriptSequence.current += 1;
+    setLiveTranslationTranscript((current) => [...current, {
+      id: `live-translation-${liveTranslationTranscriptSequence.current}`,
+      source: "assistant" as const,
+      text: detectedLanguage ? `${cleaned} · detected ${detectedLanguage}` : cleaned,
+    }].slice(-10));
+  }
+
+  function playLiveTranslationPcm(data: ArrayBuffer) {
+    const context = liveTranslationAudioContextRef.current;
+    if (!context) return;
+    const pcm = new Int16Array(data);
+    const buffer = context.createBuffer(1, pcm.length, 16000);
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < pcm.length; index += 1) channel[index] = pcm[index] / 0x8000;
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    const startAt = Math.max(context.currentTime, liveTranslationPlayAtRef.current);
+    source.start(startAt);
+    liveTranslationPlayAtRef.current = startAt + buffer.duration;
+  }
+
+  function closeLiveTranslationConnection() {
+    const socket = liveTranslationSocketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "stop" }));
+    socket?.close();
+    liveTranslationSocketRef.current = null;
+    liveTranslationWorkletRef.current?.disconnect();
+    liveTranslationWorkletRef.current = null;
+    liveTranslationSourceRef.current?.disconnect();
+    liveTranslationSourceRef.current = null;
+    liveTranslationMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    liveTranslationMediaStreamRef.current = null;
+    void liveTranslationAudioContextRef.current?.close();
+    liveTranslationAudioContextRef.current = null;
+    liveTranslationPlayAtRef.current = 0;
+  }
+
+  function stopLiveTranslationSession() {
+    closeLiveTranslationConnection();
+    setLiveTranslationStatus("idle");
+  }
+
+  async function startLiveTranslationSession() {
+    if (liveTranslationStatus !== "idle") {
+      stopLiveTranslationSession();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode || !window.WebSocket) {
+      setLiveTranslationError("This browser does not support the audio APIs required for Live Interpreter.");
+      return;
+    }
+
+    setLiveTranslationStatus("connecting");
+    setLiveTranslationError("");
+    setLiveTranslationTranscript([]);
+    try {
+      const AudioContextClass = window.AudioContext;
+      const context = new AudioContextClass();
+      liveTranslationAudioContextRef.current = context;
+      await context.audioWorklet.addModule(new URL("./live-interpreter-worklet.js", import.meta.url));
+      await context.resume();
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      });
+      liveTranslationMediaStreamRef.current = stream;
+      const source = context.createMediaStreamSource(stream);
+      liveTranslationSourceRef.current = source;
+      const worklet = new AudioWorkletNode(context, "live-interpreter-processor");
+      liveTranslationWorkletRef.current = worklet;
+
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(`${protocol}//${window.location.host}/api/live-interpreter`);
+      socket.binaryType = "arraybuffer";
+      liveTranslationSocketRef.current = socket;
+      await new Promise<void>((resolve, reject) => {
+        socket.addEventListener("open", () => resolve(), { once: true });
+        socket.addEventListener("error", () => reject(new Error("Live Interpreter connection failed.")), { once: true });
+      });
+
+      const ready = new Promise<void>((resolve, reject) => {
+        socket.addEventListener("close", () => reject(new Error("Live Interpreter closed before it was ready.")), { once: true });
+        socket.addEventListener("message", (message) => {
+          if (message.data instanceof ArrayBuffer) {
+            playLiveTranslationPcm(message.data);
+            return;
+          }
+          const event = JSON.parse(message.data) as LiveInterpreterServerEvent;
+          if (event.type === "ready") resolve();
+          if (event.type === "translation" && event.text) appendLiveTranslation(event.text, event.detected_language);
+          if (event.type === "error") {
+            const error = event.error ?? "Live Interpreter reported an error.";
+            setLiveTranslationError(error);
+            closeLiveTranslationConnection();
+            setLiveTranslationStatus("idle");
+            reject(new Error(error));
+          }
+        });
+      });
+      socket.send(JSON.stringify({ type: "start", target_language: liveTranslationTarget }));
+      await ready;
+      worklet.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(event.data);
+      };
+      source.connect(worklet);
+      const silentOutput = context.createGain();
+      silentOutput.gain.value = 0;
+      worklet.connect(silentOutput).connect(context.destination);
+      setLiveTranslationStatus("live");
+    } catch (error) {
+      closeLiveTranslationConnection();
+      setLiveTranslationStatus("idle");
+      setLiveTranslationError(error instanceof Error ? error.message : "Failed to start Live Interpreter.");
     }
   }
 
@@ -3315,9 +3658,11 @@ export default function App() {
             <div className="flex gap-2">
               <div className="min-w-0 flex-1">
                 <Select
-                  value={activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel}
+                  value={activeUseCaseDetails.workspace === "transcribe" ? transcriptionModel : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel}
                   onValueChange={(model) => {
-                    if (activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison") {
+                    if (activeUseCaseDetails.workspace === "transcribe") {
+                      setTranscriptionModel(model);
+                    } else if (activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison") {
                       setImageModel(model);
                       setActiveModel(model);
                     } else {
@@ -3329,7 +3674,7 @@ export default function App() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent position="popper" align="start">
-                    {(activeUseCaseDetails.workspace === "imageEdit" ? imageEditModels : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModels : textModels).map((model) => (
+                    {(activeUseCaseDetails.workspace === "transcribe" ? transcriptionModels : activeUseCaseDetails.workspace === "imageEdit" ? imageEditModels : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModels : textModels).map((model) => (
                       <SelectItem key={model} value={model}>
                         {formatModelName(model)}
                       </SelectItem>
@@ -3342,7 +3687,7 @@ export default function App() {
                 variant="outline"
                 size="icon"
                 disabled={!canUseProtectedApis}
-                onClick={() => void openSettings(activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
+                onClick={() => void openSettings(activeUseCaseDetails.workspace === "transcribe" ? transcriptionModel : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
                 title="Open model settings"
                 className="shrink-0"
               >
@@ -3748,7 +4093,9 @@ export default function App() {
                         ? `${documents.length} indexed document${documents.length === 1 ? "" : "s"} - active model: ${formatModelName(activeModel)}`
                       : activeUseCaseDetails.workspace === "traditionalVoice" ||
                           activeUseCaseDetails.workspace === "transcribe" ||
-                          activeUseCaseDetails.workspace === "realtimeVoice"
+                          activeUseCaseDetails.workspace === "realtimeVoice" ||
+                          activeUseCaseDetails.workspace === "voiceLive" ||
+                          activeUseCaseDetails.workspace === "liveTranslation"
                         ? activeUseCaseDetails.description
                         : `${currentConversationId
                             ? conversations.find((item) => item.id === currentConversationId)?.title ?? "Saved chat"
@@ -3759,7 +4106,7 @@ export default function App() {
               {activeView !== "model-settings" ? (
                 <button
                   type="button"
-                  onClick={() => void openSettings(activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
+                  onClick={() => void openSettings(activeUseCaseDetails.workspace === "transcribe" ? transcriptionModel : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
                   className="rounded p-1 hover:bg-slate-100 dark:hover:bg-[#45454a]"
                   aria-label="Open active model settings"
                 >
@@ -3951,8 +4298,10 @@ export default function App() {
             </div>
           ) : activeUseCaseDetails.workspace === "transcribe" ? (
             <TranscriptionWorkspace
-              configured={config?.is_speech_transcription_configured ?? false}
-              model={config?.speech_transcription_model ?? "MAI-Transcribe-1.5"}
+              configured={transcriptionModel.toLowerCase().startsWith("mai-transcribe")
+                ? config?.is_speech_transcription_configured ?? false
+                : config?.is_configured ?? false}
+              model={transcriptionModel}
               status={transcriptionStatus}
               error={transcriptionError}
               result={transcriptionResult}
@@ -3977,6 +4326,36 @@ export default function App() {
                   transcript={realtimeTranscript}
                   onStart={() => void startRealtimeSession()}
                   onStop={stopRealtimeSession}
+                />
+              </div>
+            </div>
+          ) : activeUseCaseDetails.workspace === "voiceLive" ? (
+            <div className="flex-1 overflow-auto p-5">
+              <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center">
+                <VoiceLiveHero
+                  configured={config?.is_voice_live_configured ?? false}
+                  model={config?.voice_live_model ?? "gpt-realtime"}
+                  voice={config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural"}
+                  status={voiceLiveStatus}
+                  error={voiceLiveError}
+                  transcript={voiceLiveTranscript}
+                  onStart={() => void startVoiceLiveSession()}
+                  onStop={stopVoiceLiveSession}
+                />
+              </div>
+            </div>
+          ) : activeUseCaseDetails.workspace === "liveTranslation" ? (
+            <div className="flex-1 overflow-auto p-5">
+              <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center">
+                <LiveTranslationHero
+                  configured={config?.is_live_interpreter_configured ?? false}
+                  status={liveTranslationStatus}
+                  error={liveTranslationError}
+                  targetLanguage={liveTranslationTarget}
+                  transcript={liveTranslationTranscript}
+                  onTargetLanguageChange={setLiveTranslationTarget}
+                  onStart={() => void startLiveTranslationSession()}
+                  onStop={stopLiveTranslationSession}
                 />
               </div>
             </div>
@@ -4433,6 +4812,7 @@ function TranscriptionWorkspace({
 }) {
   const isRecording = status === "recording";
   const isProcessing = status === "processing";
+  const usesAzureSpeech = model.toLowerCase().startsWith("mai-transcribe");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -4465,8 +4845,8 @@ function TranscriptionWorkspace({
           <div className="flex h-full items-center justify-center">
             <div className="max-w-lg rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
               <DictationHero active={isRecording || isProcessing} />
-              <Badge variant="outline">Azure Speech</Badge>
-              <h3 className="mt-3 text-2xl font-semibold tracking-tight">Audio transcription</h3>
+              <Badge variant="outline">{usesAzureSpeech ? "Azure Speech" : "Foundry Audio"}</Badge>
+              <h3 className="mt-3 text-2xl font-semibold tracking-tight">Recorded audio transcription</h3>
               <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
                 Record or upload audio below to transcribe it with <span className="font-medium text-slate-700 dark:text-slate-200">{formatModelName(model)}</span>.
               </p>
@@ -4518,9 +4898,9 @@ function TranscriptionWorkspace({
             }}
           />
         </div>
-        {!configured ? <p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">Set AZURE_SPEECH_ENDPOINT and grant the app identity Cognitive Services Speech User access.</p> : null}
+        {!configured ? <p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">{usesAzureSpeech ? "Set AZURE_SPEECH_ENDPOINT and grant the app identity Cognitive Services Speech User access." : "Configure the Foundry project endpoint and grant the app identity access to the selected deployment."}</p> : null}
         {error ? <p className="mt-2 text-center text-xs text-red-600 dark:text-red-300">{error}</p> : null}
-        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">Audio is processed by Azure Speech to generate the transcription</p>
+        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">Audio is processed by {usesAzureSpeech ? "Azure Speech" : formatModelName(model)} to generate the transcription</p>
       </div>
     </div>
   );
@@ -5547,6 +5927,126 @@ function ChatBubble({ message }: { message: ChatMessage }) {
           <User className="h-4 w-4" />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function VoiceLiveHero({
+  configured,
+  model,
+  voice,
+  status,
+  error,
+  transcript,
+  onStart,
+  onStop,
+}: {
+  configured: boolean;
+  model: string;
+  voice: string;
+  status: RealtimeStatus;
+  error: string;
+  transcript: RealtimeTranscriptEntry[];
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  const isActive = status !== "idle";
+  return (
+    <div className="w-full overflow-hidden rounded-3xl border border-violet-200 bg-gradient-to-br from-white via-violet-50/60 to-sky-50 p-6 text-center shadow-sm dark:border-violet-500/30 dark:from-[#39393d] dark:via-violet-950/20 dark:to-sky-950/20">
+      <DictationHero active={isActive} />
+      <div className="flex flex-wrap justify-center gap-2">
+        <Badge>Voice Live API</Badge>
+        <Badge variant="outline">Multilingual VAD</Badge>
+        <Badge variant="outline">Barge-in</Badge>
+        <Badge variant="outline">Noise + echo control</Badge>
+      </div>
+      <h3 className="mt-4 text-2xl font-semibold tracking-tight">Meet Ava, your travel concierge</h3>
+      <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+        Plan a trip in natural conversation. Pause to think, switch language, or interrupt Ava while she is speaking. Voice Live combines <span className="font-medium">{formatModelName(model)}</span> with the Azure HD voice <span className="font-medium">{voice}</span>.
+      </p>
+      <div className="mt-5 flex justify-center">
+        <Button type="button" onClick={isActive ? onStop : onStart} disabled={!configured && !isActive} variant={isActive ? "destructive" : "default"} className="rounded-full px-5">
+          {isActive ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          {status === "connecting" ? "Connecting..." : status === "live" ? "End concierge call" : "Call the concierge"}
+        </Button>
+      </div>
+      {!configured ? <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">Set AZURE_VOICELIVE_ENDPOINT and grant the app identity Cognitive Services User and Foundry User access.</p> : null}
+      {error ? <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">{error}</p> : null}
+      {transcript.length ? (
+        <div className="mt-5 grid gap-2 text-left">
+          {transcript.map((entry) => (
+            <div key={entry.id} className={cn(
+              "rounded-2xl px-3 py-2 text-sm leading-5",
+              entry.source === "user" && "ml-auto max-w-[85%] bg-blue-600 text-white dark:bg-violet-600",
+              entry.source === "assistant" && "mr-auto max-w-[85%] border bg-white/80 dark:border-[#606066] dark:bg-[#29292c]",
+              entry.source === "system" && "mx-auto bg-white/70 text-xs text-slate-500 dark:bg-[#45454a] dark:text-slate-300",
+            )}>{entry.text}</div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LiveTranslationHero({
+  configured,
+  status,
+  error,
+  targetLanguage,
+  transcript,
+  onTargetLanguageChange,
+  onStart,
+  onStop,
+}: {
+  configured: boolean;
+  status: RealtimeStatus;
+  error: string;
+  targetLanguage: string;
+  transcript: RealtimeTranscriptEntry[];
+  onTargetLanguageChange: (language: string) => void;
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  const isActive = status !== "idle";
+  return (
+    <div className="w-full overflow-hidden rounded-3xl border border-cyan-200 bg-gradient-to-br from-white via-cyan-50/70 to-emerald-50 p-6 text-center shadow-sm dark:border-cyan-500/30 dark:from-[#39393d] dark:via-cyan-950/20 dark:to-emerald-950/20">
+      <DictationHero active={isActive} />
+      <div className="flex flex-wrap justify-center gap-2">
+        <Badge>Speech Live Interpreter</Badge>
+        <Badge variant="outline">Automatic language ID</Badge>
+        <Badge variant="outline">Personal Voice</Badge>
+      </div>
+      <h3 className="mt-4 text-2xl font-semibold tracking-tight">One room, many languages</h3>
+      <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+        Speak naturally and switch languages at any time. Everyone is translated into the selected language with low-latency audio that preserves each speaker&apos;s style and tone.
+      </p>
+      <div className="mx-auto mt-5 max-w-xs text-left">
+        <Label htmlFor="live-translation-target">Translate everyone to</Label>
+        <Select value={targetLanguage} onValueChange={onTargetLanguageChange} disabled={isActive}>
+          <SelectTrigger id="live-translation-target" className="mt-2 bg-white/80 dark:bg-[#29292c]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {liveTranslationLanguages.map(([code, name]) => <SelectItem key={code} value={code}>{name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="mt-5 flex justify-center">
+        <Button type="button" onClick={isActive ? onStop : onStart} disabled={!configured && !isActive} variant={isActive ? "destructive" : "default"} className="rounded-full px-5">
+          {isActive ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          {status === "connecting" ? "Connecting..." : status === "live" ? "Stop interpreting" : "Start interpreting"}
+        </Button>
+      </div>
+      {!configured ? <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">Set AZURE_SPEECH_ENDPOINT and obtain Personal Voice access for a supported Live Interpreter region.</p> : null}
+      {error ? <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">{error}</p> : null}
+      {transcript.length ? (
+        <div className="mt-5 grid gap-2 text-left">
+          {transcript.map((entry) => (
+            <div key={entry.id} className="mr-auto max-w-[90%] rounded-2xl border bg-white/80 px-3 py-2 text-sm leading-5 dark:border-[#606066] dark:bg-[#29292c]">{entry.text}</div>
+          ))}
+        </div>
+      ) : null}
+      <p className="mt-5 text-xs text-slate-500 dark:text-slate-400">Use headphones to prevent translated audio from being captured by the microphone.</p>
     </div>
   );
 }

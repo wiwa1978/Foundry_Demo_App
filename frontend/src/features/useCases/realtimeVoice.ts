@@ -7,6 +7,7 @@ export const realtimeVoiceUseCase: UseCaseModule = {
   description: "Stream microphone audio to a realtime deployment and play the audio response.",
   badge: "WebRTC",
   icon: "voiceWave",
+  modalities: ["audio"],
   implementation: [
     "The frontend asks the backend for a short-lived Foundry Realtime client secret.",
     "The browser opens a WebRTC peer connection, sends the local microphone track, and posts the SDP offer to Foundry Realtime.",

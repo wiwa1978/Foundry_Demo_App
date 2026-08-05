@@ -6,12 +6,15 @@ export type UseCaseId =
   | "traditional_voice"
   | "transcribe"
   | "realtime_voice"
+  | "voice_live"
+  | "live_translation"
   | "text_to_image"
   | "image_to_image"
   | "image_comparison";
 
 export type UseCaseIconName = "chat" | "comparison" | "browserVoice" | "documents" | "image" | "voiceWave";
-export type UseCaseWorkspace = "chat" | "comparison" | "image" | "imageEdit" | "imageComparison" | "traditionalVoice" | "realtimeVoice" | "transcribe";
+export type UseCaseWorkspace = "chat" | "comparison" | "image" | "imageEdit" | "imageComparison" | "traditionalVoice" | "realtimeVoice" | "voiceLive" | "liveTranslation" | "transcribe";
+export type UseCaseModality = "text" | "image" | "audio" | "video";
 
 export type UseCaseModule = {
   id: UseCaseId;
@@ -20,6 +23,7 @@ export type UseCaseModule = {
   description: string;
   badge: string;
   icon: UseCaseIconName;
+  modalities: UseCaseModality[];
   implementation: string[];
   codeSnippet: {
     title: string;

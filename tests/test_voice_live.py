@@ -1,0 +1,64 @@
+import unittest
+from unittest.mock import MagicMock, patch
+
+from app.foundry_client import FoundrySettings, create_voice_live_connection_info
+
+
+class VoiceLiveTests(unittest.TestCase):
+    @patch("app.foundry_client.get_azure_credential")
+    @patch("app.foundry_client.load_settings")
+    def test_connection_info_uses_resource_endpoint_and_entra_token(
+        self, load_settings: MagicMock, get_credential: MagicMock
+    ) -> None:
+        load_settings.return_value = FoundrySettings(
+            endpoint=None,
+            models=[],
+            realtime_endpoint=None,
+            realtime_model="",
+            embedding_model="",
+            transcription_model="",
+            tts_model="",
+            tts_voice="",
+            speech_endpoint=None,
+            speech_key=None,
+            speech_transcription_model="",
+            voice_live_endpoint="https://demo.services.ai.azure.com/",
+            voice_live_model="gpt-realtime",
+            voice_live_voice="en-US-Ava:DragonHDLatestNeural",
+        )
+        get_credential.return_value.get_token.return_value.token = "entra-token"
+
+        result = create_voice_live_connection_info()
+
+        self.assertEqual(
+            result["url"],
+            "wss://demo.services.ai.azure.com/voice-live/realtime/calls"
+            "?api-version=2026-04-10&model=gpt-realtime",
+        )
+        self.assertEqual(result["token"], "entra-token")
+        get_credential.return_value.get_token.assert_called_once_with(
+            "https://ai.azure.com/.default"
+        )
+
+    @patch("app.foundry_client.load_settings")
+    def test_connection_info_requires_endpoint(self, load_settings: MagicMock) -> None:
+        load_settings.return_value = FoundrySettings(
+            endpoint=None,
+            models=[],
+            realtime_endpoint=None,
+            realtime_model="",
+            embedding_model="",
+            transcription_model="",
+            tts_model="",
+            tts_voice="",
+            speech_endpoint=None,
+            speech_key=None,
+            speech_transcription_model="",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "Voice Live is not configured"):
+            create_voice_live_connection_info()
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -7,6 +7,7 @@ export const textToImageUseCase: UseCaseModule = {
   description: "Turn a detailed text prompt into a high-quality PNG with an MAI image deployment.",
   badge: "Foundry image",
   icon: "image",
+  modalities: ["image"],
   implementation: [
     "The browser sends the prompt, dimensions, and selected image deployment to the FastAPI backend.",
     "The backend obtains a Microsoft Entra ID token and calls the dedicated MAI image generations API.",

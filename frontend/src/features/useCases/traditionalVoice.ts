@@ -7,6 +7,7 @@ export const traditionalVoiceUseCase: UseCaseModule = {
   description: "Record audio, transcribe it in Foundry, ask the chat model, then synthesize speech.",
   badge: "Foundry audio",
   icon: "voiceWave",
+  modalities: ["audio"],
   implementation: [
     "The browser records microphone audio with MediaRecorder and uploads the audio blob to the backend.",
     "The backend calls Foundry `/audio/transcriptions`, sends the transcript to the selected chat model, then calls `/audio/speech`.",

@@ -7,6 +7,7 @@ export const textChatUseCase: UseCaseModule = {
   description: "A clean single-model Foundry chat experience with only the controls needed to chat.",
   badge: "Default",
   icon: "chat",
+  modalities: ["text"],
   implementation: [
     "The browser submits the prompt to the FastAPI backend with the selected deployment and optional reasoning effort.",
     "The backend builds conversation history for the selected model and streams the request to Foundry using the model's saved API surface.",

@@ -7,6 +7,7 @@ export const comparisonUseCase: UseCaseModule = {
   description: "Send one prompt to multiple deployments and compare responses side by side.",
   badge: "Models",
   icon: "comparison",
+  modalities: ["text"],
   implementation: [
     "The sidebar lets the user choose multiple deployment names for the comparison set.",
     "The frontend posts one prompt and the selected model list to `/api/compare`.",

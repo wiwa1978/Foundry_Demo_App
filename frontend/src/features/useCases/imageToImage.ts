@@ -7,6 +7,7 @@ export const imageToImageUseCase: UseCaseModule = {
   description: "Transform an uploaded image with a prompt while preserving the parts that matter.",
   badge: "Foundry image",
   icon: "image",
+  modalities: ["image"],
   implementation: [
     "The browser sends a source image, transformation prompt, output size, and compatible image deployment as multipart form data.",
     "The backend obtains a Microsoft Entra ID token and calls the OpenAI-compatible image edits API.",

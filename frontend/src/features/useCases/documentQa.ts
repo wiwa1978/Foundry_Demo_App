@@ -7,6 +7,7 @@ export const documentQaUseCase: UseCaseModule = {
   description: "Upload documents, retrieve relevant chunks with Azure AI Search, and ask grounded questions.",
   badge: "RAG",
   icon: "documents",
+  modalities: ["text"],
   implementation: [
     "The browser uploads documents to the FastAPI backend, which extracts text and chunks it for retrieval.",
     "The backend creates Foundry embeddings for each chunk and stores the text plus vectors in Azure AI Search.",

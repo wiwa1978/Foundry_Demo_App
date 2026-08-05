@@ -1,6 +1,7 @@
-import { Bot, FileText, GitCompareArrows, Image, Mic, Sparkles, X } from "lucide-react";
+import { useState } from "react";
+import { AudioLines, Bot, FileText, GitCompareArrows, Image, Mic, Sparkles, Type, Video, X } from "lucide-react";
 
-import type { UseCaseId, UseCaseModule } from "@/app/types";
+import type { UseCaseId, UseCaseModality, UseCaseModule } from "@/app/types";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { SoundWaveIcon } from "@/features/shared/SoundWaveIcon";
@@ -12,12 +13,34 @@ type UseCaseMarketplaceProps = {
   onClose: () => void;
 };
 
+const modalityOptions: { value: UseCaseModality; label: string; icon: typeof Type }[] = [
+  { value: "text", label: "Text", icon: Type },
+  { value: "image", label: "Image", icon: Image },
+  { value: "audio", label: "Audio", icon: AudioLines },
+  { value: "video", label: "Video", icon: Video },
+];
+
 export function UseCaseMarketplace({
   activeUseCase,
   useCases,
   onSelect,
   onClose,
 }: UseCaseMarketplaceProps) {
+  const [selectedModalities, setSelectedModalities] = useState<UseCaseModality[]>([]);
+  const filteredUseCases = selectedModalities.length
+    ? useCases.filter((useCase) =>
+        useCase.modalities.some((modality) => selectedModalities.includes(modality)),
+      )
+    : useCases;
+
+  function toggleModality(modality: UseCaseModality) {
+    setSelectedModalities((selected) =>
+      selected.includes(modality)
+        ? selected.filter((item) => item !== modality)
+        : [...selected, modality],
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#303033]/60 p-4">
       <div className="w-full max-w-6xl rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-[#606066] dark:bg-[#39393d]">
@@ -43,8 +66,39 @@ export function UseCaseMarketplace({
           </button>
         </header>
 
+        <fieldset className="px-5 pt-5">
+          <legend className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Filter by modality
+          </legend>
+          <div className="flex flex-wrap justify-center gap-2">
+            {modalityOptions.map(({ value, label, icon: Icon }) => {
+              const checked = selectedModalities.includes(value);
+              return (
+                <label
+                  key={value}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition",
+                    checked
+                      ? "border-violet-400 bg-violet-50 text-violet-700 dark:border-violet-500/60 dark:bg-violet-500/15 dark:text-violet-200"
+                      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-white dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-300 dark:hover:bg-[#505056]",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleModality(value)}
+                    className="h-4 w-4 rounded border-slate-300 accent-violet-600"
+                  />
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+
         <div className="grid gap-3 p-5 md:grid-cols-2 lg:grid-cols-4">
-          {useCases.map((useCase) => {
+          {filteredUseCases.map((useCase) => {
             const selected = useCase.id === activeUseCase;
             return (
               <button
@@ -76,6 +130,16 @@ export function UseCaseMarketplace({
               </button>
             );
           })}
+          {filteredUseCases.length === 0 && (
+            <div className="col-span-full rounded-2xl border border-dashed border-slate-300 px-6 py-12 text-center dark:border-[#606066]">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                No use cases match these modalities
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Try another option or clear all filters to see every use case.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

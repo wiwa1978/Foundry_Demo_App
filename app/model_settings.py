@@ -307,7 +307,7 @@ def _default_modalities(model: str) -> tuple[str, ...]:
         return ("image",)
     if any(
         token in normalized_model
-        for token in ("audio", "realtime", "speech", "tts", "whisper", "voice")
+        for token in ("audio", "realtime", "speech", "transcribe", "tts", "whisper", "voice")
     ):
         return ("voice",)
     return ("text",)

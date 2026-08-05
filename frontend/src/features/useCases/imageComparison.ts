@@ -7,6 +7,7 @@ export const imageComparisonUseCase: UseCaseModule = {
   description: "Send one prompt to two image deployments and compare their generated pictures side by side.",
   badge: "Image models",
   icon: "comparison",
+  modalities: ["image"],
   implementation: [
     "The sidebar lets the user select two image-capable deployment names.",
     "The frontend sends the same prompt and dimensions to both deployments concurrently through `/api/images/generate`.",

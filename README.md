@@ -134,9 +134,12 @@ expires after eight hours.
 | `FOUNDRY_TRANSCRIPTION_MODEL` | Optional OpenAI-compatible transcription deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-transcribe`. |
 | `FOUNDRY_TTS_MODEL` | Optional text-to-speech deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-tts`. |
 | `FOUNDRY_TTS_VOICE` | Optional TTS voice name for the traditional voice pipeline. Defaults to `alloy`. |
-| `AZURE_SPEECH_ENDPOINT` | Azure AI Speech endpoint for the standalone Transcribe use case. |
+| `AZURE_SPEECH_ENDPOINT` | Azure AI Speech custom-domain endpoint for Recorded Audio Transcription with the configured MAI model, and for Live translation. |
 | `AZURE_SPEECH_KEY` | Optional Azure AI Speech resource key fallback. By default the app uses Microsoft Entra ID through Azure CLI locally and managed identity in Azure. |
-| `AZURE_SPEECH_TRANSCRIPTION_MODEL` | Display name for the Speech transcription model. Defaults to `MAI-Transcribe-1.5`. |
+| `AZURE_SPEECH_TRANSCRIPTION_MODEL` | Deployment name routed through Azure Speech for Recorded Audio Transcription. Defaults to `MAI-Transcribe-1.5`. |
+| `AZURE_VOICELIVE_ENDPOINT` | Optional Foundry or Speech resource root endpoint for the Voice Live travel concierge. Defaults to `AZURE_SPEECH_ENDPOINT`. |
+| `AZURE_VOICELIVE_MODEL` | Managed Voice Live model name. Defaults to `gpt-realtime`. |
+| `AZURE_VOICELIVE_VOICE` | Azure Speech voice used by Voice Live. Defaults to `en-US-Ava:DragonHDLatestNeural`. |
 | `ENTRA_AUTH_ENABLED` | Optional flag used by the deployed backend. Set to `true` with Azure Container Apps authentication to require a signed-in Microsoft Entra user for protected `/api/*` routes. |
 | `ENTRA_LOCAL_CLIENT_ID` | Client ID of a confidential Microsoft Entra web app used for local sign-in. Do not use the workload identity client ID. |
 | `ENTRA_LOCAL_CLIENT_SECRET` | Client secret value for the local web app registration. Keep it only in `.env`. |
@@ -185,7 +188,8 @@ The top bar includes a **Use cases** marketplace. Use cases are local UI presets
 | **Side by Side comparison** | Opens the comparison workspace and shows model multi-select controls. |
 | **Browser based voice** | Keeps the text chat workspace and exposes browser dictation/readback controls. |
 | **STT -> Chat -> TTS** | Opens the traditional Foundry voice pipeline workspace. |
-| **Transcribe** | Records or uploads audio and returns a transcript using Azure AI Speech and `MAI-Transcribe-1.5`. |
+| **Recorded Audio Transcription** | Records or uploads completed audio and returns a finalized transcript using `GPT-transcribe`, `GPT-4o-transcribe`, `GPT-4o-mini-transcribe`, or `MAI-Transcribe-1.5`. It is not live streaming or the Azure Speech Fast Transcription REST API. |
+| **Live translation** | Streams microphone audio to Azure Speech Live Interpreter, automatically detects changing source languages, and returns Personal Voice audio in one selected target language. |
 | **Realtime Speech in / Speech out** | Opens the Foundry Realtime WebRTC workspace. |
 
 Settings, API trace, metrics, previous conversations, and model settings remain available outside the marketplace because they are shared app capabilities.
@@ -318,9 +322,13 @@ The **Use cases** marketplace exposes two Foundry-backed voice patterns:
 
 The traditional pipeline does not use browser speech recognition or OS voices. The browser only records microphone audio and plays the audio returned by Foundry TTS. Configure it with `FOUNDRY_TRANSCRIPTION_MODEL`, `FOUNDRY_TTS_MODEL`, and `FOUNDRY_TTS_VOICE`.
 
-The standalone Transcribe use case uses Azure AI Speech rather than the OpenAI-compatible audio API. Set `AZURE_SPEECH_ENDPOINT` to the resource custom domain, such as `https://<resource>.cognitiveservices.azure.com/`, and grant the caller the **Cognitive Services Speech User** role on that Foundry resource. Local development uses the signed-in Azure CLI identity; Container Apps uses its managed identity. `AZURE_SPEECH_KEY` remains an optional fallback only when API key authentication is enabled.
+The **Recorded Audio Transcription** use case records or uploads a complete audio file before transcription starts. `GPT-transcribe`, `GPT-4o-transcribe`, and `GPT-4o-mini-transcribe` deployments use the OpenAI-compatible `/audio/transcriptions` API. The deployment configured by `AZURE_SPEECH_TRANSCRIPTION_MODEL`, which defaults to `MAI-Transcribe-1.5`, uses the Azure Speech SDK. Set `AZURE_SPEECH_ENDPOINT` to the resource custom domain, such as `https://<resource>.cognitiveservices.azure.com/`, and grant the caller the **Cognitive Services Speech User** role. Local development uses the signed-in Azure CLI identity; Container Apps uses its managed identity. `AZURE_SPEECH_KEY` remains an optional fallback when API key authentication is enabled. This workflow is neither live streaming nor the dedicated Azure Speech Fast Transcription REST API.
+
+The Live translation use case reuses that Speech resource and derives its `wss://<resource>.cognitiveservices.azure.com/stt/speech/universal/v2` endpoint. The browser streams 16 kHz mono PCM through the backend and receives translated text plus Personal Voice PCM. Before using it, [apply for Personal Voice access](https://aka.ms/customneural), select **Personal Voice** for question 20, and use a [region supported by Live Interpreter](https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=speech-translation). Use headphones during a session to avoid microphone feedback. Live Interpreter supports one synthesized target language per session and does not currently return source-language transcription.
 
 The Realtime demo asks the backend for a short-lived Realtime client secret using Microsoft Entra ID, opens a browser WebRTC connection to `/openai/v1/realtime/calls`, streams microphone audio to the `FOUNDRY_REALTIME_MODEL` deployment, and plays the model's audio response. If you only set `FOUNDRY_PROJECT_ENDPOINT`, the app derives the OpenAI-compatible base URL from it. You can also set `FOUNDRY_REALTIME_ENDPOINT` explicitly to the endpoint shown by Foundry, such as `https://<resource>.services.ai.azure.com/openai/v1`.
+
+The Voice Live travel concierge is a separate use case. The backend authenticates to the resource and proxies the Voice Live control WebSocket; browser microphone and response audio flow over WebRTC. Its session adds Azure multilingual semantic turn detection, filler-word filtering, interruption handling, deep noise suppression, server echo cancellation, and an Azure HD voice. Set `AZURE_VOICELIVE_ENDPOINT` to the resource root, such as `https://<resource>.services.ai.azure.com/`, and grant the app identity **Cognitive Services User** and **Foundry User**. Voice Live uses managed models, so `AZURE_VOICELIVE_MODEL` is a model name rather than the deployment used by the Realtime demo.
 
 The **Browser based voice** use case is separate from the Foundry voice demos. It uses browser speech APIs:
 

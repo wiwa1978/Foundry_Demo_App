@@ -7,6 +7,7 @@ export const browserVoiceUseCase: UseCaseModule = {
   description: "Use browser dictation and readback around the normal text chat flow.",
   badge: "Browser APIs",
   icon: "browserVoice",
+  modalities: ["audio"],
   implementation: [
     "The browser Web Speech API listens to microphone input and appends final transcript text to the normal prompt box.",
     "The prompt is still sent as text to the selected Foundry chat deployment.",
