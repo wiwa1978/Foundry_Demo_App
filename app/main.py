@@ -700,8 +700,6 @@ async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
             ),
             voice=request.voice or "alloy",
         )
-        realtime_model = session["model"]
-        model_settings = get_model_settings(realtime_model)
         return {
             **session,
             "guardrail_comparison_available": False,

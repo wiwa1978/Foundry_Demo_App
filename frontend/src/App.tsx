@@ -13,7 +13,7 @@ import {
   FileText,
   GitCompareArrows,
   HelpCircle,
-  Infinity,
+  Infinity as InfinityIcon,
   Image,
   LogIn,
   LogOut,
@@ -25,7 +25,6 @@ import {
   Plus,
   RotateCcw,
   Rocket,
-  Send,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -4441,7 +4440,7 @@ export default function App() {
                   <>
                       {activeUseCaseDetails.enableComposerDictation ? (
                         <>
-                          <Infinity className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true" />
+                          <InfinityIcon className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true" />
                           <Button
                             type="button"
                             variant={isListening ? "destructive" : "ghost"}

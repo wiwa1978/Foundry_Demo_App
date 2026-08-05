@@ -1,0 +1,31 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+ignore_missing_imports = true
+follow_imports = "skip"
+warn_redundant_casts = true
+warn_unused_ignores = true
+exclude = ["frontend", "infra"]
+
+[[tool.mypy.overrides]]
+module = [
+    "app.conversation_store",
+    "app.foundry_admin",
+    "app.foundry_client",
+    "app.main",
+]
+ignore_errors = true
