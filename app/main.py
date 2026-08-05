@@ -52,6 +52,7 @@ from app.foundry_client import (
     build_foundry_request_trace,
     complete_chat,
     create_realtime_client_secret,
+    edit_image,
     generate_image,
     load_settings,
     stream_chat,
@@ -591,6 +592,53 @@ async def post_image_generation(request: ImageGenerationRequest) -> dict:
             prompt=request.prompt,
             width=request.width,
             height=request.height,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/images/edit")
+async def post_image_edit(
+    image: Annotated[UploadFile, File()],
+    model: Annotated[str, Form(min_length=1)],
+    prompt: Annotated[str, Form(min_length=1)],
+    width: Annotated[int, Form(ge=768)] = 1024,
+    height: Annotated[int, Form(ge=768)] = 1024,
+) -> dict:
+    model = model.strip()
+    prompt = prompt.strip()
+    if not model or not prompt:
+        raise HTTPException(status_code=400, detail="Model and prompt cannot be blank.")
+    if width * height > 1_048_576:
+        raise HTTPException(
+            status_code=400,
+            detail="Image dimensions cannot exceed 1,048,576 total pixels.",
+        )
+    if "gpt-image" not in model.lower():
+        raise HTTPException(
+            status_code=400,
+            detail=f"{model} does not support image editing.",
+        )
+    supported_types = {"image/png", "image/jpeg", "image/webp"}
+    if image.content_type not in supported_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Source image must be a PNG, JPEG, or WebP file.",
+        )
+    image_bytes = await image.read(10 * 1024 * 1024 + 1)
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Source image cannot be empty.")
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Source image cannot exceed 10 MB.")
+    try:
+        return await asyncio.to_thread(
+            edit_image,
+            model=model,
+            prompt=prompt,
+            image=image_bytes,
+            image_content_type=image.content_type,
+            width=width,
+            height=height,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

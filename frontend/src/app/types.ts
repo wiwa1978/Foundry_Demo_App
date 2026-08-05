@@ -7,10 +7,11 @@ export type UseCaseId =
   | "transcribe"
   | "realtime_voice"
   | "text_to_image"
+  | "image_to_image"
   | "image_comparison";
 
 export type UseCaseIconName = "chat" | "comparison" | "browserVoice" | "documents" | "image" | "voiceWave";
-export type UseCaseWorkspace = "chat" | "comparison" | "image" | "imageComparison" | "traditionalVoice" | "realtimeVoice" | "transcribe";
+export type UseCaseWorkspace = "chat" | "comparison" | "image" | "imageEdit" | "imageComparison" | "traditionalVoice" | "realtimeVoice" | "transcribe";
 
 export type UseCaseModule = {
   id: UseCaseId;

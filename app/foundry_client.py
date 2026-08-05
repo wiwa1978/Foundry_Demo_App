@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import json
 import tempfile
 import threading
+import uuid
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -503,6 +504,92 @@ def generate_image(*, model: str, prompt: str, width: int, height: int) -> dict[
     return {
         "model": model,
         "image_base64": image["b64_json"],
+        "mime_type": "image/png",
+        "width": output_width,
+        "height": output_height,
+        "duration_ms": round((time.perf_counter() - started) * 1000),
+    }
+
+
+def edit_image(
+    *,
+    model: str,
+    prompt: str,
+    image: bytes,
+    image_content_type: str,
+    width: int,
+    height: int,
+) -> dict[str, Any]:
+    settings = load_settings()
+    if not settings.is_configured:
+        raise RuntimeError(
+            "Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env."
+        )
+
+    size = _openai_image_size(width, height)
+    boundary = f"foundry-chat-{uuid.uuid4().hex}"
+    fields = {
+        "model": model,
+        "prompt": prompt,
+        "size": size,
+    }
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        parts.append((
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+            f"{value}\r\n"
+        ).encode("utf-8"))
+    parts.extend(
+        [
+            (
+                f"--{boundary}\r\n"
+                'Content-Disposition: form-data; name="image"; filename="source-image"\r\n'
+                f"Content-Type: {image_content_type}\r\n\r\n"
+            ).encode("utf-8"),
+            image,
+            b"\r\n",
+            f"--{boundary}--\r\n".encode("utf-8"),
+        ]
+    )
+
+    token = get_azure_credential().get_token("https://ai.azure.com/.default").token
+    request = Request(
+        f"{_openai_base_url(settings.endpoint or '')}/images/edits",
+        data=b"".join(parts),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        },
+        method="POST",
+    )
+    started = time.perf_counter()
+    try:
+        with urlopen(request, timeout=180) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        try:
+            error = json.loads(detail)
+            detail = error.get("error", {}).get("message") or error.get("detail") or detail
+        except json.JSONDecodeError:
+            pass
+        raise RuntimeError(f"OpenAI image edit failed ({exc.code}): {detail}") from exc
+    except URLError as exc:
+        raise RuntimeError(
+            f"Could not reach the OpenAI image edit endpoint: {exc.reason}"
+        ) from exc
+
+    edited_image = next(
+        (item for item in result.get("data", []) if item.get("b64_json")),
+        None,
+    )
+    if edited_image is None:
+        raise RuntimeError("OpenAI image edit returned no image data.")
+    output_width, output_height = (int(value) for value in size.split("x"))
+    return {
+        "model": model,
+        "image_base64": edited_image["b64_json"],
         "mime_type": "image/png",
         "width": output_width,
         "height": output_height,

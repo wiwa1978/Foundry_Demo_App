@@ -61,6 +61,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { UseCaseMarketplace } from "@/features/marketplace/UseCaseMarketplace";
 import { SoundWaveIcon } from "@/features/shared/SoundWaveIcon";
 import { UseCaseDetailsPanel } from "@/features/useCases/UseCaseDetailsPanel";
+import { imageToImagePrompts } from "@/features/useCases/imageToImagePrompts";
 import { textToImagePrompts } from "@/features/useCases/textToImagePrompts";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -731,6 +732,10 @@ export default function App() {
   const [imageResult, setImageResult] = useState<ImageGenerationResult | null>(null);
   const [imageGenerating, setImageGenerating] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [imageEditSource, setImageEditSource] = useState<File | null>(null);
+  const [imageEditResult, setImageEditResult] = useState<ImageGenerationResult | null>(null);
+  const [imageEditGenerating, setImageEditGenerating] = useState(false);
+  const [imageEditError, setImageEditError] = useState("");
   const [selectedImageModels, setSelectedImageModels] = useState<Set<string>>(new Set());
   const [imageComparisonResults, setImageComparisonResults] = useState<Record<string, ImageGenerationResult>>({});
   const [imageComparisonErrors, setImageComparisonErrors] = useState<Record<string, string>>({});
@@ -1150,6 +1155,7 @@ export default function App() {
   );
   const textModels = models.filter((model) => modelModalities[model]?.includes("text"));
   const imageModels = models.filter((model) => modelModalities[model]?.includes("image"));
+  const imageEditModels = imageModels.filter((model) => model.toLowerCase().includes("gpt-image"));
   const selectedImages = imageModels
     .filter((model) => selectedImageModels.has(model))
     .slice(0, maxImageComparisonModelCount);
@@ -1159,12 +1165,16 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (activeUseCaseDetails.workspace === "imageEdit") {
+      setImageModel((current) => current && imageEditModels.includes(current) ? current : imageEditModels[0] ?? "");
+      return;
+    }
     if (activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison") {
       setImageModel((current) => current && imageModels.includes(current) ? current : imageModels[0] ?? "");
       return;
     }
     setActiveModel((current) => current && textModels.includes(current) ? current : textModels[0] ?? "");
-  }, [activeUseCaseDetails.workspace, imageModels.join("|"), textModels.join("|")]);
+  }, [activeUseCaseDetails.workspace, imageEditModels.join("|"), imageModels.join("|"), textModels.join("|")]);
 
   function createApiTraceEntry(entry: Omit<ApiTraceEntry, "id" | "timestamp">) {
     apiTraceSequence.current += 1;
@@ -1663,6 +1673,42 @@ export default function App() {
     }
   }
 
+  async function runImageEdit() {
+    if (!imageModel || !imagePrompt.trim() || !imageEditSource || imageEditGenerating) {
+      return;
+    }
+    const [width, height] = imageSize.split("x").map(Number);
+    const form = new FormData();
+    form.append("image", imageEditSource);
+    form.append("model", imageModel);
+    form.append("prompt", imagePrompt.trim());
+    form.append("width", String(width));
+    form.append("height", String(height));
+    setImageEditGenerating(true);
+    setImageEditError("");
+    try {
+      const response = await tracedFetch(
+        "/api/images/edit",
+        { method: "POST", body: form },
+        {
+          label: "Edit image",
+          request: { model: imageModel, prompt: imagePrompt.trim(), width, height, source: imageEditSource.name },
+          responseKind: "json",
+          traceResponse: false,
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail ?? "Image edit failed.");
+      }
+      setImageEditResult({ ...(data as Omit<ImageGenerationResult, "prompt">), prompt: imagePrompt.trim() });
+    } catch (error) {
+      setImageEditError(error instanceof Error ? error.message : "Image edit failed.");
+    } finally {
+      setImageEditGenerating(false);
+    }
+  }
+
   async function runImageComparison() {
     const prompt = imagePrompt.trim();
     if (!selectedImages.length || !prompt || imageComparisonGenerating) {
@@ -1713,7 +1759,7 @@ export default function App() {
 
   function selectUseCase(useCase: UseCaseId) {
     const nextUseCase = useCaseModules.find((module) => module.id === useCase) ?? useCaseModules[0];
-    if ((nextUseCase.workspace === "image" || nextUseCase.workspace === "imageComparison") && imageModel) {
+    if ((nextUseCase.workspace === "image" || nextUseCase.workspace === "imageEdit" || nextUseCase.workspace === "imageComparison") && imageModel) {
       setActiveModel(imageModel);
     }
     if (useCase !== activeUseCase) {
@@ -3269,9 +3315,9 @@ export default function App() {
             <div className="flex gap-2">
               <div className="min-w-0 flex-1">
                 <Select
-                  value={activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel}
+                  value={activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel}
                   onValueChange={(model) => {
-                    if (activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison") {
+                    if (activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison") {
                       setImageModel(model);
                       setActiveModel(model);
                     } else {
@@ -3283,7 +3329,7 @@ export default function App() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent position="popper" align="start">
-                    {(activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModels : textModels).map((model) => (
+                    {(activeUseCaseDetails.workspace === "imageEdit" ? imageEditModels : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModels : textModels).map((model) => (
                       <SelectItem key={model} value={model}>
                         {formatModelName(model)}
                       </SelectItem>
@@ -3296,7 +3342,7 @@ export default function App() {
                 variant="outline"
                 size="icon"
                 disabled={!canUseProtectedApis}
-                onClick={() => void openSettings(activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
+                onClick={() => void openSettings(activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
                 title="Open model settings"
                 className="shrink-0"
               >
@@ -3690,8 +3736,10 @@ export default function App() {
                     ? "Appearance and application preferences"
                     : activeView === "model-settings"
                       ? `Configure ${settingsModel ?? activeModel}`
-                       : activeUseCaseDetails.workspace === "image"
-                         ? `Create a PNG with ${imageModel || "an image deployment"}`
+                        : activeUseCaseDetails.workspace === "image"
+                          ? `Create a PNG with ${imageModel || "an image deployment"}`
+                        : activeUseCaseDetails.workspace === "imageEdit"
+                          ? `Transform a source image with ${imageModel || "a compatible image deployment"}`
                        : activeUseCaseDetails.workspace === "imageComparison"
                          ? `Comparing ${selectedImages.length} image endpoint${selectedImages.length === 1 ? "" : "s"}`
                       : activeUseCaseDetails.workspace === "comparison"
@@ -3711,7 +3759,7 @@ export default function App() {
               {activeView !== "model-settings" ? (
                 <button
                   type="button"
-                  onClick={() => void openSettings(activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
+                  onClick={() => void openSettings(activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
                   className="rounded p-1 hover:bg-slate-100 dark:hover:bg-[#45454a]"
                   aria-label="Open active model settings"
                 >
@@ -3828,6 +3876,29 @@ export default function App() {
                 setActiveModel(model);
               }}
               onGenerate={() => void runImageGeneration()}
+            />
+          ) : activeUseCaseDetails.workspace === "imageEdit" ? (
+            <ImageToImageWorkspace
+              model={imageModel}
+              models={imageEditModels}
+              prompt={imagePrompt}
+              size={imageSize}
+              source={imageEditSource}
+              result={imageEditResult}
+              generating={imageEditGenerating}
+              error={imageEditError}
+              onPromptChange={setImagePrompt}
+              onSizeChange={setImageSize}
+              onSourceChange={(source) => {
+                setImageEditSource(source);
+                setImageEditResult(null);
+                setImageEditError("");
+              }}
+              onModelChange={(model) => {
+                setImageModel(model);
+                setActiveModel(model);
+              }}
+              onGenerate={() => void runImageEdit()}
             />
           ) : activeUseCaseDetails.workspace === "imageComparison" ? (
             <ImageComparisonWorkspace
@@ -5611,6 +5682,179 @@ function TextToImageWorkspace({
     </div>
   );
 
+}
+
+type ImageToImageWorkspaceProps = {
+  model: string;
+  models: string[];
+  prompt: string;
+  size: string;
+  source: File | null;
+  result: ImageGenerationResult | null;
+  generating: boolean;
+  error: string;
+  onPromptChange: (prompt: string) => void;
+  onSizeChange: (size: string) => void;
+  onSourceChange: (source: File | null) => void;
+  onModelChange: (model: string) => void;
+  onGenerate: () => void;
+};
+
+function ImageToImageWorkspace({
+  model,
+  models,
+  prompt,
+  size,
+  source,
+  result,
+  generating,
+  error,
+  onPromptChange,
+  onSizeChange,
+  onSourceChange,
+  onModelChange,
+  onGenerate,
+}: ImageToImageWorkspaceProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [sourceUrl, setSourceUrl] = useState("");
+  const resultUrl = result ? `data:${result.mime_type};base64,${result.image_base64}` : "";
+
+  useEffect(() => {
+    if (!source) {
+      setSourceUrl("");
+      return;
+    }
+    const url = URL.createObjectURL(source);
+    setSourceUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [source]);
+
+  function chooseSource(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      toast.error("Choose a PNG, JPEG, or WebP image.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Source image cannot exceed 10 MB.");
+      return;
+    }
+    onSourceChange(file);
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-slate-100/70 dark:bg-[#303033]">
+      <PromptExamples
+        title="Image transformation prompts"
+        description="Choose an instruction, then adapt it to your source image."
+        icon={<Sparkles className="h-4 w-4" />}
+        examples={imageToImagePrompts}
+        value={prompt}
+        onSelect={onPromptChange}
+      />
+      <div className="flex-1 overflow-auto p-5">
+        <div className="mx-auto grid min-h-full max-w-6xl gap-4 md:grid-cols-2">
+          <div className="flex min-h-[360px] flex-col rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 dark:border-[#606066] dark:bg-[#29292c]/70">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Source</div>
+                <div className="mt-1 max-w-xs truncate text-sm text-slate-600 dark:text-slate-300">{source?.name ?? "No image selected"}</div>
+              </div>
+            </div>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(event) => {
+                chooseSource(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="flex flex-1 items-center justify-center overflow-hidden rounded-xl bg-slate-50 text-slate-400 dark:bg-[#303033]"
+            >
+              {sourceUrl ? (
+                <img src={sourceUrl} alt="Source upload" className="max-h-[62vh] w-full object-contain" />
+              ) : (
+                <div className="p-8 text-center">
+                  <UploadCloud className="mx-auto h-10 w-10" />
+                  <p className="mt-3 text-sm">Upload a PNG, JPEG, or WebP image up to 10 MB.</p>
+                </div>
+              )}
+            </button>
+          </div>
+          <div className="flex min-h-[360px] flex-col rounded-2xl border border-slate-200 bg-white/70 p-4 dark:border-[#55555a] dark:bg-[#29292c]/70">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Transformed result</div>
+            <div className="flex flex-1 items-center justify-center overflow-hidden rounded-xl bg-slate-50 dark:bg-[#303033]">
+              {resultUrl && result ? (
+                <img src={resultUrl} alt={result.prompt || "AI-edited image"} className="max-h-[62vh] w-full object-contain" />
+              ) : (
+                <div className="max-w-xs p-8 text-center text-slate-400">
+                  <Image className="mx-auto h-10 w-10" />
+                  <p className="mt-3 text-sm">Your transformed image will appear here.</p>
+                </div>
+              )}
+            </div>
+            {resultUrl && result ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+                <span>{result.model} · {result.width} × {result.height} · {(result.duration_ms / 1000).toFixed(1)}s</span>
+                <a href={resultUrl} download="foundry-edited-image.png" className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-background px-3 font-medium">
+                  <Download className="h-3.5 w-3.5" /> Download PNG
+                </a>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      <UseCaseComposer
+        ariaLabel="Image transformation prompt"
+        placeholder="Describe how the source image should change..."
+        value={prompt}
+        disabled={!model || !source || !prompt.trim() || generating}
+        submitting={generating}
+        disclaimer="Image edits may alter details you intended to preserve"
+        error={models.length ? error : "Add a gpt-image deployment to use image editing."}
+        onChange={onPromptChange}
+        onSubmit={onGenerate}
+        leftControls={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => inputRef.current?.click()}
+              title={source ? `Replace ${source.name}` : "Upload source image"}
+            >
+              <UploadCloud className="mr-2 h-4 w-4" /> {source ? "Replace source" : "Upload source"}
+            </Button>
+            <ComposerSelect
+              id="image-edit-size"
+              ariaLabel="Edited image size"
+              value={size}
+              onChange={onSizeChange}
+              options={[
+                { value: "1024x1024", label: "Square · 1024 × 1024" },
+                { value: "768x1024", label: "Portrait · 768 × 1024" },
+                { value: "1024x768", label: "Landscape · 1024 × 768" },
+              ]}
+            />
+            <ComposerSelect
+              id="image-edit-model"
+              ariaLabel="Image edit model"
+              value={model}
+              onChange={onModelChange}
+              options={models.map((modelName) => ({ value: modelName, label: formatModelName(modelName) }))}
+            />
+          </>
+        }
+      />
+    </div>
+  );
 }
 
 type ImageComparisonWorkspaceProps = {
