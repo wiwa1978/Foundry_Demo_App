@@ -2,8 +2,8 @@ import type { UseCaseModule } from "@/app/types";
 
 export const comparisonUseCase: UseCaseModule = {
   id: "comparison",
-  title: "Side by Side comparison",
-  shortTitle: "Compare",
+  title: "Side by Side - Text Chat",
+  shortTitle: "Side by Side - Text Chat",
   description: "Send one prompt to multiple deployments and compare responses side by side.",
   badge: "Models",
   icon: "comparison",

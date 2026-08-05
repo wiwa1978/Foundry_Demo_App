@@ -441,18 +441,33 @@ def generate_image(*, model: str, prompt: str, width: int, height: int) -> dict[
             "Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env."
         )
 
-    endpoint = _normalize_endpoint(settings.endpoint or "")
-    parsed = urlparse(endpoint)
-    url = f"{parsed.scheme}://{parsed.netloc}/mai/v1/images/generations"
-    token = get_azure_credential().get_token(
-        "https://cognitiveservices.azure.com/.default"
-    ).token
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "width": width,
-        "height": height,
-    }
+    is_mai_model = "mai-image" in model.strip().lower()
+    if is_mai_model:
+        endpoint = _normalize_endpoint(settings.endpoint or "")
+        parsed = urlparse(endpoint)
+        url = f"{parsed.scheme}://{parsed.netloc}/mai/v1/images/generations"
+        token_scope = "https://cognitiveservices.azure.com/.default"
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "width": width,
+            "height": height,
+        }
+        api_name = "MAI"
+        output_width, output_height = width, height
+    else:
+        url = f"{_openai_base_url(settings.endpoint or '')}/images/generations"
+        token_scope = "https://ai.azure.com/.default"
+        size = _openai_image_size(width, height)
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "size": size,
+        }
+        api_name = "OpenAI"
+        output_width, output_height = (int(value) for value in size.split("x"))
+
+    token = get_azure_credential().get_token(token_scope).token
     request = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -473,24 +488,34 @@ def generate_image(*, model: str, prompt: str, width: int, height: int) -> dict[
             detail = error.get("error", {}).get("message") or error.get("detail") or detail
         except json.JSONDecodeError:
             pass
-        raise RuntimeError(f"MAI image generation failed ({exc.code}): {detail}") from exc
+        raise RuntimeError(f"{api_name} image generation failed ({exc.code}): {detail}") from exc
     except URLError as exc:
-        raise RuntimeError(f"Could not reach the MAI image generation endpoint: {exc.reason}") from exc
+        raise RuntimeError(
+            f"Could not reach the {api_name} image generation endpoint: {exc.reason}"
+        ) from exc
 
     image = next(
         (item for item in result.get("data", []) if item.get("b64_json")),
         None,
     )
     if image is None:
-        raise RuntimeError("MAI image generation returned no image data.")
+        raise RuntimeError(f"{api_name} image generation returned no image data.")
     return {
         "model": model,
         "image_base64": image["b64_json"],
         "mime_type": "image/png",
-        "width": width,
-        "height": height,
+        "width": output_width,
+        "height": output_height,
         "duration_ms": round((time.perf_counter() - started) * 1000),
     }
+
+
+def _openai_image_size(width: int, height: int) -> str:
+    if width == height:
+        return "1024x1024"
+    if width > height:
+        return "1536x1024"
+    return "1024x1536"
 
 
 def complete_chat(

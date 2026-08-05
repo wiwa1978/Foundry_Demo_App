@@ -55,6 +55,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Toaster } from "@/components/ui/sonner";
 import { PromptExamples, type PromptExample } from "@/components/PromptExamples";
 import { Textarea } from "@/components/ui/textarea";
 import { UseCaseMarketplace } from "@/features/marketplace/UseCaseMarketplace";
@@ -62,6 +63,7 @@ import { SoundWaveIcon } from "@/features/shared/SoundWaveIcon";
 import { UseCaseDetailsPanel } from "@/features/useCases/UseCaseDetailsPanel";
 import { textToImagePrompts } from "@/features/useCases/textToImagePrompts";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type ConfigResponse = {
   entra_auth_enabled: boolean;
@@ -669,6 +671,7 @@ const speechVoiceStorageKey = "foundry-chat-speech-voice-uri";
 const colorPaletteStorageKey = "foundry-chat-color-palette";
 const defaultComparisonModelCount = 2;
 const maxComparisonModelCount = 3;
+const maxImageComparisonModelCount = 2;
 const colorPalettes: Array<{
   id: ColorPalette;
   name: string;
@@ -728,6 +731,10 @@ export default function App() {
   const [imageResult, setImageResult] = useState<ImageGenerationResult | null>(null);
   const [imageGenerating, setImageGenerating] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [selectedImageModels, setSelectedImageModels] = useState<Set<string>>(new Set());
+  const [imageComparisonResults, setImageComparisonResults] = useState<Record<string, ImageGenerationResult>>({});
+  const [imageComparisonErrors, setImageComparisonErrors] = useState<Record<string, string>>({});
+  const [imageComparisonGenerating, setImageComparisonGenerating] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("default");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -801,6 +808,8 @@ export default function App() {
   const [transcriptionResult, setTranscriptionResult] = useState<TranscriptionResult | null>(null);
   const [transcriptionLanguage, setTranscriptionLanguage] = useState("en-US");
   const [transcriptionSourceName, setTranscriptionSourceName] = useState("");
+  const [transcriptionAudioUrl, setTranscriptionAudioUrl] = useState("");
+  const transcriptionAudioUrlRef = useRef("");
   const [theme, setTheme] = useState<Theme>(() => {
     const savedTheme = localStorage.getItem("foundry-chat-theme");
     if (savedTheme === "light" || savedTheme === "dark") {
@@ -859,6 +868,7 @@ export default function App() {
         ) as Record<string, ModelModality[]>;
         setModelModalities(inferredModalities);
         setImageModel(configuredModels.find(isImageModelName) ?? "");
+        setSelectedImageModels(new Set(configuredModels.filter(isImageModelName).slice(0, maxImageComparisonModelCount)));
         setActiveModel(configuredModels[0]);
         setSelectedModels(new Set(
           configuredModels
@@ -945,6 +955,10 @@ export default function App() {
           setImageModel((current) =>
             current && imageModels.includes(current) ? current : imageModels[0] ?? "",
           );
+          setSelectedImageModels((current) => {
+            const retained = imageModels.filter((model) => current.has(model));
+            return new Set((retained.length ? retained : imageModels).slice(0, maxImageComparisonModelCount));
+          });
           setActiveModel((current) =>
             current && data.models.includes(current) ? current : data.models[0],
           );
@@ -1104,6 +1118,9 @@ export default function App() {
       if (traditionalAudioUrlRef.current) {
         URL.revokeObjectURL(traditionalAudioUrlRef.current);
       }
+      if (transcriptionAudioUrlRef.current) {
+        URL.revokeObjectURL(transcriptionAudioUrlRef.current);
+      }
     },
     [],
   );
@@ -1116,13 +1133,16 @@ export default function App() {
   );
   const textModels = models.filter((model) => modelModalities[model]?.includes("text"));
   const imageModels = models.filter((model) => modelModalities[model]?.includes("image"));
+  const selectedImages = imageModels
+    .filter((model) => selectedImageModels.has(model))
+    .slice(0, maxImageComparisonModelCount);
   const activeUseCaseDetails = useMemo(
     () => useCaseModules.find((useCase) => useCase.id === activeUseCase) ?? useCaseModules[0],
     [activeUseCase],
   );
 
   useEffect(() => {
-    if (activeUseCaseDetails.workspace === "image") {
+    if (activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison") {
       setImageModel((current) => current && imageModels.includes(current) ? current : imageModels[0] ?? "");
       return;
     }
@@ -1311,15 +1331,18 @@ export default function App() {
   }
 
   function toggleModel(model: string) {
-    setSelectedModels((current) => {
-      const next = new Set(current);
-      if (next.has(model)) {
-        next.delete(model);
-      } else if (next.size < maxComparisonModelCount) {
-        next.add(model);
+    const next = new Set(selectedModels);
+    if (next.has(model)) {
+      next.delete(model);
+    } else if (next.size < maxComparisonModelCount) {
+      next.add(model);
+      if (next.size === maxComparisonModelCount) {
+        toast.info("Comparison limit reached", {
+          description: `You can compare up to ${maxComparisonModelCount} models at a time.`,
+        });
       }
-      return next;
-    });
+    }
+    setSelectedModels(next);
   }
 
   function replaceComparisonModel(currentModel: string, nextModel: string) {
@@ -1391,6 +1414,30 @@ export default function App() {
     } finally {
       setGuardrailPoliciesLoading(false);
     }
+  }
+
+  function toggleImageComparisonModel(model: string) {
+    setSelectedImageModels((current) => {
+      const next = new Set(current);
+      if (next.has(model)) {
+        next.delete(model);
+      } else if (next.size < maxImageComparisonModelCount) {
+        next.add(model);
+      }
+      return next;
+    });
+  }
+
+  function replaceImageComparisonModel(currentModel: string, nextModel: string) {
+    if (currentModel === nextModel) {
+      return;
+    }
+    setSelectedImageModels((current) => {
+      const next = new Set(current);
+      next.delete(currentModel);
+      next.add(nextModel);
+      return next;
+    });
   }
 
   async function toggleGuardrailComparison() {
@@ -1599,9 +1646,57 @@ export default function App() {
     }
   }
 
+  async function runImageComparison() {
+    const prompt = imagePrompt.trim();
+    if (!selectedImages.length || !prompt || imageComparisonGenerating) {
+      return;
+    }
+    const [width, height] = imageSize.split("x").map(Number);
+    setImageComparisonGenerating(true);
+    setImageComparisonErrors({});
+    const outcomes = await Promise.all(selectedImages.map(async (model): Promise<{
+      model: string;
+      result?: ImageGenerationResult;
+      error?: string;
+    }> => {
+      const request = { model, prompt, width, height };
+      try {
+        const response = await tracedFetch(
+          "/api/images/generate",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(request),
+          },
+          { label: `Generate image with ${model}`, request, responseKind: "json", traceResponse: false },
+        );
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail ?? "Image generation failed.");
+        }
+        return { model, result: { ...(data as Omit<ImageGenerationResult, "prompt">), prompt } };
+      } catch (error) {
+        return { model, error: error instanceof Error ? error.message : "Image generation failed." };
+      }
+    }));
+    setImageComparisonResults((current) => {
+      const next = { ...current };
+      outcomes.forEach((outcome) => {
+        if (outcome.result) {
+          next[outcome.model] = outcome.result;
+        }
+      });
+      return next;
+    });
+    setImageComparisonErrors(Object.fromEntries(
+      outcomes.filter((outcome) => outcome.error).map((outcome) => [outcome.model, outcome.error as string]),
+    ));
+    setImageComparisonGenerating(false);
+  }
+
   function selectUseCase(useCase: UseCaseId) {
     const nextUseCase = useCaseModules.find((module) => module.id === useCase) ?? useCaseModules[0];
-    if (nextUseCase.workspace === "image" && imageModel) {
+    if ((nextUseCase.workspace === "image" || nextUseCase.workspace === "imageComparison") && imageModel) {
       setActiveModel(imageModel);
     }
     if (useCase !== activeUseCase) {
@@ -1614,7 +1709,7 @@ export default function App() {
     setActiveUseCase(useCase);
     setActiveView("chat");
     setUseCaseMarketplaceOpen(false);
-    setComparisonMode(nextUseCase.workspace === "comparison");
+    setComparisonMode(nextUseCase.workspace === "comparison" || nextUseCase.workspace === "imageComparison");
     if (!nextUseCase.enableComposerDictation && isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
@@ -1995,6 +2090,14 @@ export default function App() {
     transcriptionMediaStreamRef.current = null;
   }
 
+  function replaceTranscriptionAudioUrl(url: string) {
+    if (transcriptionAudioUrlRef.current) {
+      URL.revokeObjectURL(transcriptionAudioUrlRef.current);
+    }
+    transcriptionAudioUrlRef.current = url;
+    setTranscriptionAudioUrl(url);
+  }
+
   function stopTranscriptionRecording() {
     const recorder = transcriptionMediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
@@ -2067,6 +2170,7 @@ export default function App() {
     setTranscriptionError("");
     setTranscriptionResult(null);
     setTranscriptionSourceName(sourceName);
+    replaceTranscriptionAudioUrl(URL.createObjectURL(source));
     try {
       const wav = await convertAudioToWav(source);
       const formData = new FormData();
@@ -3148,9 +3252,9 @@ export default function App() {
             <div className="flex gap-2">
               <div className="min-w-0 flex-1">
                 <Select
-                  value={activeUseCaseDetails.workspace === "image" ? imageModel : activeModel}
+                  value={activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel}
                   onValueChange={(model) => {
-                    if (activeUseCaseDetails.workspace === "image") {
+                    if (activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison") {
                       setImageModel(model);
                       setActiveModel(model);
                     } else {
@@ -3162,7 +3266,7 @@ export default function App() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent position="popper" align="start">
-                    {(activeUseCaseDetails.workspace === "image" ? imageModels : textModels).map((model) => (
+                    {(activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModels : textModels).map((model) => (
                       <SelectItem key={model} value={model}>
                         {formatModelName(model)}
                       </SelectItem>
@@ -3175,7 +3279,7 @@ export default function App() {
                 variant="outline"
                 size="icon"
                 disabled={!canUseProtectedApis}
-                onClick={() => void openSettings(activeUseCaseDetails.workspace === "image" ? imageModel : activeModel)}
+                onClick={() => void openSettings(activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
                 title="Open model settings"
                 className="shrink-0"
               >
@@ -3454,6 +3558,51 @@ export default function App() {
           </div>
           ) : null}
 
+          {activeUseCaseDetails.showImageComparisonControls ? (
+          <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
+            <SidebarSection title="Image comparison">
+              <div className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-left dark:border-violet-500/60 dark:bg-violet-500/15">
+                <span className="flex min-w-0 items-center gap-2 text-sm">
+                  <GitCompareArrows className="h-4 w-4 text-violet-600" />
+                  <span className="truncate">Side-by-side images</span>
+                </span>
+                <Badge variant="default" className="shrink-0">On</Badge>
+              </div>
+              <div className="mt-3 flex flex-col gap-2">
+                {imageModels.map((model) => (
+                  <div
+                    key={model}
+                    className={cn(
+                      "flex items-center justify-between rounded-md border px-2 py-1.5 text-sm",
+                      selectedImageModels.has(model)
+                        ? "border-blue-300 bg-blue-50 dark:border-violet-500/60 dark:bg-violet-500/15"
+                        : "border-slate-200 bg-white dark:border-[#606066] dark:bg-[#29292c]",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate text-left disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => toggleImageComparisonModel(model)}
+                      disabled={!selectedImageModels.has(model) && selectedImageModels.size >= maxImageComparisonModelCount}
+                      title={!selectedImageModels.has(model) && selectedImageModels.size >= maxImageComparisonModelCount ? "You can compare up to two image models." : undefined}
+                    >
+                      {formatModelName(model)}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#45454a]"
+                      onClick={() => void openSettings(model)}
+                      aria-label={`Open settings for ${model}`}
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </SidebarSection>
+          </div>
+          ) : null}
+
           {activeView === "chat" && activeUseCaseDetails.workspace === "chat" ? (
             <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
               <SidebarSection title="Guardrail test">
@@ -3524,8 +3673,10 @@ export default function App() {
                     ? "Appearance and application preferences"
                     : activeView === "model-settings"
                       ? `Configure ${settingsModel ?? activeModel}`
-                      : activeUseCaseDetails.workspace === "image"
-                        ? `Create a PNG with ${imageModel || "an image deployment"}`
+                       : activeUseCaseDetails.workspace === "image"
+                         ? `Create a PNG with ${imageModel || "an image deployment"}`
+                       : activeUseCaseDetails.workspace === "imageComparison"
+                         ? `Comparing ${selectedImages.length} image endpoint${selectedImages.length === 1 ? "" : "s"}`
                       : activeUseCaseDetails.workspace === "comparison"
                       ? `Comparing ${selected.length} model endpoint${selected.length === 1 ? "" : "s"}`
                       : activeUseCase === "document_qa"
@@ -3543,7 +3694,7 @@ export default function App() {
               {activeView !== "model-settings" ? (
                 <button
                   type="button"
-                  onClick={() => void openSettings(activeUseCaseDetails.workspace === "image" ? imageModel : activeModel)}
+                  onClick={() => void openSettings(activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
                   className="rounded p-1 hover:bg-slate-100 dark:hover:bg-[#45454a]"
                   aria-label="Open active model settings"
                 >
@@ -3661,6 +3812,21 @@ export default function App() {
               }}
               onGenerate={() => void runImageGeneration()}
             />
+          ) : activeUseCaseDetails.workspace === "imageComparison" ? (
+            <ImageComparisonWorkspace
+              allModels={imageModels}
+              models={selectedImages}
+              prompt={imagePrompt}
+              size={imageSize}
+              results={imageComparisonResults}
+              errors={imageComparisonErrors}
+              generating={imageComparisonGenerating}
+              onPromptChange={setImagePrompt}
+              onSizeChange={setImageSize}
+              onGenerate={() => void runImageComparison()}
+              onOpenSettings={(model) => void openSettings(model)}
+              onModelChange={replaceImageComparisonModel}
+            />
           ) : activeUseCaseDetails.workspace === "comparison" ? (
             <ComparisonWorkspace
               allModels={textModels}
@@ -3696,24 +3862,21 @@ export default function App() {
               </div>
             </div>
           ) : activeUseCaseDetails.workspace === "transcribe" ? (
-            <div className="flex-1 overflow-auto p-5">
-              <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center">
-                <TranscriptionHero
-                  configured={config?.is_speech_transcription_configured ?? false}
-                  model={config?.speech_transcription_model ?? "MAI-Transcribe-1.5"}
-                  status={transcriptionStatus}
-                  error={transcriptionError}
-                  result={transcriptionResult}
-                  language={transcriptionLanguage}
-                  sourceName={transcriptionSourceName}
-                  fileInputRef={transcriptionFileInputRef}
-                  onLanguageChange={setTranscriptionLanguage}
-                  onStart={() => void startTranscriptionRecording()}
-                  onStop={stopTranscriptionRecording}
-                  onFileSelected={selectTranscriptionFile}
-                />
-              </div>
-            </div>
+            <TranscriptionWorkspace
+              configured={config?.is_speech_transcription_configured ?? false}
+              model={config?.speech_transcription_model ?? "MAI-Transcribe-1.5"}
+              status={transcriptionStatus}
+              error={transcriptionError}
+              result={transcriptionResult}
+              language={transcriptionLanguage}
+              sourceName={transcriptionSourceName}
+              audioUrl={transcriptionAudioUrl}
+              fileInputRef={transcriptionFileInputRef}
+              onLanguageChange={setTranscriptionLanguage}
+              onStart={() => void startTranscriptionRecording()}
+              onStop={stopTranscriptionRecording}
+              onFileSelected={selectTranscriptionFile}
+            />
           ) : activeUseCaseDetails.workspace === "realtimeVoice" ? (
             <div className="flex-1 overflow-auto p-5">
               <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center">
@@ -3904,6 +4067,7 @@ export default function App() {
           </button>
         </div>
       ) : null}
+      <Toaster theme={theme} position="bottom-right" richColors closeButton />
     </main>
   );
 }
@@ -4150,7 +4314,7 @@ function VoiceResultBlock({ label, text }: { label: string; text: string }) {
   );
 }
 
-function TranscriptionHero({
+function TranscriptionWorkspace({
   configured,
   model,
   status,
@@ -4158,6 +4322,7 @@ function TranscriptionHero({
   result,
   language,
   sourceName,
+  audioUrl,
   fileInputRef,
   onLanguageChange,
   onStart,
@@ -4171,6 +4336,7 @@ function TranscriptionHero({
   result: TranscriptionResult | null;
   language: string;
   sourceName: string;
+  audioUrl: string;
   fileInputRef: RefObject<HTMLInputElement>;
   onLanguageChange: (value: string) => void;
   onStart: () => void;
@@ -4181,104 +4347,93 @@ function TranscriptionHero({
   const isProcessing = status === "processing";
 
   return (
-    <div className="w-full rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
-      <div className="text-center">
-        <DictationHero active={isRecording || isProcessing} />
-        <Badge variant="outline">Azure Speech</Badge>
-        <h3 className="mt-3 text-2xl font-semibold tracking-tight">Audio transcription</h3>
-        <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-          Record or upload audio for transcription with{" "}
-          <span className="font-medium text-slate-700 dark:text-slate-200">{formatModelName(model)}</span>.
-        </p>
-      </div>
-
-      <div className="mx-auto mt-5 grid max-w-xl gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-        <Label className="grid gap-2 text-xs text-slate-500 dark:text-slate-400">
-          Recognition language
-          <select
-            value={language}
-            onChange={(event) => onLanguageChange(event.target.value)}
-            disabled={isRecording || isProcessing}
-            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
-          >
-            <option value="en-US">English (United States)</option>
-            <option value="en-GB">English (United Kingdom)</option>
-            <option value="nl-NL">Dutch (Netherlands)</option>
-            <option value="nl-BE">Dutch (Belgium)</option>
-            <option value="fr-BE">French (Belgium)</option>
-            <option value="fr-FR">French (France)</option>
-            <option value="de-DE">German (Germany)</option>
-            <option value="es-ES">Spanish (Spain)</option>
-          </select>
-        </Label>
-        <Button
-          type="button"
-          onClick={isRecording ? onStop : onStart}
-          disabled={!configured || isProcessing}
-          variant={isRecording ? "destructive" : "default"}
-        >
-          {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          {isRecording ? "Stop" : isProcessing ? "Transcribing..." : "Record"}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!configured || isRecording || isProcessing}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <UploadCloud className="h-4 w-4" />
-          Upload audio
-        </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="audio/*,.mp3,.wav,.ogg,.webm,.m4a"
-          className="hidden"
-          onChange={(event) => {
-            onFileSelected(event.target.files?.[0]);
-            event.currentTarget.value = "";
-          }}
-        />
-      </div>
-
-      {!configured ? (
-        <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-          Set AZURE_SPEECH_ENDPOINT and grant the app identity Cognitive Services Speech User access.
-        </p>
-      ) : null}
-      {error ? (
-        <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs leading-5 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
-          {error}
-        </p>
-      ) : null}
-      {isProcessing ? (
-        <div className="mt-5 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-          <LoaderCircle className="h-4 w-4 animate-spin" />
-          Transcribing {sourceName}...
-        </div>
-      ) : null}
-      {result ? (
-        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-[#606066] dark:bg-[#45454a]">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              {sourceName} · {result.language} · {result.duration_ms} ms
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(result.text)}>
-                <Copy className="h-4 w-4" />
-                Copy
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => downloadText(result.text, "transcript.txt")}>
-                <Download className="h-4 w-4" />
-                Download
-              </Button>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex-1 overflow-auto p-5">
+        {result ? (
+          <div className="mx-auto grid max-w-4xl gap-3">
+            <div className="ml-auto w-full max-w-2xl rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm dark:border-[#606066] dark:bg-[#45454a]">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-medium text-slate-600 dark:text-slate-300">{sourceName}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">{result.language} · {result.duration_ms} ms</div>
+              </div>
+              {audioUrl ? <audio className="w-full" controls preload="metadata" src={audioUrl} /> : null}
+              <div className="mt-4 border-t border-slate-200 pt-4 dark:border-[#606066]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Transcription</span>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(result.text)}>
+                      <Copy className="h-4 w-4" /> Copy
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => downloadText(result.text, "transcript.txt")}>
+                      <Download className="h-4 w-4" /> Download
+                    </Button>
+                  </div>
+                </div>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">{result.text}</p>
+              </div>
             </div>
           </div>
-          <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
-            {result.text}
-          </p>
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <div className="max-w-lg rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
+              <DictationHero active={isRecording || isProcessing} />
+              <Badge variant="outline">Azure Speech</Badge>
+              <h3 className="mt-3 text-2xl font-semibold tracking-tight">Audio transcription</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                Record or upload audio below to transcribe it with <span className="font-medium text-slate-700 dark:text-slate-200">{formatModelName(model)}</span>.
+              </p>
+              {isProcessing ? (
+                <div className="mt-5 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                  <LoaderCircle className="h-4 w-4 animate-spin" /> Transcribing {sourceName}...
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t bg-slate-50 px-4 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
+        <div className="palette-focus mx-auto flex max-w-5xl flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_4px_rgba(15,23,42,0.16)] dark:border-[#606066] dark:bg-[#2f2f33] dark:shadow-none sm:flex-row sm:items-end">
+          <Label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Recognition language
+            <select
+              value={language}
+              onChange={(event) => onLanguageChange(event.target.value)}
+              disabled={isRecording || isProcessing}
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+            >
+              <option value="en-US">English (United States)</option>
+              <option value="en-GB">English (United Kingdom)</option>
+              <option value="nl-NL">Dutch (Netherlands)</option>
+              <option value="nl-BE">Dutch (Belgium)</option>
+              <option value="fr-BE">French (Belgium)</option>
+              <option value="fr-FR">French (France)</option>
+              <option value="de-DE">German (Germany)</option>
+              <option value="es-ES">Spanish (Spain)</option>
+            </select>
+          </Label>
+          <Button type="button" onClick={isRecording ? onStop : onStart} disabled={!configured || isProcessing} variant={isRecording ? "destructive" : "default"}>
+            {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            {isRecording ? "Stop recording" : isProcessing ? "Transcribing..." : "Record audio"}
+          </Button>
+          <Button type="button" variant="outline" disabled={!configured || isRecording || isProcessing} onClick={() => fileInputRef.current?.click()}>
+            <UploadCloud className="h-4 w-4" /> Upload audio
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*,.mp3,.wav,.ogg,.webm,.m4a"
+            className="hidden"
+            onChange={(event) => {
+              onFileSelected(event.target.files?.[0]);
+              event.currentTarget.value = "";
+            }}
+          />
         </div>
-      ) : null}
+        {!configured ? <p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">Set AZURE_SPEECH_ENDPOINT and grant the app identity Cognitive Services Speech User access.</p> : null}
+        {error ? <p className="mt-2 text-center text-xs text-red-600 dark:text-red-300">{error}</p> : null}
+        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">Audio is processed by Azure Speech to generate the transcription</p>
+      </div>
     </div>
   );
 }
@@ -5439,6 +5594,205 @@ function TextToImageWorkspace({
     </div>
   );
 
+}
+
+type ImageComparisonWorkspaceProps = {
+  allModels: string[];
+  models: string[];
+  prompt: string;
+  size: string;
+  results: Record<string, ImageGenerationResult>;
+  errors: Record<string, string>;
+  generating: boolean;
+  onPromptChange: (prompt: string) => void;
+  onSizeChange: (size: string) => void;
+  onGenerate: () => void;
+  onOpenSettings: (model: string) => void;
+  onModelChange: (currentModel: string, nextModel: string) => void;
+};
+
+function ImageComparisonWorkspace({
+  allModels,
+  models,
+  prompt,
+  size,
+  results,
+  errors,
+  generating,
+  onPromptChange,
+  onSizeChange,
+  onGenerate,
+  onOpenSettings,
+  onModelChange,
+}: ImageComparisonWorkspaceProps) {
+  if (!models.length) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6 text-center">
+        <div className="max-w-md">
+          <GitCompareArrows className="mx-auto mb-4 h-10 w-10 text-slate-300 dark:text-[#77777d]" />
+          <h3 className="text-lg font-semibold">Select image models to compare</h3>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            Turn on up to two image endpoints in the comparison list to start side-by-side generation.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-slate-100/70 dark:bg-[#303033]">
+      <PromptExamples
+        title="Image prompt gallery"
+        description="Choose an example to load the same prompt into both image panes."
+        icon={<Sparkles className="h-4 w-4" />}
+        examples={textToImagePrompts}
+        value={prompt}
+        onSelect={onPromptChange}
+      />
+      <div className="flex-1 overflow-x-auto p-4">
+        <div
+          className="grid h-full min-w-[44rem] gap-4"
+          style={{ gridTemplateColumns: `repeat(${models.length}, minmax(20rem, 1fr))` }}
+        >
+          {models.map((model) => (
+            <ImageComparisonPane
+              key={model}
+              allModels={allModels}
+              selectedModels={models}
+              model={model}
+              prompt={prompt}
+              size={size}
+              result={results[model]}
+              error={errors[model]}
+              generating={generating}
+              onPromptChange={onPromptChange}
+              onSizeChange={onSizeChange}
+              onGenerate={onGenerate}
+              onOpenSettings={onOpenSettings}
+              onModelChange={onModelChange}
+            />
+          ))}
+        </div>
+      </div>
+      <p className="border-t bg-white px-4 py-2 text-center text-xs text-slate-500 dark:border-[#55555a] dark:bg-[#29292c] dark:text-slate-400">
+        Text typed in either prompt is mirrored to both panes. Sending generates the same image size with every selected model.
+      </p>
+    </div>
+  );
+}
+
+function ImageComparisonPane({
+  allModels,
+  selectedModels,
+  model,
+  prompt,
+  size,
+  result,
+  error,
+  generating,
+  onPromptChange,
+  onSizeChange,
+  onGenerate,
+  onOpenSettings,
+  onModelChange,
+}: {
+  allModels: string[];
+  selectedModels: string[];
+  model: string;
+  prompt: string;
+  size: string;
+  result?: ImageGenerationResult;
+  error?: string;
+  generating: boolean;
+  onPromptChange: (prompt: string) => void;
+  onSizeChange: (size: string) => void;
+  onGenerate: () => void;
+  onOpenSettings: (model: string) => void;
+  onModelChange: (currentModel: string, nextModel: string) => void;
+}) {
+  const imageUrl = result ? `data:${result.mime_type};base64,${result.image_base64}` : "";
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onGenerate();
+      }}
+      className="flex min-h-0 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm dark:border-[#606066] dark:bg-[#39393d]"
+    >
+      <header className="flex items-center gap-2 border-b px-3 py-3 dark:border-[#55555a]">
+        <div className="relative min-w-0 flex-1">
+          <select
+            aria-label={`Image model for comparison pane ${model}`}
+            value={model}
+            onChange={(event) => onModelChange(model, event.target.value)}
+            className="h-9 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 py-1 pr-8 text-sm font-medium shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+          >
+            {allModels.map((option) => (
+              <option key={option} value={option} disabled={option !== model && selectedModels.includes(option)}>
+                {formatModelName(option)}
+              </option>
+            ))}
+          </select>
+          <ChevronsUpDown className="pointer-events-none absolute right-2.5 top-2.5 h-4 w-4 text-slate-500 dark:text-slate-400" />
+        </div>
+        <Button type="button" variant="outline" size="icon" onClick={() => onOpenSettings(model)} title={`Open settings for ${model}`}>
+          <Settings className="h-4 w-4" />
+        </Button>
+      </header>
+
+      <div className="flex flex-1 overflow-auto bg-slate-50 p-4 dark:bg-[#303033]">
+        {imageUrl && result ? (
+          <div className="m-auto w-full">
+            <div className="mb-3 rounded-xl border bg-white px-3 py-2 text-sm leading-5 text-slate-700 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-200">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Submitted prompt</div>
+              <p className="whitespace-pre-wrap">{result.prompt}</p>
+            </div>
+            <img src={imageUrl} alt={result.prompt || "AI-generated image"} className="mx-auto max-h-[52vh] w-auto rounded-xl object-contain shadow-xl" />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span>{result.width} × {result.height} · {(result.duration_ms / 1000).toFixed(1)}s</span>
+              <a href={imageUrl} download={`${model}-generated-image.png`} className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground">
+                <Download className="h-3.5 w-3.5" /> Download
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="m-auto max-w-xs text-center text-slate-400">
+            {generating ? <LoaderCircle className="mx-auto h-9 w-9 animate-spin" /> : <Image className="mx-auto h-9 w-9 text-slate-300 dark:text-[#77777d]" />}
+            <h3 className="mt-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
+              {generating ? `Generating with ${formatModelName(model)}...` : `Ready for ${formatModelName(model)}`}
+            </h3>
+            <p className="mt-1 text-xs">Use either prompt below. Both inputs stay synchronized.</p>
+          </div>
+        )}
+      </div>
+
+      <UseCaseComposer
+        ariaLabel={`Image prompt for ${model}`}
+        placeholder="Describe the image for both models..."
+        value={prompt}
+        disabled={!prompt.trim() || generating}
+        submitting={generating}
+        disclaimer="AI-generated images may be inaccurate"
+        error={error}
+        onChange={onPromptChange}
+        onSubmit={onGenerate}
+        leftControls={
+          <ComposerSelect
+            id={`image-comparison-size-${model}`}
+            ariaLabel={`Image canvas size for ${model}`}
+            value={size}
+            onChange={onSizeChange}
+            options={[
+              { value: "1024x1024", label: "Square · 1024 × 1024" },
+              { value: "768x1024", label: "Portrait · 768 × 1024" },
+              { value: "1024x768", label: "Landscape · 1024 × 768" },
+            ]}
+          />
+        }
+      />
+    </form>
+  );
 }
 
 function GuardrailComparisonWorkspace({

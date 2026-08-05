@@ -6,10 +6,11 @@ export type UseCaseId =
   | "traditional_voice"
   | "transcribe"
   | "realtime_voice"
-  | "text_to_image";
+  | "text_to_image"
+  | "image_comparison";
 
 export type UseCaseIconName = "chat" | "comparison" | "browserVoice" | "documents" | "image" | "voiceWave";
-export type UseCaseWorkspace = "chat" | "comparison" | "image" | "traditionalVoice" | "realtimeVoice" | "transcribe";
+export type UseCaseWorkspace = "chat" | "comparison" | "image" | "imageComparison" | "traditionalVoice" | "realtimeVoice" | "transcribe";
 
 export type UseCaseModule = {
   id: UseCaseId;
@@ -27,6 +28,7 @@ export type UseCaseModule = {
   workspace: UseCaseWorkspace;
   showBrowserVoiceControls?: boolean;
   showComparisonControls?: boolean;
+  showImageComparisonControls?: boolean;
   showDocumentControls?: boolean;
   showChatComposer?: boolean;
   enableComposerDictation?: boolean;

@@ -1,6 +1,7 @@
 import { browserVoiceUseCase } from "@/features/useCases/browserVoice";
 import { comparisonUseCase } from "@/features/useCases/comparison";
 import { documentQaUseCase } from "@/features/useCases/documentQa";
+import { imageComparisonUseCase } from "@/features/useCases/imageComparison";
 import { realtimeVoiceUseCase } from "@/features/useCases/realtimeVoice";
 import { textChatUseCase } from "@/features/useCases/textChat";
 import { textToImageUseCase } from "@/features/useCases/textToImage";
@@ -11,6 +12,7 @@ export const useCaseModules = [
   textChatUseCase,
   documentQaUseCase,
   textToImageUseCase,
+  imageComparisonUseCase,
   comparisonUseCase,
   browserVoiceUseCase,
   traditionalVoiceUseCase,
