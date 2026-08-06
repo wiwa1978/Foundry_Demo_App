@@ -10,12 +10,15 @@ on:
       - "app/**"
       - "frontend/**"
       - "infra/**"
+      - "scripts/wait-for-container-app.sh"
       - "tests/**"
       - "Dockerfile"
       - ".dockerignore"
       - "pyproject.toml"
       - "requirements-dev.txt"
+      - "requirements-dev.lock"
       - "requirements.txt"
+      - "requirements.lock"
   workflow_dispatch:
     inputs:
       deploy_infra:
@@ -27,6 +30,10 @@ on:
 permissions:
   contents: read
   id-token: write
+
+concurrency:
+  group: deploy-container-app-${{ github.repository }}
+  cancel-in-progress: false
 
 env:
   AZURE_LOCATION:              ${{ vars.AZURE_LOCATION || 'swedencentral' }}
@@ -59,13 +66,14 @@ jobs:
   deploy:
     needs: quality
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Azure login
-        uses: azure/login@v2
+        uses: azure/login@8216e11d8cd9b42fe925c852af8e76311ff067ac # v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -74,6 +82,30 @@ jobs:
       - name: Configure Azure CLI extensions
         run: az config set extension.use_dynamic_install=yes_without_prompt
 
+      - name: Resolve registry and current image
+        id: deployment
+        run: |
+          LOGIN_SERVER=$(az acr show \
+            --resource-group "${{ env.SHARED_RESOURCE_GROUP_NAME }}" \
+            --name "${{ env.CONTAINER_REGISTRY_NAME }}" \
+            --query loginServer \
+            --output tsv)
+          PREVIOUS_IMAGE=$(az containerapp show \
+            --resource-group "${{ env.RESOURCE_GROUP_NAME }}" \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --query properties.template.containers[0].image \
+            --output tsv 2>/dev/null || true)
+          echo "login_server=$LOGIN_SERVER" >> "$GITHUB_OUTPUT"
+          echo "previous_image=$PREVIOUS_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "image=$LOGIN_SERVER/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push immutable image
+        run: |
+          az acr build \
+            --registry "${{ env.CONTAINER_REGISTRY_NAME }}" \
+            --image "${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+            .
+
       - name: Ensure app resource group exists
         if: ${{ github.event_name == 'push' || inputs.deploy_infra }}
         run: |
@@ -81,6 +113,10 @@ jobs:
             --name "${{ env.RESOURCE_GROUP_NAME }}" \
             --location "${{ env.AZURE_LOCATION }}" \
             --output none
+
+      - name: Wait for active Container App operation
+        if: ${{ github.event_name == 'push' || inputs.deploy_infra }}
+        run: bash scripts/wait-for-container-app.sh
 
       - name: Deploy infrastructure
         if: ${{ github.event_name == 'push' || inputs.deploy_infra }}
@@ -119,28 +155,37 @@ jobs:
               entraAuthenticationClientSecret="$ENTRA_AUTH_CLIENT_SECRET" \
               entraAuthenticationTenantId="${{ env.ENTRA_AUTH_TENANT_ID }}" \
               containerAppName="${{ env.CONTAINER_APP_NAME }}" \
+              containerImage="${{ steps.deployment.outputs.image }}" \
             --output table
-
-      - name: Build and push image with ACR
-        run: |
-          az acr build \
-            --registry "${{ env.CONTAINER_REGISTRY_NAME }}" \
-            --image "${{ env.IMAGE_NAME }}:${{ github.sha }}" \
-            --image "${{ env.IMAGE_NAME }}:latest" \
-            .
 
       - name: Update Container App image
         run: |
-          LOGIN_SERVER=$(az acr show \
-            --resource-group "${{ env.SHARED_RESOURCE_GROUP_NAME }}" \
-            --name "${{ env.CONTAINER_REGISTRY_NAME }}" \
-            --query loginServer \
-            --output tsv)
+          bash scripts/wait-for-container-app.sh
 
           az containerapp update \
             --resource-group "${{ env.RESOURCE_GROUP_NAME }}" \
             --name "${{ env.CONTAINER_APP_NAME }}" \
-            --image "$LOGIN_SERVER/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+            --image "${{ steps.deployment.outputs.image }}"
+
+      - name: Smoke test deployment
+        id: smoke
+        continue-on-error: true
+        env:
+          EXPECTED_IMAGE: ${{ steps.deployment.outputs.image }}
+        run: bash scripts/smoke-test-container-app.sh
+
+      - name: Roll back failed deployment
+        if: ${{ steps.smoke.outcome == 'failure' && steps.deployment.outputs.previous_image != '' }}
+        run: |
+          az containerapp update \
+            --resource-group "${{ env.RESOURCE_GROUP_NAME }}" \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --image "${{ steps.deployment.outputs.previous_image }}"
+          bash scripts/wait-for-container-app.sh
+
+      - name: Fail after rollback
+        if: ${{ steps.smoke.outcome == 'failure' }}
+        run: exit 1
 
       - name: Show app URL
         run: |
