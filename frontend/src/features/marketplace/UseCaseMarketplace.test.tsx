@@ -42,4 +42,20 @@ describe("UseCaseMarketplace", () => {
     expect(screen.getByRole("button", { name: /text to image/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /text chat/i })).not.toBeInTheDocument();
   });
+
+  it("closes with Escape and exposes dialog semantics", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <UseCaseMarketplace
+        activeUseCase="text_chat"
+        useCases={useCaseModules}
+        onSelect={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+    expect(screen.getByRole("dialog", { name: "Choose a use case" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledOnce();
+  });
 });
