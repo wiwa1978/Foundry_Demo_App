@@ -26,8 +26,7 @@ from app.conversation_store import (
     get_conversation_messages,
     get_or_create_conversation,
     get_usage_metrics,
-    initialize_conversation_database,
-    list_conversations,
+    list_conversation_page,
     message_to_dict,
 )
 from app.document_store import (
@@ -62,18 +61,18 @@ from app.foundry_client import (
     stream_chat,
     synthesize_speech,
     transcribe_audio,
-    transcribe_speech_audio,
+    transcribe_llm_speech_audio,
 )
 from app.model_settings import (
     DEPLOYMENT_DEFAULT_GUARDRAIL,
     MODEL_MODALITIES,
     ModelSettings,
     get_model_settings,
-    initialize_database,
     register_model,
     save_model_settings,
     settings_to_dict,
 )
+from app.persistence import initialize_persistence
 from app.local_auth import (
     AUTH_FLOW_COOKIE,
     AUTH_SESSION_COOKIE,
@@ -180,8 +179,7 @@ async def require_authenticated_api_user(request: Request, call_next):
 
 @app.on_event("startup")
 def startup() -> None:
-    initialize_database()
-    initialize_conversation_database()
+    initialize_persistence()
 
 
 class ChatRequest(BaseModel):
@@ -972,7 +970,7 @@ async def post_transcription(
             raise ValueError("Transcription model deployment name cannot be blank.")
         if selected_model.lower() == load_settings().speech_transcription_model.lower():
             result = await _run_model_call(
-                transcribe_speech_audio,
+                transcribe_llm_speech_audio,
                 audio=audio_bytes,
                 language=language.strip() or "en-US",
                 model=selected_model,
@@ -997,11 +995,21 @@ async def post_transcription(
 def get_conversations(
     scope: Annotated[UserScope, Depends(_current_user_scope)],
     use_case: str = Query("text_chat"),
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: str | None = None,
 ) -> dict:
+    try:
+        page = list_conversation_page(
+            scope,
+            use_case=use_case,
+            limit=limit,
+            cursor=cursor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
-        "conversations": [
-            conversation_to_dict(item) for item in list_conversations(scope, use_case)
-        ]
+        "conversations": [conversation_to_dict(item) for item in page.conversations],
+        "next_cursor": page.next_cursor,
     }
 
 

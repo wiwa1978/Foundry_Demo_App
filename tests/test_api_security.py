@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.main import MAX_AUDIO_BYTES, MAX_PROMPT_LENGTH, app
+from app.persistence import reset_repositories
 from app.security import auth_mode
 from app.sqlite_store import initialize_sqlite_store
 
@@ -92,7 +93,12 @@ def test_container_apps_mode_requires_encoded_principal(monkeypatch):
         "/api/conversations",
         headers={"x-ms-client-principal-id": "spoofed"},
     )
-    with patch("app.main.list_conversations", return_value=[]):
+    from app.conversation_store import ConversationPage
+
+    with patch(
+        "app.main.list_conversation_page",
+        return_value=ConversationPage(conversations=[], next_cursor=None),
+    ):
         accepted = client.get(
             "/api/conversations",
             headers={"x-ms-client-principal": _principal()},
@@ -151,6 +157,7 @@ def test_conversations_are_isolated_between_authenticated_users(monkeypatch, tmp
     monkeypatch.setenv("APP_AUTH_MODE", "container_apps")
     monkeypatch.setenv("PERSISTENCE_BACKEND", "sqlite")
     monkeypatch.setenv("SQLITE_DATABASE_PATH", str(tmp_path / "isolation.sqlite3"))
+    reset_repositories()
     initialize_sqlite_store()
 
     created = client.post(
@@ -168,7 +175,8 @@ def test_conversations_are_isolated_between_authenticated_users(monkeypatch, tmp
 
     assert created.status_code == 200
     assert len(owner_list.json()["conversations"]) == 1
-    assert other_list.json() == {"conversations": []}
+    assert other_list.json() == {"conversations": [], "next_cursor": None}
+    reset_repositories()
 
 
 def test_invalid_auth_mode_fails_configuration(monkeypatch):

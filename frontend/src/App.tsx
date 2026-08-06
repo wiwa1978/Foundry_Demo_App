@@ -1591,13 +1591,33 @@ export default function App() {
   }
 
   async function refreshConversations() {
-    const response = await tracedFetch(
-      `/api/conversations?use_case=${encodeURIComponent(activeUseCase)}`,
-      {},
-      { label: "List conversations", responseKind: "json" },
-    );
-    const data = await response.json();
-    setConversations(data.conversations ?? []);
+    const conversations: Conversation[] = [];
+    let cursor: string | null = null;
+    do {
+      const query = new URLSearchParams({
+        use_case: activeUseCase,
+        limit: "100",
+      });
+      if (cursor) {
+        query.set("cursor", cursor);
+      }
+      const response = await tracedFetch(
+        `/api/conversations?${query.toString()}`,
+        {},
+        { label: "List conversations", responseKind: "json" },
+      );
+      if (!response.ok) {
+        const error = (await response.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(error.detail ?? "Failed to load conversations.");
+      }
+      const data = (await response.json()) as {
+        conversations?: Conversation[];
+        next_cursor?: string | null;
+      };
+      conversations.push(...(data.conversations ?? []));
+      cursor = data.next_cursor ?? null;
+    } while (cursor);
+    setConversations(conversations);
   }
 
   async function refreshDocuments() {

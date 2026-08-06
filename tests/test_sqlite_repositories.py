@@ -10,6 +10,7 @@ from app.conversation_store import (
     get_conversation_messages,
     initialize_conversation_database,
     list_conversations,
+    list_conversation_page,
 )
 from app.model_settings import (
     ModelSettings,
@@ -18,6 +19,7 @@ from app.model_settings import (
     list_models,
     save_model_settings,
 )
+from app.persistence import reset_repositories
 from app.security import UserScope
 
 
@@ -36,10 +38,12 @@ class SqliteRepositoryTests(unittest.TestCase):
             },
         )
         self.environment.start()
+        reset_repositories()
         initialize_database()
         initialize_conversation_database()
 
     def tearDown(self) -> None:
+        reset_repositories()
         self.environment.stop()
         self.temp_dir.cleanup()
 
@@ -98,6 +102,32 @@ class SqliteRepositoryTests(unittest.TestCase):
         settings = get_model_settings("MAI-Image-2.5")
 
         self.assertEqual(settings.modalities, ("image",))
+
+    def test_conversations_are_paginated_with_stable_cursor(self) -> None:
+        conversations = [
+            create_conversation(USER_SCOPE, f"Chat {index}")
+            for index in range(3)
+        ]
+
+        first_page = list_conversation_page(USER_SCOPE, limit=2)
+        second_page = list_conversation_page(
+            USER_SCOPE,
+            limit=2,
+            cursor=first_page.next_cursor,
+        )
+
+        self.assertEqual(len(first_page.conversations), 2)
+        self.assertIsNotNone(first_page.next_cursor)
+        paged_ids = {
+            item.id
+            for item in [*first_page.conversations, *second_page.conversations]
+        }
+        self.assertEqual(paged_ids, {item.id for item in conversations})
+        self.assertIsNone(second_page.next_cursor)
+
+    def test_invalid_conversation_cursor_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Invalid conversation cursor"):
+            list_conversation_page(USER_SCOPE, cursor="not-a-cursor")
 
 
 if __name__ == "__main__":

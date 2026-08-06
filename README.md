@@ -294,6 +294,10 @@ Capability tags are local metadata for the playground. They do not change the Fo
 
 Chats are stored in the app's Cosmos DB container. The sidebar lists saved conversations, and each new prompt sends prior turns from the current conversation as context.
 
+Conversation list responses are owner-scoped and paginated. `/api/conversations` accepts `limit`
+(1-100) and an opaque `cursor`, and returns `next_cursor` alongside the existing `conversations`
+array.
+
 Right-click a saved conversation in the sidebar to delete it. Deleting removes the conversation and its messages from Cosmos DB.
 
 For side-by-side comparison, the app stores one user message and one assistant response per selected model. When building context for a model, the backend includes the shared user turns and that model's previous assistant responses.

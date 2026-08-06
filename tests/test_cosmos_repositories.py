@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,7 @@ from app.conversation_store import (
     list_conversations,
 )
 from app.model_settings import ModelSettings, get_model_settings, save_model_settings
+from app.persistence import reset_repositories
 from app.security import UserScope
 
 
@@ -18,13 +20,15 @@ USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
 
 class ConversationStoreTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.backend = patch("app.conversation_store.persistence_backend", return_value="cosmos")
-        self.backend.start()
+        self.environment = patch.dict(os.environ, {"PERSISTENCE_BACKEND": "cosmos"})
+        self.environment.start()
+        reset_repositories()
 
     def tearDown(self) -> None:
-        self.backend.stop()
+        reset_repositories()
+        self.environment.stop()
 
-    @patch("app.conversation_store.get_container")
+    @patch("app.cosmos_store.get_container")
     def test_create_conversation_uses_conversation_partition(self, get_container: MagicMock) -> None:
         conversation = create_conversation(USER_SCOPE, "  A   useful chat  ")
 
@@ -37,7 +41,7 @@ class ConversationStoreTests(unittest.TestCase):
         self.assertEqual(document["document_type"], "conversation")
         self.assertEqual(conversation.title, "A useful chat")
 
-    @patch("app.conversation_store.get_container")
+    @patch("app.cosmos_store.get_container")
     def test_append_message_updates_conversation_atomically(self, get_container: MagicMock) -> None:
         message = append_message(
             scope=USER_SCOPE,
@@ -57,12 +61,12 @@ class ConversationStoreTests(unittest.TestCase):
         self.assertTrue(operations[1][1][0].endswith("conversation-1"))
         self.assertEqual(message.conversation_id, "conversation-1")
 
-    @patch("app.conversation_store.get_container")
+    @patch("app.cosmos_store.get_container")
     def test_get_missing_conversation_returns_none(self, get_container: MagicMock) -> None:
         get_container.return_value.read_item.side_effect = CosmosResourceNotFoundError()
         self.assertIsNone(get_conversation(USER_SCOPE, "missing"))
 
-    @patch("app.conversation_store.get_container")
+    @patch("app.cosmos_store.get_container")
     def test_list_conversations_returns_public_id_and_scopes_query(
         self,
         get_container: MagicMock,
@@ -89,20 +93,22 @@ class ConversationStoreTests(unittest.TestCase):
 
 class ModelSettingsStoreTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.backend = patch("app.model_settings.persistence_backend", return_value="cosmos")
-        self.backend.start()
+        self.environment = patch.dict(os.environ, {"PERSISTENCE_BACKEND": "cosmos"})
+        self.environment.start()
+        reset_repositories()
 
     def tearDown(self) -> None:
-        self.backend.stop()
+        reset_repositories()
+        self.environment.stop()
 
-    @patch("app.model_settings.get_container")
+    @patch("app.cosmos_store.get_container")
     def test_missing_settings_return_model_defaults(self, get_container: MagicMock) -> None:
         get_container.return_value.read_item.side_effect = CosmosResourceNotFoundError()
         settings = get_model_settings("Kimi-K2.5")
         self.assertEqual(settings.api_surface, "chat_completions")
         self.assertEqual(settings.modalities, ("text",))
 
-    @patch("app.model_settings.get_container")
+    @patch("app.cosmos_store.get_container")
     def test_save_settings_uses_model_settings_partition(self, get_container: MagicMock) -> None:
         settings = save_model_settings(ModelSettings(model="gpt-test", modalities=("text", "voice")))
         document = get_container.return_value.upsert_item.call_args.args[0]

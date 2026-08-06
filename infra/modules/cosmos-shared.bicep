@@ -28,6 +28,42 @@ resource container 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/container
         kind: 'Hash'
         version: 2
       }
+      indexingPolicy: {
+        indexingMode: 'consistent'
+        automatic: true
+        includedPaths: [
+          {
+            path: '/*'
+          }
+        ]
+        excludedPaths: [
+          {
+            path: '/"_etag"/?'
+          }
+        ]
+        compositeIndexes: [
+          [
+            {
+              path: '/updated_at'
+              order: 'descending'
+            }
+            {
+              path: '/id'
+              order: 'ascending'
+            }
+          ]
+          [
+            {
+              path: '/created_at'
+              order: 'ascending'
+            }
+            {
+              path: '/id'
+              order: 'ascending'
+            }
+          ]
+        ]
+      }
     }
   }
 }
