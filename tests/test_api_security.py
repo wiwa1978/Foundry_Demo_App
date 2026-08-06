@@ -64,6 +64,7 @@ def test_local_mode_does_not_trust_proxy_headers(monkeypatch):
 
 def test_container_apps_mode_requires_encoded_principal(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "container_apps")
+    monkeypatch.delenv("APP_AUTH_TENANT_ID", raising=False)
 
     rejected = client.get(
         "/api/conversations",
@@ -77,6 +78,31 @@ def test_container_apps_mode_requires_encoded_principal(monkeypatch):
 
     assert rejected.status_code == 401
     assert accepted.status_code == 200
+
+
+def test_container_apps_mode_accepts_trusted_compact_headers(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "container_apps")
+    monkeypatch.setenv("APP_AUTH_TENANT_ID", "tenant-1")
+
+    response = client.get(
+        "/api/auth/me",
+        headers={
+            "x-ms-client-principal-id": "user-1",
+            "x-ms-client-principal-name": "user@example.com",
+            "x-ms-client-principal-idp": "aad",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "authenticated": True,
+        "name": "user@example.com",
+        "user_id": "user-1",
+        "identity_provider": "aad",
+        "email": "user@example.com",
+        "tenant_id": "tenant-1",
+        "entra_auth_enabled": True,
+    }
 
 
 def test_conversations_are_isolated_between_authenticated_users(monkeypatch, tmp_path):

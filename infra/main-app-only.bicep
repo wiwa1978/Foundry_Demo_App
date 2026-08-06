@@ -219,6 +219,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AZURE_CLIENT_ID',              value: appIdentity.properties.clientId }
             { name: 'PERSISTENCE_BACKEND',           value: 'cosmos' }
             { name: 'APP_AUTH_MODE',                value: enableEntraAuthentication ? 'container_apps' : 'disabled' }
+            { name: 'APP_AUTH_TENANT_ID',           value: entraAuthenticationTenantId }
             { name: 'FOUNDRY_SUBSCRIPTION_ID',      value: subscription().subscriptionId }
             { name: 'FOUNDRY_RESOURCE_GROUP',       value: sharedResourceGroupName }
             { name: 'FOUNDRY_ACCOUNT_NAME',         value: foundryAccountName }

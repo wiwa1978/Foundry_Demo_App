@@ -58,7 +58,7 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
 
     principal = _decode_client_principal(connection.headers.get("x-ms-client-principal"))
     if principal is None:
-        return None
+        return _container_apps_header_user(connection)
     user_id = str(principal.get("userId") or "").strip()
     if not user_id:
         return None
@@ -73,7 +73,7 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
         claim_lookup,
         "tid",
         "http://schemas.microsoft.com/identity/claims/tenantid",
-    )
+    ) or os.getenv("APP_AUTH_TENANT_ID", "").strip()
     if not tenant_id:
         return None
     return {
@@ -88,6 +88,22 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
             "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
         )
         or user_name,
+        "tenant_id": tenant_id,
+    }
+
+
+def _container_apps_header_user(connection: HTTPConnection) -> dict[str, Any] | None:
+    user_id = str(connection.headers.get("x-ms-client-principal-id") or "").strip()
+    tenant_id = os.getenv("APP_AUTH_TENANT_ID", "").strip()
+    if not user_id or not tenant_id:
+        return None
+    user_name = str(connection.headers.get("x-ms-client-principal-name") or "").strip() or None
+    return {
+        "authenticated": True,
+        "name": user_name,
+        "user_id": user_id,
+        "identity_provider": connection.headers.get("x-ms-client-principal-idp"),
+        "email": user_name,
         "tenant_id": tenant_id,
     }
 

@@ -141,6 +141,7 @@ expires after eight hours.
 | `AZURE_VOICELIVE_MODEL` | Managed Voice Live model name. Defaults to `gpt-realtime`. |
 | `AZURE_VOICELIVE_VOICE` | Azure Speech voice used by Voice Live. Defaults to `en-US-Ava:DragonHDLatestNeural`. |
 | `APP_AUTH_MODE` | Authentication mode: `disabled` for local demos only, `local` for the signed-cookie development flow, or `container_apps` for trusted Azure Container Apps identity headers. Azure infrastructure uses `container_apps`. |
+| `APP_AUTH_TENANT_ID` | Entra tenant ID used to scope compact identity headers supplied by Azure Container Apps authentication. Set automatically by the included infrastructure. |
 | `ALLOWED_ORIGINS` | Optional comma-separated WebSocket origin allowlist. WebSockets require the request origin to match the host when omitted. |
 | `MODEL_CALL_CONCURRENCY` | Maximum concurrent Foundry model operations per application process. Defaults to `8`. |
 | `ENTRA_LOCAL_CLIENT_ID` | Client ID of a confidential Microsoft Entra web app used for local sign-in. Do not use the workload identity client ID. |

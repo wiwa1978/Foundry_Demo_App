@@ -327,6 +327,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: enableEntraAuthentication ? 'container_apps' : 'disabled'
             }
             {
+              name: 'APP_AUTH_TENANT_ID'
+              value: entraAuthenticationTenantId
+            }
+            {
               name: 'FOUNDRY_PROJECT_ENDPOINT'
               value: foundryProjectEndpoint
             }
