@@ -76,8 +76,8 @@ def test_unexpected_errors_are_sanitized(monkeypatch):
 
 def test_provider_errors_use_consistent_public_contract(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
-    with patch("app.main.generate_image", side_effect=RuntimeError("provider secret")):
-        with patch("app.main.get_model_settings") as settings:
+    with patch("app.features.images.router.generate_image", side_effect=RuntimeError("provider secret")):
+        with patch("app.features.images.router.get_model_settings") as settings:
             settings.return_value.modalities = ("image",)
             response = TestClient(create_app(), raise_server_exceptions=False).post(
                 "/api/images/generate",

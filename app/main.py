@@ -17,7 +17,6 @@ from app.concurrency import model_call_semaphore
 
 from app.conversation_store import (
     append_message,
-    build_model_history,
     conversation_to_dict,
     create_conversation,
     delete_conversation,
@@ -41,8 +40,6 @@ from app.foundry_admin import (
 )
 from app.foundry_client import (
     create_voice_live_connection_info,
-    edit_image,
-    generate_image,
     load_settings,
     synthesize_speech,
     transcribe_audio,
@@ -69,6 +66,8 @@ from app.local_auth import (
 from app.live_interpreter import LiveInterpreterSession
 from app.features.document_qa.router import router as document_qa_router
 from app.features.voice.router import router as voice_router
+from app.features.images.router import router as images_router
+from app.features.comparison.router import router as comparison_router
 from app.features.text_chat.router import router as text_chat_router
 from app.observability import (
     audit_event,
@@ -80,8 +79,7 @@ from app.errors import ApplicationError, ExternalServiceError, application_error
 from app.schemas import (
     MAX_PROMPT_LENGTH as MAX_PROMPT_LENGTH,
     AdminDeploymentRequest,
-    CompareRequest,
-    ImageGenerationRequest,
+    ImageGenerationRequest as ImageGenerationRequest,
     ModelRegistrationRequest,
     ModelSettingsRequest,
     normalize_reasoning_effort,
@@ -447,75 +445,6 @@ def _is_tts_model(model: str) -> bool:
     }
 
 
-@router.post("/api/images/generate")
-async def post_image_generation(request: ImageGenerationRequest) -> dict:
-    configured_for_images = "image" in get_model_settings(request.model).modalities
-    if not configured_for_images and not any(
-        token in request.model.lower() for token in ("mai-image", "flux")
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail=f"{request.model} is not configured with the image capability.",
-        )
-    try:
-        return await _run_model_call(
-            generate_image,
-            model=request.model,
-            prompt=request.prompt,
-            width=request.width,
-            height=request.height,
-        )
-    except Exception as exc:
-        raise _upstream_error("Image generation", exc) from exc
-
-
-@router.post("/api/images/edit")
-async def post_image_edit(
-    image: Annotated[UploadFile, File()],
-    model: Annotated[str, Form(min_length=1)],
-    prompt: Annotated[str, Form(min_length=1)],
-    width: Annotated[int, Form(ge=768)] = 1024,
-    height: Annotated[int, Form(ge=768)] = 1024,
-) -> dict:
-    model = model.strip()
-    prompt = prompt.strip()
-    if not model or not prompt:
-        raise HTTPException(status_code=400, detail="Model and prompt cannot be blank.")
-    if width * height > 1_048_576:
-        raise HTTPException(
-            status_code=400,
-            detail="Image dimensions cannot exceed 1,048,576 total pixels.",
-        )
-    if "gpt-image" not in model.lower():
-        raise HTTPException(
-            status_code=400,
-            detail=f"{model} does not support image editing.",
-        )
-    supported_types = {"image/png", "image/jpeg", "image/webp"}
-    if image.content_type not in supported_types:
-        raise HTTPException(
-            status_code=400,
-            detail="Source image must be a PNG, JPEG, or WebP file.",
-        )
-    image_bytes = await image.read(10 * 1024 * 1024 + 1)
-    if not image_bytes:
-        raise HTTPException(status_code=400, detail="Source image cannot be empty.")
-    if len(image_bytes) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Source image cannot exceed 10 MB.")
-    try:
-        return await _run_model_call(
-            edit_image,
-            model=model,
-            prompt=prompt,
-            image=image_bytes,
-            image_content_type=image.content_type,
-            width=width,
-            height=height,
-        )
-    except Exception as exc:
-        raise _upstream_error("Image editing", exc) from exc
-
-
 @router.post("/api/voice/traditional")
 async def post_traditional_voice(
     scope: Annotated[UserScope, Depends(_current_user_scope)],
@@ -874,81 +803,6 @@ async def post_admin_deployment(payload: AdminDeploymentRequest, request: Reques
     }
 
 
-@router.post("/api/compare")
-async def compare(
-    request: CompareRequest,
-    scope: Annotated[UserScope, Depends(_current_user_scope)],
-) -> dict:
-    try:
-        conversation = get_or_create_conversation(
-            scope, request.conversation_id, request.prompt, request.use_case
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    model_settings_by_name = {
-        model: get_model_settings(model) for model in request.models
-    }
-    variants_by_model = {
-        model: _guardrail_variants(model_settings, False)
-        for model, model_settings in model_settings_by_name.items()
-    }
-    histories = {
-        (model, variant): build_model_history(
-            scope,
-            conversation.id,
-            model,
-            variant,
-            policy_name,
-        )
-        for model, variants in variants_by_model.items()
-        for variant, policy_name in variants
-    }
-    user_message = append_message(
-        scope=scope,
-        conversation_id=conversation.id,
-        role="user",
-        content=request.prompt,
-    )
-
-    async def run_model(model: str) -> dict:
-        model_settings = model_settings_by_name[model]
-        variant_results = await asyncio.gather(
-            *(
-                asyncio.to_thread(
-                    _run_and_store_variant,
-                    scope=scope,
-                    conversation_id=conversation.id,
-                    model_settings=model_settings,
-                    prompt=request.prompt,
-                    system_prompt=model_settings.system_prompt,
-                    reasoning_effort=request.reasoning_effort,
-                    history=histories[(model, variant)],
-                    variant=variant,
-                    policy_name=policy_name,
-                )
-                for variant, policy_name in variants_by_model[model]
-            )
-        )
-        if len(variant_results) == 1:
-            return variant_results[0]
-        return {
-            "model": model,
-            "guardrail_comparison": True,
-            "guardrail_policy_names": list(model_settings.guardrail_policy_names),
-            "variants": variant_results,
-        }
-
-    results = await asyncio.gather(*(run_model(model) for model in request.models))
-    return {
-        "conversation": conversation_to_dict(
-            get_conversation(scope, conversation.id) or conversation
-        ),
-        "user_message": message_to_dict(user_message),
-        "results": results,
-    }
-
-
 @router.get("/")
 def index() -> FileResponse:
     if FRONTEND_INDEX.exists():
@@ -1006,6 +860,8 @@ def create_app() -> FastAPI:
     application.include_router(text_chat_router)
     application.include_router(document_qa_router)
     application.include_router(voice_router)
+    application.include_router(images_router)
+    application.include_router(comparison_router)
     application.include_router(router)
     return application
 

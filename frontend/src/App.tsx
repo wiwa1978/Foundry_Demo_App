@@ -73,6 +73,8 @@ import {
   transcribeRecording,
   voiceLiveUrl,
 } from "@/features/voice/api";
+import { editImage, generateImage } from "@/features/images/api";
+import { compareModels } from "@/features/comparison/api";
 import type {
   ChatMessage,
   Conversation,
@@ -1628,15 +1630,7 @@ export default function App() {
     setImageGenerating(true);
     setImageError("");
     try {
-      const response = await tracedFetch(
-        "/api/images/generate",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(request),
-        },
-        { label: "Generate MAI image", request, responseKind: "json", traceResponse: false },
-      );
+      const response = await generateImage(tracedFetch, request);
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.detail ?? "Image generation failed.");
@@ -1654,25 +1648,16 @@ export default function App() {
       return;
     }
     const [width, height] = imageSize.split("x").map(Number);
-    const form = new FormData();
-    form.append("image", imageEditSource);
-    form.append("model", imageModel);
-    form.append("prompt", imagePrompt.trim());
-    form.append("width", String(width));
-    form.append("height", String(height));
     setImageEditGenerating(true);
     setImageEditError("");
     try {
-      const response = await tracedFetch(
-        "/api/images/edit",
-        { method: "POST", body: form },
-        {
-          label: "Edit image",
-          request: { model: imageModel, prompt: imagePrompt.trim(), width, height, source: imageEditSource.name },
-          responseKind: "json",
-          traceResponse: false,
-        },
-      );
+      const response = await editImage(tracedFetch, {
+        model: imageModel,
+        prompt: imagePrompt.trim(),
+        width,
+        height,
+        image: imageEditSource,
+      });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.detail ?? "Image edit failed.");
@@ -1700,15 +1685,7 @@ export default function App() {
     }> => {
       const request = { model, prompt, width, height };
       try {
-        const response = await tracedFetch(
-          "/api/images/generate",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(request),
-          },
-          { label: `Generate image with ${model}`, request, responseKind: "json", traceResponse: false },
-        );
+        const response = await generateImage(tracedFetch, request);
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.detail ?? "Image generation failed.");
@@ -3218,16 +3195,7 @@ export default function App() {
         reasoning_effort: reasoningEffort === "default" ? null : reasoningEffort,
         use_case: activeUseCase,
       };
-      const response = await tracedFetch("/api/compare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      }, {
-        label: "Compare models",
-        request: requestBody,
-        responseKind: "json",
-        traceResponse: false,
-      });
+      const response = await compareModels(tracedFetch, requestBody);
       const data = await response.json();
 
       if (useCaseSession !== useCaseSessionRef.current) {
