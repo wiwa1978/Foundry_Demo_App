@@ -255,6 +255,8 @@ frontend/src/features/useCases/*.ts       One metadata module per use case
 frontend/src/features/marketplace/        Marketplace UI
 frontend/src/features/shared/             Shared visuals such as SoundWaveIcon
 frontend/src/features/<feature>/README.md Customer-facing implementation walkthrough
+frontend/src/App.tsx                      Lazy-loaded application shell and root error boundary
+frontend/src/app/AppWorkspace.tsx         Workspace state orchestration and composition
 app/features/<feature>/                    FastAPI transport for one feature
 app/services/                              Shared business orchestration
 app/gateways/                              External service boundaries
