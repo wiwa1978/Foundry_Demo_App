@@ -17,7 +17,11 @@ WORKDIR /app
 RUN useradd --create-home appuser
 
 COPY requirements.lock ./
-RUN pip install --no-cache-dir --require-hashes -r requirements.lock
+RUN pip install \
+    --index-url https://packagefeedproxy.microsoft.io/pypi/simple/ \
+    --no-cache-dir \
+    --require-hashes \
+    -r requirements.lock
 
 COPY app ./app
 COPY --from=frontend-build /src/frontend/dist ./frontend/dist
