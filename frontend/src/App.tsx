@@ -59,6 +59,20 @@ import { PromptExamples, type PromptExample } from "@/components/PromptExamples"
 import { Textarea } from "@/components/ui/textarea";
 import { UseCaseMarketplace } from "@/features/marketplace/UseCaseMarketplace";
 import { SoundWaveIcon } from "@/features/shared/SoundWaveIcon";
+import { useTextChatRequest } from "@/features/textChat/useTextChatRequest";
+import { readServerSentEvents } from "@/features/textChat/sse";
+import type {
+  ChatMessage,
+  ChatStreamEvent,
+  Conversation,
+  FoundryRequestTrace,
+  FoundryResponseTrace,
+  GuardrailVariant,
+  ModelResult,
+  ReasoningEffort,
+  StoredMessage,
+  Usage,
+} from "@/features/textChat/types";
 import { UseCaseDetailsPanel } from "@/features/useCases/UseCaseDetailsPanel";
 import { imageToImagePrompts } from "@/features/useCases/imageToImagePrompts";
 import { textToImagePrompts } from "@/features/useCases/textToImagePrompts";
@@ -119,27 +133,7 @@ type AuthResponse = {
   identity_provider?: string | null;
 };
 
-type Usage = {
-  prompt_tokens: number | null;
-  completion_tokens: number | null;
-  total_tokens: number | null;
-};
-
-type GuardrailVariant = "baseline" | "guarded" | "policy_1" | "policy_2";
 const deploymentDefaultGuardrail = "deployment_default";
-
-type ModelResult = {
-  model: string;
-  api_surface?: "responses" | "chat_completions";
-  content?: string;
-  duration_ms?: number;
-  usage?: Usage;
-  error?: string;
-  guardrail_variant?: GuardrailVariant | null;
-  guardrail_policy_name?: string | null;
-  guardrail_results?: Record<string, unknown> | null;
-  pending?: boolean;
-};
 
 type ModelSettings = {
   model: string;
@@ -151,22 +145,6 @@ type ModelSettings = {
   max_tokens: number;
   repetition_penalty: number;
   guardrail_policy_names: string[];
-};
-
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  created_at?: string;
-  model?: string;
-  api_surface?: "responses" | "chat_completions";
-  duration_ms?: number;
-  usage?: Usage;
-  error?: string;
-  guardrail_variant?: GuardrailVariant | null;
-  guardrail_policy_name?: string | null;
-  guardrail_results?: Record<string, unknown> | null;
-  pending?: boolean;
 };
 
 type GuardrailPolicy = {
@@ -194,7 +172,6 @@ type Theme = "light" | "dark";
 type ColorPalette = "foundry" | "ocean" | "forest" | "ember";
 type ViewMode = "chat" | "metrics" | "settings" | "model-settings";
 type ModelModality = "text" | "image" | "voice";
-type ReasoningEffort = "default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 type AdminConfig = {
   is_configured: boolean;
@@ -265,47 +242,6 @@ declare global {
   }
 }
 
-type Conversation = {
-  id: string;
-  title: string;
-  use_case: UseCaseId;
-  created_at: string;
-  updated_at: string;
-};
-
-type StoredMessage = {
-  id: string;
-  conversation_id: string;
-  role: "user" | "assistant";
-  content: string;
-  model: string | null;
-  api_surface: "responses" | "chat_completions" | null;
-  duration_ms: number | null;
-  usage: Usage | null;
-  error: string | null;
-  guardrail_variant: GuardrailVariant | null;
-  guardrail_policy_name: string | null;
-  guardrail_results: Record<string, unknown> | null;
-  created_at: string;
-};
-
-type FoundryRequestTrace = {
-  api_surface: string;
-  method: "POST";
-  path: string;
-  payload: unknown;
-};
-
-type FoundryResponseTrace = {
-  api_surface: string;
-  payload?: unknown;
-  events?: unknown[];
-  extracted?: {
-    content: string;
-    usage: Usage;
-  };
-};
-
 type DocumentSummary = {
   id: string;
   filename: string;
@@ -315,14 +251,6 @@ type DocumentSummary = {
   blob_name: string | null;
   blob_url: string | null;
   created_at: string;
-};
-
-type DocumentSource = {
-  document_id: string;
-  filename: string;
-  chunk_index: number;
-  content: string;
-  score: number;
 };
 
 type MetricsDay = {
@@ -353,64 +281,6 @@ type ModelMetrics = {
     avg_duration_ms: number;
   };
 };
-
-type ChatStreamEvent =
-  | {
-      type: "start";
-      model: string;
-      api_surface: ModelSettings["api_surface"];
-      conversation: Conversation;
-      user_message: StoredMessage;
-      guardrail_comparison?: boolean;
-      guardrail_policy_names?: string[];
-    }
-  | {
-      type: "foundry_request";
-      request: FoundryRequestTrace;
-    }
-  | {
-      type: "foundry_response";
-      response: FoundryResponseTrace;
-    }
-  | {
-      type: "retrieval";
-      sources: DocumentSource[];
-      embedding: {
-        model: string;
-        duration_ms: number;
-        dimensions: number;
-        foundry_request?: FoundryRequestTrace;
-        foundry_response?: FoundryResponseTrace;
-      };
-    }
-  | {
-      type: "delta";
-      delta: string;
-    }
-  | {
-      type: "completed";
-      conversation: Conversation;
-      assistant_message: StoredMessage;
-    }
-  | {
-      type: "error";
-      error: string;
-      conversation?: Conversation;
-      assistant_message?: StoredMessage;
-    }
-  | {
-      type: "variant_completed";
-      conversation: Conversation;
-      result: ModelResult & {
-        assistant_message: StoredMessage;
-        foundry_request?: FoundryRequestTrace;
-        foundry_response?: FoundryResponseTrace;
-      };
-    }
-  | {
-      type: "comparison_completed";
-      conversation: Conversation;
-    };
 
 type ApiTraceEntry = {
   id: string;
@@ -756,6 +626,7 @@ const traditionalTtsVoices = [
 ];
 
 export default function App() {
+  const textChatRequest = useTextChatRequest();
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [auth, setAuth] = useState<AuthResponse | null>(null);
   const [models, setModels] = useState<string[]>([]);
@@ -1771,6 +1642,7 @@ export default function App() {
   }
 
   async function startNewChat() {
+    textChatRequest.cancel();
     setConversationsOpen(false);
     setActiveView("chat");
     setCurrentConversationId(null);
@@ -1898,6 +1770,7 @@ export default function App() {
       setActiveModel(imageModel);
     }
     if (useCase !== activeUseCase) {
+      textChatRequest.cancel();
       useCaseSessionRef.current += 1;
       setCurrentConversationId(null);
       setMessages([]);
@@ -1933,6 +1806,7 @@ export default function App() {
   }
 
   async function loadConversation(conversationId: string) {
+    textChatRequest.cancel();
     const response = await tracedFetch(
       `/api/conversations/${conversationId}?use_case=${encodeURIComponent(activeUseCase)}`,
       {},
@@ -2993,26 +2867,10 @@ export default function App() {
         guardrail_comparison: guardrailComparisonEnabled,
         use_case: activeUseCase,
       };
-      const response = await tracedFetch("/api/chat/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      }, { label: "Stream chat", request: requestBody, responseKind: "stream" });
-
-      if (useCaseSession !== useCaseSessionRef.current) {
-        return;
-      }
-
-      if (!response.ok) {
-        const data = await response.json();
-        replacePendingMessages(2, [
-          createUserMessage(userPrompt),
-          createAssistantMessage({ model: activeModel, error: data.detail ?? "Unknown error" }),
-        ]);
-        return;
-      }
-
-      const apiEvents = await readServerSentEvents(response, (event) => {
+      const { response, events: apiEvents } = await textChatRequest.stream({
+        request: requestBody,
+        fetchClient: tracedFetch,
+        onEvent: (event) => {
         if (useCaseSession !== useCaseSessionRef.current) {
           return;
         }
@@ -3142,6 +3000,7 @@ export default function App() {
             ),
           );
         }
+        },
       });
       appendApiResponseTrace({
         label: "Stream chat response",
@@ -3150,6 +3009,17 @@ export default function App() {
         status: response.status,
         response: { events: apiEvents },
       });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      replacePendingMessages(guardrailComparisonEnabled ? 3 : 2, [
+        createUserMessage(userPrompt),
+        createAssistantMessage({
+          model: activeModel,
+          error: error instanceof Error ? error.message : "Chat request failed.",
+        }),
+      ]);
     } finally {
       if (useCaseSession === useCaseSessionRef.current) {
         setIsRunning(false);
@@ -3204,7 +3074,7 @@ export default function App() {
         return;
       }
 
-      const apiEvents = await readServerSentEvents(response, (event) => {
+      const apiEvents = await readServerSentEvents<ChatStreamEvent>(response, (event) => {
         if (useCaseSession !== useCaseSessionRef.current) {
           return;
         }
@@ -7951,62 +7821,6 @@ function mapStoredMessage(message: StoredMessage): ChatMessage {
     guardrail_policy_name: message.guardrail_policy_name,
     guardrail_results: message.guardrail_results,
   };
-}
-
-async function readServerSentEvents(
-  response: Response,
-  onEvent: (event: ChatStreamEvent) => void,
-) {
-  if (!response.body) {
-    throw new Error("Streaming response body is not available.");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const parsedEvents: ChatStreamEvent[] = [];
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-    buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split("\n\n");
-    buffer = events.pop() ?? "";
-    for (const event of events) {
-      const parsedEvent = parseServerSentEvent(event, onEvent);
-      if (parsedEvent) {
-        parsedEvents.push(parsedEvent);
-      }
-    }
-  }
-
-  buffer += decoder.decode();
-  if (buffer.trim()) {
-    const parsedEvent = parseServerSentEvent(buffer, onEvent);
-    if (parsedEvent) {
-      parsedEvents.push(parsedEvent);
-    }
-  }
-  return parsedEvents;
-}
-
-function parseServerSentEvent(
-  rawEvent: string,
-  onEvent: (event: ChatStreamEvent) => void,
-): ChatStreamEvent | null {
-  const data = rawEvent
-    .split("\n")
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trimStart())
-    .join("\n");
-  if (!data) {
-    return null;
-  }
-  const parsedEvent = JSON.parse(data) as ChatStreamEvent;
-  onEvent(parsedEvent);
-  return parsedEvent;
 }
 
 function parseRequestBody(body: BodyInit | null | undefined) {

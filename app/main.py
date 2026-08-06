@@ -5,8 +5,7 @@ from contextlib import asynccontextmanager
 import json
 import logging
 from pathlib import Path
-import threading
-from typing import Annotated, Any, Callable, Iterator, TypeVar
+from typing import Annotated, Any, Callable, TypeVar
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -15,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from websockets.asyncio.client import connect as websocket_connect
 
 from app.config import env_float, load_environment, load_runtime_settings
+from app.concurrency import model_call_semaphore
 
 from app.conversation_store import (
     append_message,
@@ -51,14 +51,11 @@ from app.foundry_admin import (
     list_guardrail_policies,
 )
 from app.foundry_client import (
-    build_foundry_request_trace,
-    complete_chat,
     create_realtime_client_secret,
     create_voice_live_connection_info,
     edit_image,
     generate_image,
     load_settings,
-    stream_chat,
     synthesize_speech,
     transcribe_audio,
     transcribe_speech_audio,
@@ -83,6 +80,7 @@ from app.local_auth import (
     user_from_claims,
 )
 from app.live_interpreter import LiveInterpreterSession
+from app.features.text_chat.router import router as text_chat_router
 from app.observability import (
     audit_event,
     configure_logging,
@@ -93,7 +91,6 @@ from app.errors import ApplicationError, ExternalServiceError, application_error
 from app.schemas import (
     MAX_PROMPT_LENGTH as MAX_PROMPT_LENGTH,
     AdminDeploymentRequest,
-    ChatRequest,
     CompareRequest,
     DocumentQuestionRequest,
     ImageGenerationRequest,
@@ -103,6 +100,12 @@ from app.schemas import (
     normalize_reasoning_effort,
 )
 from app.security import AuthMode, UserScope, auth_mode, authenticated_user, user_scope, websocket_origin_allowed
+from app.services.chat import (
+    bounded_stream_chat as _bounded_stream_chat,
+    guardrail_histories as _guardrail_histories,
+    guardrail_variants as _guardrail_variants,
+    run_and_store_variant as _run_and_store_variant,
+)
 
 load_environment()
 runtime_settings = load_runtime_settings()
@@ -114,8 +117,6 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 MAX_DOCUMENT_FILES = 10
 MAX_DOCUMENT_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_WEBSOCKET_MESSAGE_BYTES = 1024 * 1024
-MODEL_CALL_CONCURRENCY = runtime_settings.model_call_concurrency
-model_call_semaphore = threading.BoundedSemaphore(MODEL_CALL_CONCURRENCY)
 T = TypeVar("T")
 PUBLIC_API_PATHS = {
     "/api/auth/me",
@@ -157,11 +158,6 @@ def _invoke_model_call(
 ) -> T:
     with model_call_semaphore:
         return function(*args, **kwargs)
-
-
-def _bounded_stream_chat(**kwargs: Any) -> Iterator[dict[str, Any]]:
-    with model_call_semaphore:
-        yield from stream_chat(**kwargs)
 
 
 def _upstream_error(operation: str, exc: Exception) -> ExternalServiceError:
@@ -1020,323 +1016,6 @@ async def post_admin_deployment(payload: AdminDeploymentRequest, request: Reques
     }
 
 
-def _guardrail_variants(
-    model_settings: ModelSettings,
-    enabled: bool,
-) -> list[tuple[str | None, str | None]]:
-    if not enabled:
-        return [(None, None)]
-    if len(model_settings.guardrail_policy_names) != 2:
-        raise ValueError(
-            f"Guardrail comparison is enabled for {model_settings.model}, but two policies are not selected."
-        )
-    return [
-        (
-            f"policy_{index + 1}",
-            None if policy_name == DEPLOYMENT_DEFAULT_GUARDRAIL else policy_name,
-        )
-        for index, policy_name in enumerate(model_settings.guardrail_policy_names)
-    ]
-
-
-def _guardrail_histories(
-    scope: UserScope,
-    conversation_id: str,
-    model: str,
-    variants: list[tuple[str | None, str | None]],
-) -> dict[str | None, list[dict[str, str]]]:
-    return {
-        variant: build_model_history(
-            scope,
-            conversation_id,
-            model,
-            variant,
-            policy_name,
-        )
-        for variant, policy_name in variants
-    }
-
-
-def _guardrail_error_details(exc: Exception) -> dict[str, Any] | None:
-    body = getattr(exc, "body", None)
-    if isinstance(body, dict):
-        return body
-    return None
-
-
-def _run_and_store_variant(
-    *,
-    scope: UserScope,
-    conversation_id: str,
-    model_settings: ModelSettings,
-    prompt: str,
-    system_prompt: str,
-    reasoning_effort: str | None,
-    history: list[dict[str, str]],
-    variant: str | None,
-    policy_name: str | None,
-) -> dict[str, Any]:
-    foundry_request = build_foundry_request_trace(
-        model=model_settings.model,
-        prompt=prompt,
-        api_surface=model_settings.api_surface,
-        system_prompt=system_prompt,
-        temperature=model_settings.temperature,
-        top_p=model_settings.top_p,
-        max_tokens=model_settings.max_tokens,
-        repetition_penalty=model_settings.repetition_penalty,
-        reasoning_effort=reasoning_effort,
-        history=history,
-        guardrail_policy_name=policy_name,
-    )
-    try:
-        with model_call_semaphore:
-            response = complete_chat(
-                model=model_settings.model,
-                prompt=prompt,
-                api_surface=model_settings.api_surface,
-                system_prompt=system_prompt,
-                temperature=model_settings.temperature,
-                top_p=model_settings.top_p,
-                max_tokens=model_settings.max_tokens,
-                repetition_penalty=model_settings.repetition_penalty,
-                reasoning_effort=reasoning_effort,
-                history=history,
-                guardrail_policy_name=policy_name,
-            )
-        assistant_message = append_message(
-            scope=scope,
-            conversation_id=conversation_id,
-            role="assistant",
-            content=response["content"],
-            model=model_settings.model,
-            api_surface=response["api_surface"],
-            duration_ms=response["duration_ms"],
-            usage=response["usage"],
-            guardrail_variant=variant,
-            guardrail_policy_name=policy_name,
-            guardrail_results=response["guardrail_results"],
-        )
-        return {
-            **response,
-            "guardrail_variant": variant,
-            "assistant_message": message_to_dict(assistant_message),
-        }
-    except Exception as exc:
-        guardrail_results = _guardrail_error_details(exc)
-        assistant_message = append_message(
-            scope=scope,
-            conversation_id=conversation_id,
-            role="assistant",
-            content="",
-            model=model_settings.model,
-            api_surface=model_settings.api_surface,
-            error=_public_provider_error("Model request", exc),
-            guardrail_variant=variant,
-            guardrail_policy_name=policy_name,
-            guardrail_results=guardrail_results,
-        )
-        return {
-            "model": model_settings.model,
-            "api_surface": model_settings.api_surface,
-            "error": "Model request failed. Try again later.",
-            "guardrail_variant": variant,
-            "guardrail_policy_name": policy_name,
-            "guardrail_results": guardrail_results,
-            "assistant_message": message_to_dict(assistant_message),
-            "foundry_request": foundry_request,
-        }
-
-
-@router.post("/api/chat")
-async def chat(
-    request: ChatRequest,
-    scope: Annotated[UserScope, Depends(_current_user_scope)],
-) -> dict:
-    try:
-        conversation = get_or_create_conversation(
-            scope, request.conversation_id, request.prompt, request.use_case
-        )
-        model_settings = get_model_settings(request.model)
-        variants = _guardrail_variants(model_settings, request.guardrail_comparison)
-        histories = _guardrail_histories(scope, conversation.id, request.model, variants)
-        user_message = append_message(
-            scope=scope,
-            conversation_id=conversation.id,
-            role="user",
-            content=request.prompt,
-        )
-        results = await asyncio.gather(
-            *(
-                asyncio.to_thread(
-                    _run_and_store_variant,
-                    scope=scope,
-                    conversation_id=conversation.id,
-                    model_settings=model_settings,
-                    prompt=request.prompt,
-                    system_prompt=model_settings.system_prompt,
-        reasoning_effort=request.reasoning_effort,
-                    history=histories[variant],
-                    variant=variant,
-                    policy_name=policy_name,
-                )
-                for variant, policy_name in variants
-            )
-        )
-        payload = {
-            "model": request.model,
-            "conversation": conversation_to_dict(
-                get_conversation(scope, conversation.id) or conversation
-            ),
-            "user_message": message_to_dict(user_message),
-            "results": results,
-        }
-        if len(results) == 1:
-            payload.update(results[0])
-        return payload
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Exception as exc:
-        raise _upstream_error("Chat request", exc) from exc
-
-
-@router.post("/api/chat/stream")
-def chat_stream(
-    request: ChatRequest,
-    scope: Annotated[UserScope, Depends(_current_user_scope)],
-) -> StreamingResponse:
-    try:
-        conversation = get_or_create_conversation(
-            scope, request.conversation_id, request.prompt, request.use_case
-        )
-        model_settings = get_model_settings(request.model)
-        variants = _guardrail_variants(model_settings, request.guardrail_comparison)
-        histories = _guardrail_histories(scope, conversation.id, request.model, variants)
-        user_message = append_message(
-            scope=scope,
-            conversation_id=conversation.id,
-            role="user",
-            content=request.prompt,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    def events():
-        yield _sse(
-            {
-                "type": "start",
-                "model": request.model,
-                "api_surface": model_settings.api_surface,
-                "conversation": conversation_to_dict(
-                    get_conversation(scope, conversation.id) or conversation
-                ),
-                "user_message": message_to_dict(user_message),
-                "guardrail_comparison": request.guardrail_comparison,
-                "guardrail_policy_names": list(model_settings.guardrail_policy_names),
-            }
-        )
-        if request.guardrail_comparison:
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                futures = {
-                    executor.submit(
-                        _run_and_store_variant,
-                        scope=scope,
-                        conversation_id=conversation.id,
-                        model_settings=model_settings,
-                        prompt=request.prompt,
-                        system_prompt=model_settings.system_prompt,
-                        reasoning_effort=request.reasoning_effort,
-                        history=histories[variant],
-                        variant=variant,
-                        policy_name=policy_name,
-                    ): variant
-                    for variant, policy_name in variants
-                }
-                for future in as_completed(futures):
-                    result = future.result()
-                    yield _sse(
-                        {
-                            "type": "variant_completed",
-                            "result": result,
-                            "conversation": conversation_to_dict(
-                                get_conversation(scope, conversation.id) or conversation
-                            ),
-                        }
-                    )
-            yield _sse(
-                {
-                    "type": "comparison_completed",
-                    "conversation": conversation_to_dict(
-                        get_conversation(scope, conversation.id) or conversation
-                    ),
-                }
-            )
-            return
-
-        try:
-            for event in _bounded_stream_chat(
-                model=request.model,
-                prompt=request.prompt,
-                api_surface=model_settings.api_surface,
-                system_prompt=model_settings.system_prompt,
-                temperature=model_settings.temperature,
-                top_p=model_settings.top_p,
-                max_tokens=model_settings.max_tokens,
-                repetition_penalty=model_settings.repetition_penalty,
-                reasoning_effort=request.reasoning_effort,
-                history=histories[None],
-            ):
-                if event["type"] == "foundry_request":
-                    yield _sse(event)
-                elif event["type"] == "foundry_response":
-                    yield _sse(event)
-                elif event["type"] == "delta":
-                    yield _sse(event)
-                elif event["type"] == "completed":
-                    assistant_message = append_message(
-                        scope=scope,
-                        conversation_id=conversation.id,
-                        role="assistant",
-                        content=event["content"],
-                        model=request.model,
-                        api_surface=model_settings.api_surface,
-                        duration_ms=event["duration_ms"],
-                        usage=event["usage"],
-                        guardrail_results=event["guardrail_results"],
-                    )
-                    yield _sse(
-                        {
-                            "type": "completed",
-                            "conversation": conversation_to_dict(
-                                get_conversation(scope, conversation.id) or conversation
-                            ),
-                            "assistant_message": message_to_dict(assistant_message),
-                        }
-                    )
-        except Exception as exc:
-            assistant_message = append_message(
-                scope=scope,
-                conversation_id=conversation.id,
-                role="assistant",
-                content="",
-                model=request.model,
-                api_surface=model_settings.api_surface,
-                error=_public_provider_error("Model stream", exc),
-            )
-            yield _sse(
-                {
-                    "type": "error",
-                    "error": "Model stream failed. Try again later.",
-                    "conversation": conversation_to_dict(
-                        get_conversation(scope, conversation.id) or conversation
-                    ),
-                    "assistant_message": message_to_dict(assistant_message),
-                }
-            )
-
-    return StreamingResponse(events(), media_type="text/event-stream")
-
-
 @router.post("/api/documents/ask/stream")
 def document_ask_stream(
     request: DocumentQuestionRequest,
@@ -1619,6 +1298,7 @@ def create_app() -> FastAPI:
     application.middleware("http")(request_context_middleware)
     application.add_exception_handler(ApplicationError, application_error_handler)
     application.add_exception_handler(Exception, unexpected_error_handler)
+    application.include_router(text_chat_router)
     application.include_router(router)
     return application
 

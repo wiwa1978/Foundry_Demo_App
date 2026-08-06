@@ -192,7 +192,7 @@ The top bar includes a **Use cases** marketplace. Use cases are local UI presets
 
 | Use case | What changes |
 | --- | --- |
-| **Text Chat** | Shows the clean single-model chat workspace and hides voice/comparison sidebar controls. |
+| **Text Chat** | Shows the clean single-model chat workspace and hides voice/comparison sidebar controls. [Browse the implementation](frontend/src/features/textChat/README.md). |
 | **Document Q&A** | Shows document upload/index controls, stores original files in Blob Storage, stores chunks in Azure AI Search, retrieves relevant chunks with Foundry embeddings, and answers with the selected Foundry chat deployment. |
 | **Side by Side comparison** | Opens the comparison workspace and shows model multi-select controls. |
 | **Browser based voice** | Keeps the text chat workspace and exposes browser dictation/readback controls. |
@@ -202,6 +202,10 @@ The top bar includes a **Use cases** marketplace. Use cases are local UI presets
 | **Realtime Speech in / Speech out** | Opens the Foundry Realtime WebRTC workspace. |
 
 Settings, API trace, metrics, previous conversations, and model settings remain available outside the marketplace because they are shared app capabilities.
+
+See the [use case implementation index](docs/use-cases/README.md) for stable links from each demo
+scenario to its frontend, backend, and tests. Text Chat is the first fully extracted reference slice;
+the remaining use cases are migrated incrementally.
 
 ## Microsoft Entra sign-in
 
@@ -250,6 +254,10 @@ frontend/src/app/useCaseRegistry.ts       Ordered registry shown in the marketpl
 frontend/src/features/useCases/*.ts       One metadata module per use case
 frontend/src/features/marketplace/        Marketplace UI
 frontend/src/features/shared/             Shared visuals such as SoundWaveIcon
+frontend/src/features/<feature>/README.md Customer-facing implementation walkthrough
+app/features/<feature>/                    FastAPI transport for one feature
+app/services/                              Shared business orchestration
+app/gateways/                              External service boundaries
 ```
 
 To add a new use case, create a module in `frontend/src/features/useCases/` that exports a `UseCaseModule`, then add it to `frontend/src/app/useCaseRegistry.ts`. The app shell consumes the registry for the marketplace and selected use-case labels, while shared backend routes and model settings remain reusable across use cases.
