@@ -6,11 +6,15 @@ on:
       - main
     paths:
       - ".github/workflows/deploy-container-app.yml"
+      - ".github/workflows/ci.yml"
       - "app/**"
       - "frontend/**"
       - "infra/**"
+      - "tests/**"
       - "Dockerfile"
       - ".dockerignore"
+      - "pyproject.toml"
+      - "requirements-dev.txt"
       - "requirements.txt"
   workflow_dispatch:
     inputs:

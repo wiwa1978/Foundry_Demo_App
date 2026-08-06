@@ -44,7 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-bicep@v2
-      - run: bicep build infra/main.bicep --stdout > /dev/null
-      - run: bicep build infra/main-app-only.bicep --stdout > /dev/null
-      - run: bicep build infra/main-hub-additions.bicep --stdout > /dev/null
+      - name: Install Bicep CLI
+        run: az bicep install
+      - run: az bicep build --file infra/main.bicep --stdout > /dev/null
+      - run: az bicep build --file infra/main-app-only.bicep --stdout > /dev/null
+      - run: az bicep build --file infra/main-hub-additions.bicep --stdout > /dev/null
