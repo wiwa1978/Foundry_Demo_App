@@ -17,6 +17,7 @@ from azure.identity import get_bearer_token_provider
 from openai import OpenAI
 
 from app.azure_credential import get_azure_credential
+from app.config import env_csv, first_env
 from app.model_settings import list_models
 
 SAMPLING_UNSUPPORTED_MODEL_PREFIXES = ("gpt-5", "gpt5", "o1", "o3", "o4")
@@ -69,64 +70,59 @@ class FoundrySettings:
 
 
 def load_settings() -> FoundrySettings:
-    seed_models = [
-        model.strip()
-        for model in os.getenv("FOUNDRY_MODELS", "").split(",")
-        if model.strip()
-    ]
+    seed_models = env_csv("FOUNDRY_MODELS")
     models = list_models(seed_models)
     realtime_model = (
-        os.getenv("FOUNDRY_REALTIME_MODEL")
+        first_env("FOUNDRY_REALTIME_MODEL")
         or next((model for model in models if "realtime" in model.lower()), None)
         or "gpt-realtime-2.1"
     )
 
     return FoundrySettings(
-        endpoint=(
-            os.getenv("FOUNDRY_PROJECT_ENDPOINT")
-            or os.getenv("AZURE_AI_PROJECT_ENDPOINT")
-            or os.getenv("AZURE_AIPROJECT_ENDPOINT")
-            or os.getenv("FOUNDRY_ENDPOINT")
-            or os.getenv("FOUNDRY_OPENAI_ENDPOINT")
-            or os.getenv("AZURE_OPENAI_ENDPOINT")
+        endpoint=first_env(
+            "FOUNDRY_PROJECT_ENDPOINT",
+            "AZURE_AI_PROJECT_ENDPOINT",
+            "AZURE_AIPROJECT_ENDPOINT",
+            "FOUNDRY_ENDPOINT",
+            "FOUNDRY_OPENAI_ENDPOINT",
+            "AZURE_OPENAI_ENDPOINT",
         ),
         models=models,
-        realtime_endpoint=(
-            os.getenv("FOUNDRY_REALTIME_ENDPOINT")
-            or os.getenv("AZURE_OPENAI_ENDPOINT")
-            or os.getenv("FOUNDRY_OPENAI_ENDPOINT")
-            or os.getenv("FOUNDRY_PROJECT_ENDPOINT")
-            or os.getenv("AZURE_AI_PROJECT_ENDPOINT")
-            or os.getenv("AZURE_AIPROJECT_ENDPOINT")
-            or os.getenv("FOUNDRY_ENDPOINT")
+        realtime_endpoint=first_env(
+            "FOUNDRY_REALTIME_ENDPOINT",
+            "AZURE_OPENAI_ENDPOINT",
+            "FOUNDRY_OPENAI_ENDPOINT",
+            "FOUNDRY_PROJECT_ENDPOINT",
+            "AZURE_AI_PROJECT_ENDPOINT",
+            "AZURE_AIPROJECT_ENDPOINT",
+            "FOUNDRY_ENDPOINT",
         ),
         realtime_model=realtime_model,
-        embedding_model=os.getenv("FOUNDRY_EMBEDDING_MODEL") or "text-embedding-3-small",
-        transcription_model=(
-            os.getenv("FOUNDRY_TRANSCRIPTION_MODEL")
-            or os.getenv("AZURE_OPENAI_TRANSCRIPTION_MODEL")
-            or "gpt-4o-mini-transcribe"
-        ),
-        tts_model=(
-            os.getenv("FOUNDRY_TTS_MODEL")
-            or os.getenv("AZURE_OPENAI_TTS_MODEL")
-            or "gpt-4o-mini-tts"
-        ),
-        tts_voice=os.getenv("FOUNDRY_TTS_VOICE") or "alloy",
-        speech_endpoint=os.getenv("AZURE_SPEECH_ENDPOINT"),
-        speech_key=os.getenv("AZURE_SPEECH_KEY"),
-        speech_transcription_model=(
-            os.getenv("AZURE_SPEECH_TRANSCRIPTION_MODEL") or "MAI-Transcribe-1.5"
-        ),
-        voice_live_endpoint=(
-            os.getenv("AZURE_VOICELIVE_ENDPOINT")
-            or os.getenv("AZURE_SPEECH_ENDPOINT")
-        ),
-        voice_live_model=os.getenv("AZURE_VOICELIVE_MODEL") or "gpt-realtime",
-        voice_live_voice=(
-            os.getenv("AZURE_VOICELIVE_VOICE")
-            or "en-US-Ava:DragonHDLatestNeural"
-        ),
+        embedding_model=first_env(
+            "FOUNDRY_EMBEDDING_MODEL", default="text-embedding-3-small"
+        ) or "text-embedding-3-small",
+        transcription_model=first_env(
+            "FOUNDRY_TRANSCRIPTION_MODEL",
+            "AZURE_OPENAI_TRANSCRIPTION_MODEL",
+            default="gpt-4o-mini-transcribe",
+        ) or "gpt-4o-mini-transcribe",
+        tts_model=first_env(
+            "FOUNDRY_TTS_MODEL",
+            "AZURE_OPENAI_TTS_MODEL",
+            default="gpt-4o-mini-tts",
+        ) or "gpt-4o-mini-tts",
+        tts_voice=first_env("FOUNDRY_TTS_VOICE", default="alloy") or "alloy",
+        speech_endpoint=first_env("AZURE_SPEECH_ENDPOINT"),
+        speech_key=first_env("AZURE_SPEECH_KEY"),
+        speech_transcription_model=first_env(
+            "AZURE_SPEECH_TRANSCRIPTION_MODEL", default="MAI-Transcribe-1.5"
+        ) or "MAI-Transcribe-1.5",
+        voice_live_endpoint=first_env("AZURE_VOICELIVE_ENDPOINT", "AZURE_SPEECH_ENDPOINT"),
+        voice_live_model=first_env("AZURE_VOICELIVE_MODEL", default="gpt-realtime")
+        or "gpt-realtime",
+        voice_live_voice=first_env(
+            "AZURE_VOICELIVE_VOICE", default="en-US-Ava:DragonHDLatestNeural"
+        ) or "en-US-Ava:DragonHDLatestNeural",
     )
 
 

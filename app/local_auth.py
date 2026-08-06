@@ -2,11 +2,12 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import time
 from typing import Any
 
 import msal
+
+from app.config import env_text
 
 
 AUTH_FLOW_COOKIE = "foundry_auth_flow"
@@ -15,7 +16,7 @@ AUTH_SESSION_COOKIE = "foundry_auth_session"
 
 def is_local_auth_configured() -> bool:
     return all(
-        os.getenv(name, "").strip()
+        env_text(name)
         for name in (
             "ENTRA_LOCAL_CLIENT_ID",
             "ENTRA_LOCAL_CLIENT_SECRET",
@@ -97,7 +98,7 @@ def _cookie_secret() -> bytes:
 
 
 def _required_env(name: str) -> str:
-    value = os.getenv(name, "").strip()
+    value = env_text(name)
     if not value:
         raise ValueError(f"{name} is required for local authentication.")
     return value

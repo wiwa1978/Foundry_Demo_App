@@ -1,6 +1,5 @@
 import csv
 import json
-import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -27,6 +26,7 @@ from azure.search.documents.models import VectorizedQuery
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
 from app.foundry_client import create_embeddings, load_settings
+from app.config import env_int, first_env
 from app.security import UserScope
 
 MAX_DOCUMENT_BYTES = 12 * 1024 * 1024
@@ -90,25 +90,24 @@ class RetrievedChunk:
 
 def load_rag_search_settings() -> RagSearchSettings:
     foundry_settings = load_settings()
-    configured_dimensions = os.getenv("FOUNDRY_EMBEDDING_DIMENSIONS")
     return RagSearchSettings(
-        endpoint=os.getenv("AZURE_SEARCH_ENDPOINT") or os.getenv("FOUNDRY_SEARCH_ENDPOINT"),
-        index_name=f"{(
-            os.getenv("AZURE_SEARCH_INDEX_NAME")
-            or os.getenv("FOUNDRY_SEARCH_INDEX_NAME")
-            or "foundry-document-rag"
-        )}-{SEARCH_SCHEMA_VERSION}",
+        endpoint=first_env("AZURE_SEARCH_ENDPOINT", "FOUNDRY_SEARCH_ENDPOINT"),
+        index_name=f"{first_env('AZURE_SEARCH_INDEX_NAME', 'FOUNDRY_SEARCH_INDEX_NAME', default='foundry-document-rag')}-{SEARCH_SCHEMA_VERSION}",
         embedding_model=foundry_settings.embedding_model,
-        embedding_dimensions=int(configured_dimensions) if configured_dimensions else None,
-        storage_account_url=(
-            os.getenv("AZURE_STORAGE_ACCOUNT_URL")
-            or os.getenv("FOUNDRY_STORAGE_ACCOUNT_URL")
+        embedding_dimensions=env_int(
+            "FOUNDRY_EMBEDDING_DIMENSIONS",
+            0,
+            minimum=0,
+        ) or None,
+        storage_account_url=first_env(
+            "AZURE_STORAGE_ACCOUNT_URL",
+            "FOUNDRY_STORAGE_ACCOUNT_URL",
         ),
-        storage_container_name=(
-            os.getenv("AZURE_STORAGE_CONTAINER_NAME")
-            or os.getenv("FOUNDRY_STORAGE_CONTAINER_NAME")
-            or "foundry-rag-documents"
-        ),
+        storage_container_name=first_env(
+            "AZURE_STORAGE_CONTAINER_NAME",
+            "FOUNDRY_STORAGE_CONTAINER_NAME",
+            default="foundry-rag-documents",
+        ) or "foundry-rag-documents",
     )
 
 

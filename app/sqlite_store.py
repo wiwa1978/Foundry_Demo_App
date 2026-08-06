@@ -1,4 +1,3 @@
-import os
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -14,6 +13,7 @@ from app.persistence_models import (
     message_from_record,
     settings_from_record,
 )
+from app.config import env_text
 from app.repository_contracts import UsageRecord
 from app.security import UserScope
 
@@ -24,7 +24,9 @@ DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "foundry_chat.sqlite3"
 
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
-    database_path = Path(os.getenv("SQLITE_DATABASE_PATH", str(DEFAULT_DATABASE_PATH)))
+    database_path = Path(
+        env_text("SQLITE_DATABASE_PATH", str(DEFAULT_DATABASE_PATH)) or DEFAULT_DATABASE_PATH
+    )
     database_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(database_path, timeout=30)
     connection.row_factory = sqlite3.Row
@@ -96,6 +98,11 @@ def initialize_sqlite_store() -> None:
             """
         )
         connection.execute("PRAGMA user_version = 2")
+
+
+def check_sqlite_store() -> None:
+    with connect() as connection:
+        connection.execute("SELECT 1").fetchone()
 
 
 class SQLiteConversationRepository:

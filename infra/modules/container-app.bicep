@@ -410,7 +410,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             }
             {
               type: 'Readiness'
-              httpGet: { path: '/api/health', port: 8000 }
+              httpGet: { path: '/api/ready', port: 8000 }
               initialDelaySeconds: 5
               periodSeconds: 10
             }

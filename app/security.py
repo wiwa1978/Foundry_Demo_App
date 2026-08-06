@@ -1,6 +1,5 @@
 import base64
 import json
-import os
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -8,6 +7,7 @@ from urllib.parse import urlparse
 
 from starlette.requests import HTTPConnection
 
+from app.config import env_csv, env_text
 from app.local_auth import AUTH_SESSION_COOKIE, decode_cookie, is_local_auth_configured
 
 
@@ -31,7 +31,7 @@ LOCAL_DEMO_SCOPE = UserScope(tenant_id="local-demo", user_id="local-demo")
 
 
 def auth_mode() -> AuthMode:
-    configured = os.getenv("APP_AUTH_MODE", "").strip().lower()
+    configured = (env_text("APP_AUTH_MODE", "") or "").lower()
     if configured:
         try:
             mode = AuthMode(configured)
@@ -84,7 +84,7 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
         claim_lookup,
         "tid",
         "http://schemas.microsoft.com/identity/claims/tenantid",
-    ) or os.getenv("APP_AUTH_TENANT_ID", "").strip()
+    ) or (env_text("APP_AUTH_TENANT_ID", "") or "")
     if not tenant_id:
         return None
     return {
@@ -107,7 +107,7 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
 
 def _container_apps_header_user(connection: HTTPConnection) -> dict[str, Any] | None:
     user_id = str(connection.headers.get("x-ms-client-principal-id") or "").strip()
-    tenant_id = os.getenv("APP_AUTH_TENANT_ID", "").strip()
+    tenant_id = env_text("APP_AUTH_TENANT_ID", "") or ""
     if not user_id or not tenant_id:
         return None
     user_name = str(connection.headers.get("x-ms-client-principal-name") or "").strip() or None
@@ -141,11 +141,7 @@ def websocket_origin_allowed(connection: HTTPConnection) -> bool:
     parsed = urlparse(origin)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return False
-    configured_origins = {
-        value.strip().rstrip("/")
-        for value in os.getenv("ALLOWED_ORIGINS", "").split(",")
-        if value.strip()
-    }
+    configured_origins = {value.rstrip("/") for value in env_csv("ALLOWED_ORIGINS")}
     if configured_origins:
         return origin.rstrip("/") in configured_origins
     return parsed.netloc.lower() == connection.headers.get("host", "").lower()

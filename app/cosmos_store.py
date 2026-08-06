@@ -1,8 +1,8 @@
-import os
 from functools import lru_cache
 from azure.cosmos import CosmosClient, PartitionKey
 from azure.cosmos.exceptions import CosmosResourceExistsError, CosmosResourceNotFoundError
 from app.azure_credential import get_azure_credential
+from app.config import env_bool, env_text
 from app.persistence_models import (
     CONVERSATION_TYPE,
     MESSAGE_TYPE,
@@ -27,9 +27,9 @@ CONTAINER_SCHEMA_VERSION = "v2"
 
 @lru_cache(maxsize=1)
 def get_container():
-    endpoint = os.getenv("AZURE_COSMOS_ENDPOINT", "").strip()
-    database_name = os.getenv("AZURE_COSMOS_DATABASE_NAME", "").strip()
-    base_container_name = os.getenv("AZURE_COSMOS_CONTAINER_NAME", "foundry-chat-app").strip()
+    endpoint = env_text("AZURE_COSMOS_ENDPOINT", "") or ""
+    database_name = env_text("AZURE_COSMOS_DATABASE_NAME", "") or ""
+    base_container_name = env_text("AZURE_COSMOS_CONTAINER_NAME", "foundry-chat-app") or ""
     container_name = f"{base_container_name}-{CONTAINER_SCHEMA_VERSION}"
     if not endpoint or not database_name or not container_name:
         raise RuntimeError(
@@ -37,7 +37,7 @@ def get_container():
             "AZURE_COSMOS_DATABASE_NAME, and AZURE_COSMOS_CONTAINER_NAME."
         )
 
-    key = os.getenv("AZURE_COSMOS_KEY", "").strip()
+    key = env_text("AZURE_COSMOS_KEY", "") or ""
     credential = key or get_azure_credential()
     client = CosmosClient(endpoint, credential=credential)
     database = client.get_database_client(database_name)
@@ -57,8 +57,12 @@ def initialize_cosmos_store() -> None:
     get_container()
 
 
+def check_cosmos_store() -> None:
+    get_container().read()
+
+
 def _env_flag(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
+    return env_bool(name)
 
 
 class CosmosConversationRepository:

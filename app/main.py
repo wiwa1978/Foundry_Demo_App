@@ -1,20 +1,20 @@
 import asyncio
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import asynccontextmanager
 import json
 import logging
-import os
 from pathlib import Path
 import threading
 from typing import Annotated, Any, Callable, Iterator, TypeVar
 
-from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator, model_validator
 from websockets.asyncio.client import connect as websocket_connect
+
+from app.config import env_float, load_environment, load_runtime_settings
 
 from app.conversation_store import (
     append_message,
@@ -65,14 +65,13 @@ from app.foundry_client import (
 )
 from app.model_settings import (
     DEPLOYMENT_DEFAULT_GUARDRAIL,
-    MODEL_MODALITIES,
     ModelSettings,
     get_model_settings,
     register_model,
     save_model_settings,
     settings_to_dict,
 )
-from app.persistence import initialize_persistence
+from app.persistence import check_persistence, initialize_persistence
 from app.local_auth import (
     AUTH_FLOW_COOKIE,
     AUTH_SESSION_COOKIE,
@@ -84,21 +83,38 @@ from app.local_auth import (
     user_from_claims,
 )
 from app.live_interpreter import LiveInterpreterSession
+from app.observability import (
+    audit_event,
+    configure_logging,
+    request_context_middleware,
+    unexpected_error_handler,
+)
+from app.errors import ApplicationError, ExternalServiceError, application_error_handler
+from app.schemas import (
+    MAX_PROMPT_LENGTH as MAX_PROMPT_LENGTH,
+    AdminDeploymentRequest,
+    ChatRequest,
+    CompareRequest,
+    DocumentQuestionRequest,
+    ImageGenerationRequest,
+    ModelRegistrationRequest,
+    ModelSettingsRequest,
+    RealtimeSessionRequest,
+    normalize_reasoning_effort,
+)
 from app.security import AuthMode, UserScope, auth_mode, authenticated_user, user_scope, websocket_origin_allowed
 
-load_dotenv()
+load_environment()
+runtime_settings = load_runtime_settings()
+configure_logging(runtime_settings.log_level)
 
-app = FastAPI(title="Foundry Chat App")
+router = APIRouter()
 logger = logging.getLogger(__name__)
-REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
-MAX_PROMPT_LENGTH = 20_000
-MAX_INSTRUCTIONS_LENGTH = 20_000
-MAX_MODEL_NAME_LENGTH = 200
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 MAX_DOCUMENT_FILES = 10
 MAX_DOCUMENT_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_WEBSOCKET_MESSAGE_BYTES = 1024 * 1024
-MODEL_CALL_CONCURRENCY = max(1, int(os.getenv("MODEL_CALL_CONCURRENCY", "8")))
+MODEL_CALL_CONCURRENCY = runtime_settings.model_call_concurrency
 model_call_semaphore = threading.BoundedSemaphore(MODEL_CALL_CONCURRENCY)
 T = TypeVar("T")
 PUBLIC_API_PATHS = {
@@ -108,15 +124,12 @@ PUBLIC_API_PATHS = {
     "/api/auth/logout",
     "/api/config",
     "/api/health",
+    "/api/ready",
 }
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 FRONTEND_INDEX = FRONTEND_DIST / "index.html"
-
-if (FRONTEND_DIST / "assets").exists():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
-
 
 def _is_entra_auth_enabled() -> bool:
     return auth_mode() is not AuthMode.DISABLED
@@ -151,9 +164,9 @@ def _bounded_stream_chat(**kwargs: Any) -> Iterator[dict[str, Any]]:
         yield from stream_chat(**kwargs)
 
 
-def _upstream_error(operation: str, exc: Exception) -> HTTPException:
+def _upstream_error(operation: str, exc: Exception) -> ExternalServiceError:
     logger.exception("%s failed", operation, exc_info=exc)
-    return HTTPException(status_code=502, detail=f"{operation} failed. Try again later.")
+    return ExternalServiceError(operation)
 
 
 def _public_provider_error(operation: str, exc: Exception) -> str:
@@ -161,13 +174,12 @@ def _public_provider_error(operation: str, exc: Exception) -> str:
     return f"{operation} failed. Try again later."
 
 
-@app.middleware("http")
 async def require_authenticated_api_user(request: Request, call_next):
     if (
-        _is_entra_auth_enabled()
-        and request.method != "OPTIONS"
+        request.method != "OPTIONS"
         and request.url.path.startswith("/api/")
         and request.url.path not in PUBLIC_API_PATHS
+        and _is_entra_auth_enabled()
         and _authenticated_user_from_request(request) is None
     ):
         return JSONResponse(
@@ -177,225 +189,7 @@ async def require_authenticated_api_user(request: Request, call_next):
     return await call_next(request)
 
 
-@app.on_event("startup")
-def startup() -> None:
-    initialize_persistence()
-
-
-class ChatRequest(BaseModel):
-    model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
-    prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
-    conversation_id: str | None = None
-    reasoning_effort: str | None = None
-    guardrail_comparison: bool = False
-    use_case: str = "text_chat"
-
-    @field_validator("model", "prompt")
-    @classmethod
-    def trim_required_text(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Value cannot be blank.")
-        return value
-
-    @field_validator("reasoning_effort")
-    @classmethod
-    def normalize_reasoning_effort(cls, value: str | None) -> str | None:
-        return _normalize_reasoning_effort(value)
-
-
-class DocumentQuestionRequest(BaseModel):
-    model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
-    prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
-    conversation_id: str | None = None
-    reasoning_effort: str | None = None
-    guardrail_comparison: bool = False
-    use_case: str = "document_qa"
-
-    @field_validator("model", "prompt")
-    @classmethod
-    def trim_required_text(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Value cannot be blank.")
-        return value
-
-    @field_validator("reasoning_effort")
-    @classmethod
-    def normalize_reasoning_effort(cls, value: str | None) -> str | None:
-        return _normalize_reasoning_effort(value)
-
-
-class CompareRequest(BaseModel):
-    models: list[str] = Field(min_length=1, max_length=4)
-    prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
-    conversation_id: str | None = None
-    reasoning_effort: str | None = None
-    use_case: str = "comparison"
-
-    @field_validator("models")
-    @classmethod
-    def normalize_models(cls, value: list[str]) -> list[str]:
-        models = list(dict.fromkeys(model.strip() for model in value if model.strip()))
-        if not models:
-            raise ValueError("Select at least one model.")
-        return models
-
-    @field_validator("prompt")
-    @classmethod
-    def trim_prompt(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Prompt cannot be blank.")
-        return value
-
-    @field_validator("reasoning_effort")
-    @classmethod
-    def normalize_reasoning_effort(cls, value: str | None) -> str | None:
-        return _normalize_reasoning_effort(value)
-
-
-class ImageGenerationRequest(BaseModel):
-    model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
-    prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
-    width: Annotated[int, Field(ge=768)] = 1024
-    height: Annotated[int, Field(ge=768)] = 1024
-
-    @field_validator("model", "prompt")
-    @classmethod
-    def trim_required_text(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Value cannot be blank.")
-        return value
-
-    @model_validator(mode="after")
-    def validate_pixel_count(self) -> "ImageGenerationRequest":
-        if self.width * self.height > 1_048_576:
-            raise ValueError("Image dimensions cannot exceed 1,048,576 total pixels.")
-        return self
-
-
-class ModelSettingsRequest(BaseModel):
-    model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
-    api_surface: str = "responses"
-    modalities: list[str] = Field(default_factory=lambda: ["text"])
-    system_prompt: str = Field(default="", max_length=MAX_INSTRUCTIONS_LENGTH)
-    temperature: Annotated[float, Field(ge=0, le=2)] = 0.7
-    top_p: Annotated[float, Field(gt=0, le=1)] = 1.0
-    max_tokens: Annotated[int, Field(ge=1, le=4096)] = 1024
-    repetition_penalty: Annotated[float, Field(ge=1, le=2)] = 1.0
-    guardrail_policy_names: list[str] = Field(default_factory=list)
-
-    @field_validator("model")
-    @classmethod
-    def trim_model(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Model deployment name cannot be blank.")
-        return value
-
-    @field_validator("api_surface")
-    @classmethod
-    def normalize_api_surface(cls, value: str) -> str:
-        value = value.strip().lower()
-        if value not in {"responses", "chat_completions"}:
-            raise ValueError("API surface must be 'responses' or 'chat_completions'.")
-        return value
-
-    @field_validator("modalities")
-    @classmethod
-    def normalize_modalities(cls, value: list[str]) -> list[str]:
-        modalities = list(dict.fromkeys(modality.strip().lower() for modality in value if modality.strip()))
-        if not modalities:
-            raise ValueError("Select at least one model capability.")
-        unsupported = sorted(set(modalities) - MODEL_MODALITIES)
-        if unsupported:
-            raise ValueError(
-                "Model capabilities must be one or more of: "
-                f"{', '.join(sorted(MODEL_MODALITIES))}."
-            )
-        return modalities
-
-    @field_validator("guardrail_policy_names")
-    @classmethod
-    def trim_guardrail_policy_names(cls, value: list[str]) -> list[str]:
-        return [policy_name.strip() for policy_name in value if policy_name.strip()]
-
-
-class ModelRegistrationRequest(BaseModel):
-    model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
-
-    @field_validator("model")
-    @classmethod
-    def trim_model(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Model deployment name cannot be blank.")
-        return value
-
-
-class RealtimeSessionRequest(BaseModel):
-    model: str | None = Field(default=None, max_length=MAX_MODEL_NAME_LENGTH)
-    instructions: str = Field(
-        default="You are a helpful Foundry voice assistant. Keep responses concise.",
-        max_length=MAX_INSTRUCTIONS_LENGTH,
-    )
-    voice: str = Field(default="alloy", max_length=100)
-
-    @field_validator("model", "instructions", "voice")
-    @classmethod
-    def trim_optional_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        value = value.strip()
-        return value or None
-
-
-class AdminDeploymentRequest(BaseModel):
-    deployment_name: str = Field(min_length=1)
-    model_name: str = Field(min_length=1)
-    model_version: str = Field(min_length=1)
-    model_format: str = "OpenAI"
-    sku_name: str = "Standard"
-    sku_capacity: Annotated[int, Field(ge=1)] = 1
-    version_upgrade_option: str = "OnceNewDefaultVersionAvailable"
-    rai_policy_name: str | None = None
-    wait_for_completion: bool = False
-    api_surface: str = "responses"
-    modalities: list[str] = Field(default_factory=lambda: ["text"])
-
-    @field_validator("deployment_name", "model_name", "model_version", "model_format", "sku_name", "version_upgrade_option")
-    @classmethod
-    def trim_required_text(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Value cannot be blank.")
-        return value
-
-    @field_validator("rai_policy_name")
-    @classmethod
-    def trim_optional_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        value = value.strip()
-        return value or None
-
-    @field_validator("api_surface")
-    @classmethod
-    def normalize_api_surface(cls, value: str) -> str:
-        value = value.strip().lower()
-        if value not in {"responses", "chat_completions"}:
-            raise ValueError("API surface must be 'responses' or 'chat_completions'.")
-        return value
-
-    @field_validator("modalities")
-    @classmethod
-    def normalize_modalities(cls, value: list[str]) -> list[str]:
-        return ModelSettingsRequest.normalize_modalities(value)
-
-
-@app.get("/api/config")
+@router.get("/api/config")
 def get_config() -> dict:
     settings = load_settings()
     rag_settings = load_rag_search_settings()
@@ -427,12 +221,22 @@ def get_config() -> dict:
     }
 
 
-@app.get("/api/health")
+@router.get("/api/health")
 def get_health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/auth/me")
+@router.get("/api/ready")
+def get_readiness() -> JSONResponse:
+    try:
+        check_persistence()
+    except Exception:
+        logger.exception("persistence_readiness_failed")
+        return JSONResponse(status_code=503, content={"status": "not_ready"})
+    return JSONResponse(content={"status": "ready"})
+
+
+@router.get("/api/auth/me")
 def get_authenticated_user(request: Request) -> dict:
     user = _authenticated_user_from_request(request)
     if user is None:
@@ -440,7 +244,7 @@ def get_authenticated_user(request: Request) -> dict:
     return {**user, "entra_auth_enabled": _is_entra_auth_enabled()}
 
 
-@app.get("/api/auth/login")
+@router.get("/api/auth/login")
 def login(request: Request):
     if not is_local_auth_configured():
         return RedirectResponse("/.auth/login/aad?post_login_redirect_uri=/")
@@ -457,7 +261,7 @@ def login(request: Request):
     return response
 
 
-@app.get("/api/auth/callback")
+@router.get("/api/auth/callback")
 def auth_callback(request: Request):
     flow = decode_cookie(request.cookies.get(AUTH_FLOW_COOKIE))
     if not flow:
@@ -476,11 +280,13 @@ def auth_callback(request: Request):
         secure=request.url.scheme == "https",
         samesite="lax",
     )
+    audit_event("authentication_completed", request=request)
     return response
 
 
-@app.get("/api/auth/logout")
-def logout():
+@router.get("/api/auth/logout")
+def logout(request: Request):
+    audit_event("logout_requested", request=request)
     if not is_local_auth_configured():
         return RedirectResponse("/.auth/logout?post_logout_redirect_uri=/")
     response = RedirectResponse("/")
@@ -489,7 +295,7 @@ def logout():
     return response
 
 
-@app.get("/api/model-settings")
+@router.get("/api/model-settings")
 def get_settings(model: str) -> dict:
     try:
         return settings_to_dict(get_model_settings(model))
@@ -497,12 +303,12 @@ def get_settings(model: str) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.put("/api/model-settings")
-def put_settings(request: ModelSettingsRequest) -> dict:
-    if request.guardrail_policy_names:
-        if len(request.guardrail_policy_names) != 2:
+@router.put("/api/model-settings")
+def put_settings(payload: ModelSettingsRequest, request: Request) -> dict:
+    if payload.guardrail_policy_names:
+        if len(payload.guardrail_policy_names) != 2:
             raise HTTPException(status_code=400, detail="Select two guardrails for comparison.")
-        if request.guardrail_policy_names[0].lower() == request.guardrail_policy_names[1].lower():
+        if payload.guardrail_policy_names[0].lower() == payload.guardrail_policy_names[1].lower():
             raise HTTPException(
                 status_code=400,
                 detail="Select two different guardrails for comparison.",
@@ -510,7 +316,7 @@ def put_settings(request: ModelSettingsRequest) -> dict:
         try:
             missing_policies = [
                 policy_name
-                for policy_name in request.guardrail_policy_names
+                for policy_name in payload.guardrail_policy_names
                 if policy_name != DEPLOYMENT_DEFAULT_GUARDRAIL
                 and not guardrail_policy_exists(policy_name)
             ]
@@ -523,16 +329,17 @@ def put_settings(request: ModelSettingsRequest) -> dict:
             )
     settings = save_model_settings(
         ModelSettings(
-            **{
-                **request.model_dump(exclude={"guardrail_policy_names"}),
-                "guardrail_policy_names": tuple(request.guardrail_policy_names),
-            }
+                **{
+                    **payload.model_dump(exclude={"guardrail_policy_names"}),
+                    "guardrail_policy_names": tuple(payload.guardrail_policy_names),
+                }
+            )
         )
-    )
+    audit_event("model_settings_updated", request=request, model=settings.model)
     return settings_to_dict(settings)
 
 
-@app.get("/api/guardrails/policies")
+@router.get("/api/guardrails/policies")
 def get_guardrail_policies() -> dict:
     try:
         return {"policies": list_guardrail_policies()}
@@ -540,7 +347,7 @@ def get_guardrail_policies() -> dict:
         raise _upstream_error("Guardrail policy discovery", exc) from exc
 
 
-@app.get("/api/guardrails/deployment-policy")
+@router.get("/api/guardrails/deployment-policy")
 def get_guardrail_deployment_policy(model: str = Query(min_length=1)) -> dict:
     try:
         return get_deployment_guardrail_policy(model)
@@ -550,20 +357,21 @@ def get_guardrail_deployment_policy(model: str = Query(min_length=1)) -> dict:
         raise _upstream_error("Deployment policy lookup", exc) from exc
 
 
-@app.post("/api/models")
-def post_model(request: ModelRegistrationRequest) -> dict:
+@router.post("/api/models")
+def post_model(payload: ModelRegistrationRequest, request: Request) -> dict:
     try:
-        settings = register_model(request.model)
+        settings = register_model(payload.model)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    audit_event("model_registered", request=request, model=settings.model)
     return {
         "models": load_settings().models,
         "settings": settings_to_dict(settings),
     }
 
 
-@app.get("/api/models")
+@router.get("/api/models")
 def get_models() -> dict:
     settings = load_settings()
     configured_models = settings.models
@@ -630,7 +438,7 @@ def _is_transcription_model(model: str) -> bool:
     return "transcribe" in normalized_model or "whisper" in normalized_model
 
 
-@app.post("/api/images/generate")
+@router.post("/api/images/generate")
 async def post_image_generation(request: ImageGenerationRequest) -> dict:
     configured_for_images = "image" in get_model_settings(request.model).modalities
     if not configured_for_images and "mai-image" not in request.model.lower():
@@ -650,7 +458,7 @@ async def post_image_generation(request: ImageGenerationRequest) -> dict:
         raise _upstream_error("Image generation", exc) from exc
 
 
-@app.post("/api/images/edit")
+@router.post("/api/images/edit")
 async def post_image_edit(
     image: Annotated[UploadFile, File()],
     model: Annotated[str, Form(min_length=1)],
@@ -697,7 +505,7 @@ async def post_image_edit(
         raise _upstream_error("Image editing", exc) from exc
 
 
-@app.post("/api/realtime/session")
+@router.post("/api/realtime/session")
 async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
     try:
         session = await _run_model_call(
@@ -719,7 +527,7 @@ async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
         raise _upstream_error("Realtime session creation", exc) from exc
 
 
-@app.post("/api/voice/traditional")
+@router.post("/api/voice/traditional")
 async def post_traditional_voice(
     scope: Annotated[UserScope, Depends(_current_user_scope)],
     audio: UploadFile = File(...),
@@ -823,7 +631,7 @@ async def post_traditional_voice(
         raise _upstream_error("Traditional voice processing", exc) from exc
 
 
-@app.websocket("/api/voice-live")
+@router.websocket("/api/voice-live")
 async def voice_live_proxy(websocket: WebSocket) -> None:
     if _is_entra_auth_enabled() and _authenticated_user_from_request(websocket) is None:
         await websocket.close(code=1008, reason="Sign in with Microsoft Entra ID to use this app.")
@@ -884,7 +692,7 @@ async def voice_live_proxy(websocket: WebSocket) -> None:
             pass
 
 
-@app.websocket("/api/live-interpreter")
+@router.websocket("/api/live-interpreter")
 async def live_interpreter(websocket: WebSocket) -> None:
     if _is_entra_auth_enabled() and _authenticated_user_from_request(websocket) is None:
         await websocket.close(code=1008, reason="Sign in with Microsoft Entra ID to use this app.")
@@ -953,7 +761,7 @@ async def live_interpreter(websocket: WebSocket) -> None:
             await session.close()
 
 
-@app.post("/api/transcriptions")
+@router.post("/api/transcriptions")
 async def post_transcription(
     audio: UploadFile = File(...),
     language: str = Form("en-US"),
@@ -991,7 +799,7 @@ async def post_transcription(
         raise _upstream_error("Audio transcription", exc) from exc
 
 
-@app.get("/api/conversations")
+@router.get("/api/conversations")
 def get_conversations(
     scope: Annotated[UserScope, Depends(_current_user_scope)],
     use_case: str = Query("text_chat"),
@@ -1013,7 +821,7 @@ def get_conversations(
     }
 
 
-@app.post("/api/conversations")
+@router.post("/api/conversations")
 def post_conversation(
     scope: Annotated[UserScope, Depends(_current_user_scope)],
     use_case: str = Query("text_chat"),
@@ -1022,7 +830,7 @@ def post_conversation(
     return {"conversation": conversation_to_dict(conversation), "messages": []}
 
 
-@app.get("/api/conversations/{conversation_id}")
+@router.get("/api/conversations/{conversation_id}")
 def get_conversation_by_id(
     conversation_id: str,
     scope: Annotated[UserScope, Depends(_current_user_scope)],
@@ -1040,17 +848,19 @@ def get_conversation_by_id(
     }
 
 
-@app.delete("/api/conversations/{conversation_id}")
+@router.delete("/api/conversations/{conversation_id}")
 def delete_conversation_by_id(
     conversation_id: str,
     scope: Annotated[UserScope, Depends(_current_user_scope)],
+    request: Request,
 ) -> dict:
     if not delete_conversation(scope, conversation_id):
         raise HTTPException(status_code=404, detail="Conversation not found.")
+    audit_event("conversation_deleted", request=request, conversation_id=conversation_id)
     return {"deleted": True}
 
 
-@app.get("/api/documents")
+@router.get("/api/documents")
 def get_documents(scope: Annotated[UserScope, Depends(_current_user_scope)]) -> dict:
     try:
         return {"documents": [document_to_dict(item) for item in list_rag_documents(scope)]}
@@ -1058,9 +868,10 @@ def get_documents(scope: Annotated[UserScope, Depends(_current_user_scope)]) -> 
         raise _upstream_error("Document listing", exc) from exc
 
 
-@app.post("/api/documents")
+@router.post("/api/documents")
 async def post_documents(
     scope: Annotated[UserScope, Depends(_current_user_scope)],
+    request: Request,
     files: list[UploadFile] = File(...),
 ) -> dict:
     if not files:
@@ -1086,19 +897,23 @@ async def post_documents(
             embedding_traces.append(result["embedding"])
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         raise _upstream_error("Document upload", exc) from exc
 
+    audit_event("documents_uploaded", request=request, count=len(uploaded_documents))
     return {
         "documents": uploaded_documents,
         "embedding_traces": embedding_traces,
     }
 
 
-@app.delete("/api/documents/{document_id}")
+@router.delete("/api/documents/{document_id}")
 def delete_document_by_id(
     document_id: str,
     scope: Annotated[UserScope, Depends(_current_user_scope)],
+    request: Request,
 ) -> dict:
     try:
         if not delete_document(scope, document_id):
@@ -1107,10 +922,11 @@ def delete_document_by_id(
         raise
     except Exception as exc:
         raise _upstream_error("Document deletion", exc) from exc
+    audit_event("document_deleted", request=request, document_id=document_id)
     return {"deleted": True}
 
 
-@app.get("/api/metrics/model")
+@router.get("/api/metrics/model")
 def get_model_usage_metrics(
     scope: Annotated[UserScope, Depends(_current_user_scope)],
     days: Annotated[int, Query(ge=1, le=31)] = 7,
@@ -1126,33 +942,33 @@ def get_model_usage_metrics(
     )
 
 
-@app.get("/api/admin/deployments/config")
+@router.get("/api/admin/deployments/config")
 def get_admin_deployment_config() -> dict:
     return admin_config_to_dict(load_admin_config())
 
 
-@app.post("/api/admin/deployments")
-async def post_admin_deployment(request: AdminDeploymentRequest) -> dict:
+@router.post("/api/admin/deployments")
+async def post_admin_deployment(payload: AdminDeploymentRequest, request: Request) -> dict:
     try:
         deployment = await _run_model_call(
             create_foundry_deployment,
             FoundryDeploymentRequest(
-                deployment_name=request.deployment_name,
-                model_name=request.model_name,
-                model_version=request.model_version,
-                model_format=request.model_format,
-                sku_name=request.sku_name,
-                sku_capacity=request.sku_capacity,
-                version_upgrade_option=request.version_upgrade_option,
-                rai_policy_name=request.rai_policy_name,
-                wait_for_completion=request.wait_for_completion,
+                deployment_name=payload.deployment_name,
+                model_name=payload.model_name,
+                model_version=payload.model_version,
+                model_format=payload.model_format,
+                sku_name=payload.sku_name,
+                sku_capacity=payload.sku_capacity,
+                version_upgrade_option=payload.version_upgrade_option,
+                rai_policy_name=payload.rai_policy_name,
+                wait_for_completion=payload.wait_for_completion,
             ),
         )
         settings = save_model_settings(
             ModelSettings(
-                model=request.deployment_name,
-                api_surface=request.api_surface,
-                modalities=tuple(request.modalities),
+                model=payload.deployment_name,
+                api_surface=payload.api_surface,
+                modalities=tuple(payload.modalities),
             )
         )
     except ValueError as exc:
@@ -1160,6 +976,7 @@ async def post_admin_deployment(request: AdminDeploymentRequest) -> dict:
     except Exception as exc:
         raise _upstream_error("Model deployment", exc) from exc
 
+    audit_event("model_deployment_created", request=request, model=settings.model)
     return {
         "deployment": deployment,
         "settings": settings_to_dict(settings),
@@ -1294,7 +1111,7 @@ def _run_and_store_variant(
         }
 
 
-@app.post("/api/chat")
+@router.post("/api/chat")
 async def chat(
     request: ChatRequest,
     scope: Annotated[UserScope, Depends(_current_user_scope)],
@@ -1321,7 +1138,7 @@ async def chat(
                     model_settings=model_settings,
                     prompt=request.prompt,
                     system_prompt=model_settings.system_prompt,
-                    reasoning_effort=request.reasoning_effort,
+        reasoning_effort=request.reasoning_effort,
                     history=histories[variant],
                     variant=variant,
                     policy_name=policy_name,
@@ -1346,7 +1163,7 @@ async def chat(
         raise _upstream_error("Chat request", exc) from exc
 
 
-@app.post("/api/chat/stream")
+@router.post("/api/chat/stream")
 def chat_stream(
     request: ChatRequest,
     scope: Annotated[UserScope, Depends(_current_user_scope)],
@@ -1483,7 +1300,7 @@ def chat_stream(
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
-@app.post("/api/documents/ask/stream")
+@router.post("/api/documents/ask/stream")
 def document_ask_stream(
     request: DocumentQuestionRequest,
     scope: Annotated[UserScope, Depends(_current_user_scope)],
@@ -1632,7 +1449,7 @@ def document_ask_stream(
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
-@app.post("/api/compare")
+@router.post("/api/compare")
 async def compare(
     request: CompareRequest,
     scope: Annotated[UserScope, Depends(_current_user_scope)],
@@ -1707,7 +1524,7 @@ async def compare(
     }
 
 
-@app.get("/")
+@router.get("/")
 def index() -> FileResponse:
     if FRONTEND_INDEX.exists():
         return FileResponse(FRONTEND_INDEX)
@@ -1717,7 +1534,7 @@ def index() -> FileResponse:
     )
 
 
-@app.get("/favicon.svg")
+@router.get("/favicon.svg")
 def favicon() -> FileResponse:
     favicon_path = FRONTEND_DIST / "favicon.svg"
     if favicon_path.exists():
@@ -1725,7 +1542,7 @@ def favicon() -> FileResponse:
     raise HTTPException(status_code=404, detail="Favicon not found.")
 
 
-@app.get("/{full_path:path}")
+@router.get("/{full_path:path}")
 def spa_fallback(full_path: str) -> FileResponse:
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="API route not found.")
@@ -1739,23 +1556,34 @@ def _sse(payload: dict) -> str:
 
 
 def _normalize_reasoning_effort(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized_value = value.strip().lower()
-    if not normalized_value or normalized_value == "default":
-        return None
-    if normalized_value not in REASONING_EFFORTS:
-        raise ValueError(
-            "Reasoning effort must be one of: none, minimal, low, medium, high, xhigh."
-        )
-    return normalized_value
+    return normalize_reasoning_effort(value)
 
 
 def _env_float(name: str) -> float:
-    value = os.getenv(name, "0").strip()
-    if not value:
-        return 0
-    try:
-        return float(value)
-    except ValueError as exc:
-        raise RuntimeError(f"{name} must be a number.") from exc
+    return env_float(name, minimum=0)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    initialize_persistence()
+    logger.info("application_started persistence_ready=true")
+    yield
+
+
+def create_app() -> FastAPI:
+    application = FastAPI(title="Foundry Chat App", lifespan=lifespan)
+    if (FRONTEND_DIST / "assets").exists():
+        application.mount(
+            "/assets",
+            StaticFiles(directory=FRONTEND_DIST / "assets"),
+            name="assets",
+        )
+    application.middleware("http")(require_authenticated_api_user)
+    application.middleware("http")(request_context_middleware)
+    application.add_exception_handler(ApplicationError, application_error_handler)
+    application.add_exception_handler(Exception, unexpected_error_handler)
+    application.include_router(router)
+    return application
+
+
+app = create_app()

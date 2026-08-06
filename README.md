@@ -144,6 +144,7 @@ expires after eight hours.
 | `APP_AUTH_TENANT_ID` | Entra tenant ID used to scope compact identity headers supplied by Azure Container Apps authentication. Set automatically by the included infrastructure. |
 | `ALLOWED_ORIGINS` | Optional comma-separated WebSocket origin allowlist. WebSockets require the request origin to match the host when omitted. |
 | `MODEL_CALL_CONCURRENCY` | Maximum concurrent Foundry model operations per application process. Defaults to `8`. |
+| `LOG_LEVEL` | Application log threshold: `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. Defaults to `INFO`. |
 | `ENTRA_LOCAL_CLIENT_ID` | Client ID of a confidential Microsoft Entra web app used for local sign-in. Do not use the workload identity client ID. |
 | `ENTRA_LOCAL_CLIENT_SECRET` | Client secret value for the local web app registration. Keep it only in `.env`. |
 | `ENTRA_LOCAL_TENANT_ID` | Microsoft Entra tenant ID for local sign-in. |
@@ -156,6 +157,11 @@ expires after eight hours.
 | `FOUNDRY_ACCOUNT_NAME` | Optional Foundry/Azure AI resource name used for automatic deployment discovery and the Admin deployment UI. `AZURE_AI_ACCOUNT_NAME` and `AZURE_OPENAI_RESOURCE_NAME` are also accepted. |
 
 Deployment names must match models you deployed in Microsoft Foundry.
+
+The backend exposes two unauthenticated operational endpoints: `/api/health` confirms that the
+process is running, while `/api/ready` verifies the selected SQLite or Cosmos persistence backend.
+Every HTTP response includes `X-Request-ID`; clients may supply a safe identifier through the same
+header for correlation.
 
 When the three management settings above are configured, the app queries Foundry on each site load and merges active deployments into every model dropdown. The app identity needs permission to read deployments on the Foundry resource. Manually registered and `FOUNDRY_MODELS` entries remain available if discovery is unavailable.
 

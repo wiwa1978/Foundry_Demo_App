@@ -1,8 +1,8 @@
-import os
 from dataclasses import asdict, dataclass
 from typing import Any
 
 from app.azure_credential import get_azure_credential
+from app.config import first_env
 
 
 @dataclass(frozen=True)
@@ -42,12 +42,13 @@ class DeploymentRequest:
 
 def load_admin_config() -> FoundryAdminConfig:
     return FoundryAdminConfig(
-        subscription_id=os.getenv("FOUNDRY_SUBSCRIPTION_ID")
-        or os.getenv("AZURE_SUBSCRIPTION_ID"),
-        resource_group=os.getenv("FOUNDRY_RESOURCE_GROUP") or os.getenv("AZURE_RESOURCE_GROUP"),
-        account_name=os.getenv("FOUNDRY_ACCOUNT_NAME")
-        or os.getenv("AZURE_AI_ACCOUNT_NAME")
-        or os.getenv("AZURE_OPENAI_RESOURCE_NAME"),
+        subscription_id=first_env("FOUNDRY_SUBSCRIPTION_ID", "AZURE_SUBSCRIPTION_ID"),
+        resource_group=first_env("FOUNDRY_RESOURCE_GROUP", "AZURE_RESOURCE_GROUP"),
+        account_name=first_env(
+            "FOUNDRY_ACCOUNT_NAME",
+            "AZURE_AI_ACCOUNT_NAME",
+            "AZURE_OPENAI_RESOURCE_NAME",
+        ),
     )
 
 
