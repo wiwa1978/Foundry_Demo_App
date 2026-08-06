@@ -968,13 +968,23 @@ def synthesize_speech(
                 "model": speech_model,
                 "modalities": ["text", "audio"],
                 "audio": {"voice": speech_voice, "format": "mp3"},
-                "messages": [{"role": "user", "content": text}],
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a text-to-speech engine. Read the user's text aloud "
+                            "verbatim. Do not answer it, paraphrase it, or add any words."
+                        ),
+                    },
+                    {"role": "user", "content": text},
+                ],
             }
             response = openai_client.chat.completions.create(**request)
             response_audio = response.choices[0].message.audio
             if response_audio is None or not response_audio.data:
                 raise RuntimeError("Audio completion response did not include audio bytes.")
             audio = base64.b64decode(response_audio.data)
+            spoken_transcript = getattr(response_audio, "transcript", None)
             api_surface = "audio_chat_completions"
             path = "/chat/completions"
         else:
@@ -995,12 +1005,14 @@ def synthesize_speech(
                 raise RuntimeError("Text-to-speech response did not include audio bytes.")
             api_surface = "audio_speech"
             path = "/audio/speech"
+            spoken_transcript = None
 
     return {
         "model": speech_model,
         "voice": speech_voice,
         "audio": audio,
         "audio_mime_type": "audio/mpeg",
+        "spoken_transcript": spoken_transcript,
         "duration_ms": round((time.perf_counter() - started) * 1000),
         "foundry_request": {
             "api_surface": api_surface,

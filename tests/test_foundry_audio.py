@@ -25,7 +25,10 @@ class FoundryAudioTests(unittest.TestCase):
             choices=[
                 SimpleNamespace(
                     message=SimpleNamespace(
-                        audio=SimpleNamespace(data=base64.b64encode(b"mp3-data").decode())
+                        audio=SimpleNamespace(
+                            data=base64.b64encode(b"mp3-data").decode(),
+                            transcript="Hello",
+                        )
                     )
                 )
             ]
@@ -38,6 +41,9 @@ class FoundryAudioTests(unittest.TestCase):
         request = client.chat.completions.create.call_args.kwargs
         self.assertEqual(request["modalities"], ["text", "audio"])
         self.assertEqual(request["audio"], {"voice": "coral", "format": "mp3"})
+        self.assertIn("verbatim", request["messages"][0]["content"])
+        self.assertEqual(request["messages"][1], {"role": "user", "content": "Hello"})
+        self.assertEqual(result["spoken_transcript"], "Hello")
 
     @patch("app.foundry_client._create_audio_client")
     @patch("app.foundry_client.load_settings")
