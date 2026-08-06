@@ -40,14 +40,12 @@ from app.foundry_admin import (
     list_guardrail_policies,
 )
 from app.foundry_client import (
-    create_realtime_client_secret,
     create_voice_live_connection_info,
     edit_image,
     generate_image,
     load_settings,
     synthesize_speech,
     transcribe_audio,
-    transcribe_speech_audio,
 )
 from app.model_settings import (
     DEPLOYMENT_DEFAULT_GUARDRAIL,
@@ -70,6 +68,7 @@ from app.local_auth import (
 )
 from app.live_interpreter import LiveInterpreterSession
 from app.features.document_qa.router import router as document_qa_router
+from app.features.voice.router import router as voice_router
 from app.features.text_chat.router import router as text_chat_router
 from app.observability import (
     audit_event,
@@ -85,7 +84,6 @@ from app.schemas import (
     ImageGenerationRequest,
     ModelRegistrationRequest,
     ModelSettingsRequest,
-    RealtimeSessionRequest,
     normalize_reasoning_effort,
 )
 from app.security import AuthMode, UserScope, auth_mode, authenticated_user, user_scope, websocket_origin_allowed
@@ -518,28 +516,6 @@ async def post_image_edit(
         raise _upstream_error("Image editing", exc) from exc
 
 
-@router.post("/api/realtime/session")
-async def post_realtime_session(request: RealtimeSessionRequest) -> dict:
-    try:
-        session = await _run_model_call(
-            create_realtime_client_secret,
-            model=request.model,
-            instructions=(
-                request.instructions
-                or "You are a helpful Foundry voice assistant. Keep responses concise."
-            ),
-            voice=request.voice or "alloy",
-        )
-        return {
-            **session,
-            "guardrail_comparison_available": False,
-            "configured_guardrail_policy_name": None,
-            "guardrail_status": "Realtime uses the deployment-assigned policy.",
-        }
-    except Exception as exc:
-        raise _upstream_error("Realtime session creation", exc) from exc
-
-
 @router.post("/api/voice/traditional")
 async def post_traditional_voice(
     scope: Annotated[UserScope, Depends(_current_user_scope)],
@@ -778,44 +754,6 @@ async def live_interpreter(websocket: WebSocket) -> None:
             sender.cancel()
         if session:
             await session.close()
-
-
-@router.post("/api/transcriptions")
-async def post_transcription(
-    audio: UploadFile = File(...),
-    language: str = Form("en-US"),
-    model: str = Form(...),
-) -> dict:
-    audio_bytes = await audio.read(MAX_AUDIO_BYTES + 1)
-    if not audio_bytes:
-        raise HTTPException(status_code=422, detail="Recorded audio was empty.")
-    if len(audio_bytes) > MAX_AUDIO_BYTES:
-        raise HTTPException(status_code=413, detail="Recorded audio cannot exceed 25 MB.")
-    try:
-        selected_model = model.strip()
-        if not selected_model:
-            raise ValueError("Transcription model deployment name cannot be blank.")
-        if selected_model.lower() == load_settings().speech_transcription_model.lower():
-            result = await _run_model_call(
-                transcribe_speech_audio,
-                audio=audio_bytes,
-                language=language.strip() or "en-US",
-                model=selected_model,
-            )
-        else:
-            result = await _run_model_call(
-                transcribe_audio,
-                audio=audio_bytes,
-                filename=audio.filename or "transcription.wav",
-                content_type=audio.content_type,
-                model=selected_model,
-            )
-            result["language"] = language.strip() or "en-US"
-        if not result["text"]:
-            raise RuntimeError("The selected model did not recognize any speech in the audio.")
-        return result
-    except Exception as exc:
-        raise _upstream_error("Audio transcription", exc) from exc
 
 
 @router.get("/api/conversations")
@@ -1067,6 +1005,7 @@ def create_app() -> FastAPI:
     application.add_exception_handler(Exception, unexpected_error_handler)
     application.include_router(text_chat_router)
     application.include_router(document_qa_router)
+    application.include_router(voice_router)
     application.include_router(router)
     return application
 

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.main import MAX_AUDIO_BYTES, MAX_PROMPT_LENGTH, app
+from app.main import MAX_PROMPT_LENGTH, app
 from app.persistence import reset_repositories
 from app.security import auth_mode
 from app.sqlite_store import initialize_sqlite_store
@@ -199,10 +199,11 @@ def test_prompt_length_is_bounded(monkeypatch):
 
 def test_audio_upload_is_bounded(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    monkeypatch.setattr("app.features.voice.router.MAX_AUDIO_BYTES", 4)
     response = client.post(
         "/api/transcriptions",
         data={"model": "transcribe-test"},
-        files={"audio": ("recording.wav", b"x" * (MAX_AUDIO_BYTES + 1), "audio/wav")},
+        files={"audio": ("recording.wav", b"xxxxx", "audio/wav")},
     )
     assert response.status_code == 413
 

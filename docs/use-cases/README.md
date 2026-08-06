@@ -7,12 +7,12 @@ Use this index to navigate from a customer demo to the code that implements it.
 | Text Chat | [Frontend and backend walkthrough](../../frontend/src/features/textChat/README.md) |
 | Document Q&A | [Frontend and backend walkthrough](../../frontend/src/features/documentQa/README.md) |
 | Side-by-side comparison | Metadata currently in [`comparison.ts`](../../frontend/src/features/useCases/comparison.ts). |
-| Browser voice | Metadata currently in [`browserVoice.ts`](../../frontend/src/features/useCases/browserVoice.ts). |
-| STT → Chat → TTS | Metadata currently in [`traditionalVoice.ts`](../../frontend/src/features/useCases/traditionalVoice.ts). |
-| Recorded transcription | Metadata currently in [`transcribe.ts`](../../frontend/src/features/useCases/transcribe.ts). |
-| Realtime voice | Metadata currently in [`realtimeVoice.ts`](../../frontend/src/features/useCases/realtimeVoice.ts). |
-| Voice Live | Metadata currently in [`voiceLive.ts`](../../frontend/src/features/useCases/voiceLive.ts). |
-| Live translation | Metadata currently in [`liveTranslation.ts`](../../frontend/src/features/useCases/liveTranslation.ts). |
+| Browser voice | [Voice implementation map](../../frontend/src/features/voice/README.md) |
+| STT → Chat → TTS | [Voice implementation map](../../frontend/src/features/voice/README.md) |
+| Recorded transcription | [Voice implementation map](../../frontend/src/features/voice/README.md) |
+| Realtime voice | [Voice implementation map](../../frontend/src/features/voice/README.md) |
+| Voice Live | [Voice implementation map](../../frontend/src/features/voice/README.md) |
+| Live translation | [Voice implementation map](../../frontend/src/features/voice/README.md) |
 | Text to image | Metadata currently in [`textToImage.ts`](../../frontend/src/features/useCases/textToImage.ts). |
 | Image to image | Metadata currently in [`imageToImage.ts`](../../frontend/src/features/useCases/imageToImage.ts). |
 | Image comparison | Metadata currently in [`imageComparison.ts`](../../frontend/src/features/useCases/imageComparison.ts). |

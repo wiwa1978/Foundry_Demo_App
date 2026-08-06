@@ -91,9 +91,10 @@ def test_provider_errors_use_consistent_public_contract(monkeypatch):
 
 def test_oversized_document_upload_remains_413(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    monkeypatch.setattr("app.features.document_qa.router.MAX_DOCUMENT_UPLOAD_BYTES", 4)
     response = TestClient(create_app()).post(
         "/api/documents",
-        files={"files": ("large.txt", b"x" * (50 * 1024 * 1024 + 1), "text/plain")},
+        files={"files": ("large.txt", b"xxxxx", "text/plain")},
     )
     assert response.status_code == 413
     assert response.json() == {"detail": "Document upload cannot exceed 50 MB."}

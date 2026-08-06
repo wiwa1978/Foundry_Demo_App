@@ -67,6 +67,12 @@ import {
   uploadDocuments as uploadDocumentFiles,
 } from "@/features/documentQa/api";
 import type { DocumentSummary } from "@/features/documentQa/types";
+import {
+  createRealtimeSession,
+  liveInterpreterUrl,
+  transcribeRecording,
+  voiceLiveUrl,
+} from "@/features/voice/api";
 import type {
   ChatMessage,
   Conversation,
@@ -2204,18 +2210,11 @@ export default function App() {
     replaceTranscriptionAudioUrl(URL.createObjectURL(source));
     try {
       const wav = await convertAudioToWav(source);
-      const formData = new FormData();
-      formData.append("audio", wav, "transcription.wav");
-      formData.append("language", transcriptionLanguage);
-      formData.append("model", transcriptionModel);
-      const response = await tracedFetch(
-        "/api/transcriptions",
-        { method: "POST", body: formData },
-        {
-          label: `Transcribe audio with ${transcriptionModel}`,
-          request: { source: sourceName, bytes: wav.size, language: transcriptionLanguage, model: transcriptionModel },
-          responseKind: "json",
-        },
+      const response = await transcribeRecording(
+        tracedFetch,
+        wav,
+        transcriptionModel,
+        transcriptionLanguage,
       );
       const data = await response.json();
       if (!response.ok) {
@@ -2338,16 +2337,7 @@ export default function App() {
     setRealtimeSessionModel(model);
 
     try {
-      const tokenResponse = await tracedFetch("/api/realtime/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      }, {
-        label: "Create realtime voice session",
-        request: requestBody,
-        responseKind: "json",
-        traceResponse: false,
-      });
+      const tokenResponse = await createRealtimeSession(tracedFetch, requestBody);
       const tokenData = await tokenResponse.json();
       if (!tokenResponse.ok) {
         throw new Error(tokenData.detail ?? "Failed to create a Foundry Realtime session.");
@@ -2563,8 +2553,7 @@ export default function App() {
       });
       if (!peerConnection.localDescription?.sdp) throw new Error("Browser did not create a Voice Live SDP offer.");
 
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(`${protocol}//${window.location.host}/api/voice-live`, "realtime");
+      const socket = new WebSocket(voiceLiveUrl(), "realtime");
       voiceLiveSocketRef.current = socket;
       await new Promise<void>((resolve, reject) => {
         socket.addEventListener("open", () => resolve(), { once: true });
@@ -2676,8 +2665,7 @@ export default function App() {
       const worklet = new AudioWorkletNode(context, "live-interpreter-processor");
       liveTranslationWorkletRef.current = worklet;
 
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(`${protocol}//${window.location.host}/api/live-interpreter`);
+      const socket = new WebSocket(liveInterpreterUrl());
       socket.binaryType = "arraybuffer";
       liveTranslationSocketRef.current = socket;
       await new Promise<void>((resolve, reject) => {
