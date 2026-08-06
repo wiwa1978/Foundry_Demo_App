@@ -59,16 +59,27 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
     principal = _decode_client_principal(connection.headers.get("x-ms-client-principal"))
     if principal is None:
         return _container_apps_header_user(connection)
-    user_id = str(principal.get("userId") or "").strip()
-    if not user_id:
-        return None
     claims = principal.get("claims")
     claim_lookup = {
         str(claim.get("typ")): str(claim.get("val"))
         for claim in claims
         if isinstance(claim, dict) and claim.get("typ") and claim.get("val")
     } if isinstance(claims, list) else {}
-    user_name = str(principal.get("userDetails") or "").strip() or None
+    user_id = str(principal.get("userId") or "").strip() or _claim_value(
+        claim_lookup,
+        "oid",
+        "sub",
+        "http://schemas.microsoft.com/identity/claims/objectidentifier",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+    )
+    if not user_id:
+        return None
+    user_name = str(principal.get("userDetails") or "").strip() or _claim_value(
+        claim_lookup,
+        "name",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+        "preferred_username",
+    )
     tenant_id = _claim_value(
         claim_lookup,
         "tid",
@@ -80,7 +91,9 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
         "authenticated": True,
         "name": user_name,
         "user_id": user_id,
-        "identity_provider": principal.get("identityProvider"),
+        "identity_provider": principal.get("identityProvider")
+        or principal.get("auth_typ")
+        or connection.headers.get("x-ms-client-principal-idp"),
         "email": _claim_value(
             claim_lookup,
             "preferred_username",

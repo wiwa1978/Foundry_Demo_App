@@ -26,6 +26,28 @@ def _principal(user_id: str = "user-1") -> str:
     return base64.b64encode(json.dumps(payload).encode()).decode()
 
 
+def _claim_only_principal() -> str:
+    payload = {
+        "auth_typ": "aad",
+        "claims": [
+            {
+                "typ": "http://schemas.microsoft.com/identity/claims/objectidentifier",
+                "val": "user-1",
+            },
+            {
+                "typ": "http://schemas.microsoft.com/identity/claims/tenantid",
+                "val": "tenant-1",
+            },
+            {
+                "typ": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+                "val": "Ada Lovelace",
+            },
+            {"typ": "preferred_username", "val": "ada@example.com"},
+        ],
+    }
+    return base64.b64encode(json.dumps(payload).encode()).decode()
+
+
 def test_disabled_mode_ignores_spoofed_proxy_headers(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
 
@@ -100,6 +122,26 @@ def test_container_apps_mode_accepts_trusted_compact_headers(monkeypatch):
         "user_id": "user-1",
         "identity_provider": "aad",
         "email": "user@example.com",
+        "tenant_id": "tenant-1",
+        "entra_auth_enabled": True,
+    }
+
+
+def test_container_apps_mode_reads_identity_from_easy_auth_claims(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "container_apps")
+
+    response = client.get(
+        "/api/auth/me",
+        headers={"x-ms-client-principal": _claim_only_principal()},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "authenticated": True,
+        "name": "Ada Lovelace",
+        "user_id": "user-1",
+        "identity_provider": "aad",
+        "email": "ada@example.com",
         "tenant_id": "tenant-1",
         "entra_auth_enabled": True,
     }
