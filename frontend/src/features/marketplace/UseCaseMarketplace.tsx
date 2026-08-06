@@ -5,6 +5,7 @@ import type { UseCaseId, UseCaseModality, UseCaseModule } from "@/app/types";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { SoundWaveIcon } from "@/features/shared/SoundWaveIcon";
+import { useModalDialog } from "@/hooks/useModalDialog";
 
 type UseCaseMarketplaceProps = {
   activeUseCase: UseCaseId;
@@ -26,6 +27,7 @@ export function UseCaseMarketplace({
   onSelect,
   onClose,
 }: UseCaseMarketplaceProps) {
+  const dialogRef = useModalDialog<HTMLDivElement>(onClose);
   const [selectedModalities, setSelectedModalities] = useState<UseCaseModality[]>([]);
   const filteredUseCases = selectedModalities.length
     ? useCases.filter((useCase) =>
@@ -43,14 +45,21 @@ export function UseCaseMarketplace({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#303033]/60 p-4">
-      <div className="w-full max-w-6xl rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-[#606066] dark:bg-[#39393d]">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="use-case-marketplace-title"
+        tabIndex={-1}
+        className="w-full max-w-6xl rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-[#606066] dark:bg-[#39393d]"
+      >
         <header className="flex items-start justify-between gap-4 border-b px-6 py-5 dark:border-[#55555a]">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-200">
               <Sparkles className="h-3.5 w-3.5" />
               Marketplace
             </div>
-            <h2 className="mt-3 text-xl font-semibold tracking-tight">Choose a use case</h2>
+            <h2 id="use-case-marketplace-title" className="mt-3 text-xl font-semibold tracking-tight">Choose a use case</h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
               Tune the workspace for a focused scenario. The app always opens in Text Chat by
               default; other use cases are session-level presets.

@@ -3,6 +3,7 @@ import { Code2, X } from "lucide-react";
 import type { UseCaseModule } from "@/app/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useModalDialog } from "@/hooks/useModalDialog";
 
 type UseCaseDetailsPanelProps = {
   useCase: UseCaseModule;
@@ -10,16 +11,24 @@ type UseCaseDetailsPanelProps = {
 };
 
 export function UseCaseDetailsPanel({ useCase, onClose }: UseCaseDetailsPanelProps) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#303033]/60 p-4">
-      <section className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-[#606066] dark:bg-[#39393d]">
+      <section
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="use-case-details-title"
+        tabIndex={-1}
+        className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-[#606066] dark:bg-[#39393d]"
+      >
         <header className="flex items-start justify-between gap-4 border-b px-6 py-5 dark:border-[#55555a]">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge>{useCase.badge}</Badge>
               <span className="text-xs text-slate-500 dark:text-slate-400">Use-case implementation</span>
             </div>
-            <h2 className="mt-3 text-xl font-semibold tracking-tight">{useCase.title}</h2>
+            <h2 id="use-case-details-title" className="mt-3 text-xl font-semibold tracking-tight">{useCase.title}</h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
               {useCase.description}
             </p>

@@ -90,6 +90,7 @@ import { UseCaseDetailsPanel } from "@/features/useCases/UseCaseDetailsPanel";
 import { imageToImagePrompts } from "@/features/useCases/imageToImagePrompts";
 import { textToImagePrompts } from "@/features/useCases/textToImagePrompts";
 import { cn } from "@/lib/utils";
+import { readStorage, writeStorage } from "@/lib/storage";
 import { toast } from "sonner";
 
 type ConfigResponse = {
@@ -699,14 +700,14 @@ export default function AppWorkspace() {
   const [isListening, setIsListening] = useState(false);
   const [voiceError, setVoiceError] = useState("");
   const [voiceReadbackEnabled, setVoiceReadbackEnabled] = useState(
-    () => localStorage.getItem(voiceReadbackStorageKey) === "true",
+    () => readStorage(voiceReadbackStorageKey) === "true",
   );
   const [selectedVoiceModel, setSelectedVoiceModel] = useState(
-    () => localStorage.getItem(voiceModelStorageKey) ?? "",
+    () => readStorage(voiceModelStorageKey),
   );
   const [availableSpeechVoices, setAvailableSpeechVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedSpeechVoiceURI, setSelectedSpeechVoiceURI] = useState(
-    () => localStorage.getItem(speechVoiceStorageKey) ?? "",
+    () => readStorage(speechVoiceStorageKey),
   );
   const realtimePeerRef = useRef<RTCPeerConnection | null>(null);
   const realtimeDataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -757,14 +758,14 @@ export default function AppWorkspace() {
   const [transcriptionAudioUrl, setTranscriptionAudioUrl] = useState("");
   const transcriptionAudioUrlRef = useRef("");
   const [theme, setTheme] = useState<Theme>(() => {
-    const savedTheme = localStorage.getItem("foundry-chat-theme");
+    const savedTheme = readStorage("foundry-chat-theme");
     if (savedTheme === "light" || savedTheme === "dark") {
       return savedTheme;
     }
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
   const [colorPalette, setColorPalette] = useState<ColorPalette>(() => {
-    const savedPalette = localStorage.getItem(colorPaletteStorageKey);
+    const savedPalette = readStorage(colorPaletteStorageKey);
     return colorPalettes.some((palette) => palette.id === savedPalette)
       ? (savedPalette as ColorPalette)
       : "foundry";
@@ -787,12 +788,12 @@ export default function AppWorkspace() {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
-    localStorage.setItem("foundry-chat-theme", theme);
+    writeStorage("foundry-chat-theme", theme);
   }, [theme]);
 
   useEffect(() => {
     document.documentElement.dataset.palette = colorPalette;
-    localStorage.setItem(colorPaletteStorageKey, colorPalette);
+    writeStorage(colorPaletteStorageKey, colorPalette);
   }, [colorPalette]);
 
   useEffect(() => {
@@ -1084,7 +1085,7 @@ export default function AppWorkspace() {
   }, [config?.tts_voice]);
 
   useEffect(() => {
-    localStorage.setItem(voiceReadbackStorageKey, String(voiceReadbackEnabled));
+    writeStorage(voiceReadbackStorageKey, String(voiceReadbackEnabled));
     if (!voiceReadbackEnabled && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
@@ -1092,17 +1093,17 @@ export default function AppWorkspace() {
 
   useEffect(() => {
     if (selectedVoiceModel) {
-      localStorage.setItem(voiceModelStorageKey, selectedVoiceModel);
+      writeStorage(voiceModelStorageKey, selectedVoiceModel);
     } else {
-      localStorage.removeItem(voiceModelStorageKey);
+      writeStorage(voiceModelStorageKey, null);
     }
   }, [selectedVoiceModel]);
 
   useEffect(() => {
     if (selectedSpeechVoiceURI) {
-      localStorage.setItem(speechVoiceStorageKey, selectedSpeechVoiceURI);
+      writeStorage(speechVoiceStorageKey, selectedSpeechVoiceURI);
     } else {
-      localStorage.removeItem(speechVoiceStorageKey);
+      writeStorage(speechVoiceStorageKey, null);
     }
   }, [selectedSpeechVoiceURI]);
 
@@ -1115,8 +1116,14 @@ export default function AppWorkspace() {
 
   useEffect(
     () => () => {
+      textChatRequest.cancel();
+      documentRequestControllerRef.current?.abort();
       closeRealtimeConnection();
       closeTraditionalRecording();
+      closeTranscriptionRecording();
+      closeVoiceLiveConnection();
+      closeLiveTranslationConnection();
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
       if (transcriptionAudioUrlRef.current) {
         URL.revokeObjectURL(transcriptionAudioUrlRef.current);
       }
@@ -3448,10 +3455,8 @@ export default function AppWorkspace() {
           <div className="mt-3 grid max-h-[60vh] gap-1 overflow-y-auto pr-1">
             {conversations.length ? (
               conversations.map((conversation) => (
-                <button
+                <div
                   key={conversation.id}
-                  type="button"
-                  onClick={() => void loadConversation(conversation.id)}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     setConversationMenu({
@@ -3461,14 +3466,28 @@ export default function AppWorkspace() {
                     });
                   }}
                   className={cn(
-                    "truncate rounded-md px-2 py-2 text-left text-sm transition hover:bg-slate-100 dark:hover:bg-[#45454a]",
+                    "group flex items-center rounded-md text-sm transition hover:bg-slate-100 dark:hover:bg-[#45454a]",
                     currentConversationId === conversation.id &&
                       "bg-slate-100 font-medium dark:bg-[#45454a]",
                   )}
-                  title={conversation.title}
                 >
-                  {conversation.title}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => void loadConversation(conversation.id)}
+                    className="min-w-0 flex-1 truncate px-2 py-2 text-left"
+                    title={conversation.title}
+                  >
+                    {conversation.title}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteConversationById(conversation)}
+                    className="mr-1 rounded p-1 text-slate-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+                    aria-label={`Delete ${conversation.title}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))
             ) : (
               <p className="px-2 py-3 text-xs text-slate-500 dark:text-slate-400">
@@ -3601,6 +3620,8 @@ export default function AppWorkspace() {
                   </div>
                   {documentMessage ? (
                     <p
+                      role={documentMessage.type === "error" ? "alert" : "status"}
+                      aria-live="polite"
                       className={cn(
                         "rounded-lg border px-3 py-2 text-xs leading-5",
                         documentMessage.type === "success"
@@ -3747,7 +3768,7 @@ export default function AppWorkspace() {
                   </select>
                 </div>
                 {voiceError ? (
-                  <p className="text-xs text-amber-600 dark:text-amber-300">{voiceError}</p>
+                  <p role="alert" className="text-xs text-amber-600 dark:text-amber-300">{voiceError}</p>
                 ) : (
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Dictation and readback use browser speech APIs; available voices depend on
