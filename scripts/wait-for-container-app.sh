@@ -20,6 +20,8 @@ for ((attempt = 1; attempt <= max_attempts; attempt++)); do
     exit 1
   fi
 
+  state=${state//$'\r'/}
+
   case "$state" in
     Succeeded)
       exit 0

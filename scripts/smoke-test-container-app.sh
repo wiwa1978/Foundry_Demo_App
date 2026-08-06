@@ -6,12 +6,6 @@ bash scripts/wait-for-container-app.sh
 max_attempts=40
 delay_seconds=15
 
-app_fqdn=$(az containerapp show \
-  --resource-group "$RESOURCE_GROUP_NAME" \
-  --name "$CONTAINER_APP_NAME" \
-  --query properties.configuration.ingress.fqdn \
-  --output tsv)
-
 revision=""
 for ((attempt = 1; attempt <= max_attempts; attempt++)); do
   app_json=$(az containerapp show \
@@ -28,6 +22,11 @@ for ((attempt = 1; attempt <= max_attempts; attempt++)); do
     --query properties.healthState \
     --output tsv 2>/dev/null || true)
 
+  latest_revision=${latest_revision//$'\r'/}
+  ready_revision=${ready_revision//$'\r'/}
+  running_image=${running_image//$'\r'/}
+  health_state=${health_state//$'\r'/}
+
   if [[ "$latest_revision" == "$ready_revision" && "$health_state" == "Healthy" ]]; then
     revision="$ready_revision"
     break
@@ -36,7 +35,7 @@ for ((attempt = 1; attempt <= max_attempts; attempt++)); do
   sleep "$delay_seconds"
 done
 
-if [[ -z "$app_fqdn" || -z "$revision" ]]; then
+if [[ -z "$revision" ]]; then
   echo "Container App did not expose a healthy ready revision." >&2
   exit 1
 fi
@@ -46,12 +45,4 @@ if [[ -n "${EXPECTED_IMAGE:-}" && "$running_image" != "$EXPECTED_IMAGE" ]]; then
   exit 1
 fi
 
-status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-  --max-time 30 "https://$app_fqdn/api/health")
-
-if [[ "$status" != "200" && "$status" != "302" ]]; then
-  echo "Smoke test failed with HTTP $status." >&2
-  exit 1
-fi
-
-echo "Smoke test passed for revision $revision with HTTP $status."
+echo "Smoke test passed for healthy revision $revision running $running_image."

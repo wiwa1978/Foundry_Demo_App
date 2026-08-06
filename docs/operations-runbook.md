@@ -12,7 +12,8 @@
 2. Confirm all reusable quality jobs pass.
 3. The workflow builds `foundry-chat-app:<commit-sha>` in ACR.
 4. Infrastructure receives that exact image tag.
-5. The workflow waits for provisioning and smoke-tests the ingress.
+5. The workflow waits for the latest revision to become ready and healthy, then verifies that it
+   runs the expected commit-tagged image. The platform readiness probe validates `/api/ready`.
 6. On smoke failure, the previous image is restored and the workflow fails.
 
 The deployment uses a branch-based GitHub OIDC subject. If you add a GitHub Environment to the
