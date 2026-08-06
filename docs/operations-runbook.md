@@ -15,6 +15,10 @@
 5. The workflow waits for provisioning and smoke-tests the ingress.
 6. On smoke failure, the previous image is restored and the workflow fails.
 
+The deployment uses a branch-based GitHub OIDC subject. If you add a GitHub Environment to the
+deploy job, create a matching environment-based federated credential in Entra before changing the
+workflow; GitHub changes the token subject when `environment:` is configured.
+
 ## Incident triage
 
 ```powershell
