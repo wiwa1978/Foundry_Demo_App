@@ -1,6 +1,5 @@
 import asyncio
 import base64
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
 import json
 import logging
@@ -9,7 +8,7 @@ from typing import Annotated, Any, Callable, TypeVar
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from websockets.asyncio.client import connect as websocket_connect
 
@@ -29,17 +28,7 @@ from app.conversation_store import (
     list_conversation_page,
     message_to_dict,
 )
-from app.document_store import (
-    build_grounded_prompt,
-    build_rag_system_prompt,
-    chunk_to_dict,
-    delete_document,
-    document_to_dict,
-    add_document,
-    list_documents as list_rag_documents,
-    load_rag_search_settings,
-    retrieve_document_chunks,
-)
+from app.document_store import load_rag_search_settings
 from app.foundry_admin import (
     DeploymentRequest as FoundryDeploymentRequest,
     admin_config_to_dict,
@@ -80,6 +69,7 @@ from app.local_auth import (
     user_from_claims,
 )
 from app.live_interpreter import LiveInterpreterSession
+from app.features.document_qa.router import router as document_qa_router
 from app.features.text_chat.router import router as text_chat_router
 from app.observability import (
     audit_event,
@@ -92,7 +82,6 @@ from app.schemas import (
     MAX_PROMPT_LENGTH as MAX_PROMPT_LENGTH,
     AdminDeploymentRequest,
     CompareRequest,
-    DocumentQuestionRequest,
     ImageGenerationRequest,
     ModelRegistrationRequest,
     ModelSettingsRequest,
@@ -101,7 +90,6 @@ from app.schemas import (
 )
 from app.security import AuthMode, UserScope, auth_mode, authenticated_user, user_scope, websocket_origin_allowed
 from app.services.chat import (
-    bounded_stream_chat as _bounded_stream_chat,
     guardrail_histories as _guardrail_histories,
     guardrail_variants as _guardrail_variants,
     run_and_store_variant as _run_and_store_variant,
@@ -114,8 +102,6 @@ configure_logging(runtime_settings.log_level)
 router = APIRouter()
 logger = logging.getLogger(__name__)
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
-MAX_DOCUMENT_FILES = 10
-MAX_DOCUMENT_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_WEBSOCKET_MESSAGE_BYTES = 1024 * 1024
 T = TypeVar("T")
 PUBLIC_API_PATHS = {
@@ -893,72 +879,6 @@ def delete_conversation_by_id(
     return {"deleted": True}
 
 
-@router.get("/api/documents")
-def get_documents(scope: Annotated[UserScope, Depends(_current_user_scope)]) -> dict:
-    try:
-        return {"documents": [document_to_dict(item) for item in list_rag_documents(scope)]}
-    except Exception as exc:
-        raise _upstream_error("Document listing", exc) from exc
-
-
-@router.post("/api/documents")
-async def post_documents(
-    scope: Annotated[UserScope, Depends(_current_user_scope)],
-    request: Request,
-    files: list[UploadFile] = File(...),
-) -> dict:
-    if not files:
-        raise HTTPException(status_code=422, detail="Upload at least one document.")
-    if len(files) > MAX_DOCUMENT_FILES:
-        raise HTTPException(status_code=413, detail="Upload at most 10 documents at a time.")
-
-    uploaded_documents = []
-    embedding_traces = []
-    try:
-        for file in files:
-            data = await file.read(MAX_DOCUMENT_UPLOAD_BYTES + 1)
-            if len(data) > MAX_DOCUMENT_UPLOAD_BYTES:
-                raise HTTPException(status_code=413, detail="Document upload cannot exceed 50 MB.")
-            result = await _run_model_call(
-                add_document,
-                scope=scope,
-                filename=file.filename or "uploaded-document",
-                content_type=file.content_type,
-                data=data,
-            )
-            uploaded_documents.append(result["document"])
-            embedding_traces.append(result["embedding"])
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise _upstream_error("Document upload", exc) from exc
-
-    audit_event("documents_uploaded", request=request, count=len(uploaded_documents))
-    return {
-        "documents": uploaded_documents,
-        "embedding_traces": embedding_traces,
-    }
-
-
-@router.delete("/api/documents/{document_id}")
-def delete_document_by_id(
-    document_id: str,
-    scope: Annotated[UserScope, Depends(_current_user_scope)],
-    request: Request,
-) -> dict:
-    try:
-        if not delete_document(scope, document_id):
-            raise HTTPException(status_code=404, detail="Document not found.")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise _upstream_error("Document deletion", exc) from exc
-    audit_event("document_deleted", request=request, document_id=document_id)
-    return {"deleted": True}
-
-
 @router.get("/api/metrics/model")
 def get_model_usage_metrics(
     scope: Annotated[UserScope, Depends(_current_user_scope)],
@@ -1014,155 +934,6 @@ async def post_admin_deployment(payload: AdminDeploymentRequest, request: Reques
         "deployment": deployment,
         "settings": settings_to_dict(settings),
     }
-
-
-@router.post("/api/documents/ask/stream")
-def document_ask_stream(
-    request: DocumentQuestionRequest,
-    scope: Annotated[UserScope, Depends(_current_user_scope)],
-) -> StreamingResponse:
-    try:
-        conversation = get_or_create_conversation(
-            scope, request.conversation_id, request.prompt, request.use_case
-        )
-        retrieval = retrieve_document_chunks(scope, request.prompt)
-        chunks = retrieval["chunks"]
-        grounded_prompt = build_grounded_prompt(request.prompt, chunks)
-        model_settings = get_model_settings(request.model)
-        variants = _guardrail_variants(model_settings, request.guardrail_comparison)
-        histories = _guardrail_histories(scope, conversation.id, request.model, variants)
-        user_message = append_message(
-            scope=scope,
-            conversation_id=conversation.id,
-            role="user",
-            content=request.prompt,
-        )
-        system_prompt = build_rag_system_prompt(model_settings.system_prompt)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Exception as exc:
-        raise _upstream_error("Document question", exc) from exc
-
-    def events():
-        yield _sse(
-            {
-                "type": "start",
-                "model": request.model,
-                "api_surface": model_settings.api_surface,
-                "conversation": conversation_to_dict(
-                    get_conversation(scope, conversation.id) or conversation
-                ),
-                "user_message": message_to_dict(user_message),
-                "guardrail_comparison": request.guardrail_comparison,
-                "guardrail_policy_names": list(model_settings.guardrail_policy_names),
-            }
-        )
-        yield _sse(
-            {
-                "type": "retrieval",
-                "sources": [chunk_to_dict(chunk) for chunk in chunks],
-                "embedding": retrieval["embedding"],
-            }
-        )
-        if request.guardrail_comparison:
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                futures = [
-                    executor.submit(
-                        _run_and_store_variant,
-                        scope=scope,
-                        conversation_id=conversation.id,
-                        model_settings=model_settings,
-                        prompt=grounded_prompt,
-                        system_prompt=system_prompt,
-                        reasoning_effort=request.reasoning_effort,
-                        history=histories[variant],
-                        variant=variant,
-                        policy_name=policy_name,
-                    )
-                    for variant, policy_name in variants
-                ]
-                for future in as_completed(futures):
-                    yield _sse(
-                        {
-                            "type": "variant_completed",
-                            "result": future.result(),
-                            "conversation": conversation_to_dict(
-                                get_conversation(scope, conversation.id) or conversation
-                            ),
-                        }
-                    )
-            yield _sse(
-                {
-                    "type": "comparison_completed",
-                    "conversation": conversation_to_dict(
-                        get_conversation(scope, conversation.id) or conversation
-                    ),
-                }
-            )
-            return
-
-        try:
-            for event in _bounded_stream_chat(
-                model=request.model,
-                prompt=grounded_prompt,
-                api_surface=model_settings.api_surface,
-                system_prompt=system_prompt,
-                temperature=model_settings.temperature,
-                top_p=model_settings.top_p,
-                max_tokens=model_settings.max_tokens,
-                repetition_penalty=model_settings.repetition_penalty,
-                reasoning_effort=request.reasoning_effort,
-                history=histories[None],
-            ):
-                if event["type"] == "foundry_request":
-                    yield _sse(event)
-                elif event["type"] == "foundry_response":
-                    yield _sse(event)
-                elif event["type"] == "delta":
-                    yield _sse(event)
-                elif event["type"] == "completed":
-                    assistant_message = append_message(
-                        scope=scope,
-                        conversation_id=conversation.id,
-                        role="assistant",
-                        content=event["content"],
-                        model=request.model,
-                        api_surface=model_settings.api_surface,
-                        duration_ms=event["duration_ms"],
-                        usage=event["usage"],
-                        guardrail_results=event["guardrail_results"],
-                    )
-                    yield _sse(
-                        {
-                            "type": "completed",
-                            "conversation": conversation_to_dict(
-                                get_conversation(scope, conversation.id) or conversation
-                            ),
-                            "assistant_message": message_to_dict(assistant_message),
-                        }
-                    )
-        except Exception as exc:
-            assistant_message = append_message(
-                scope=scope,
-                conversation_id=conversation.id,
-                role="assistant",
-                content="",
-                model=request.model,
-                api_surface=model_settings.api_surface,
-                error=_public_provider_error("Document answer stream", exc),
-            )
-            yield _sse(
-                {
-                    "type": "error",
-                    "error": "Document answer stream failed. Try again later.",
-                    "conversation": conversation_to_dict(
-                        get_conversation(scope, conversation.id) or conversation
-                    ),
-                    "assistant_message": message_to_dict(assistant_message),
-                }
-            )
-
-    return StreamingResponse(events(), media_type="text/event-stream")
 
 
 @router.post("/api/compare")
@@ -1267,10 +1038,6 @@ def spa_fallback(full_path: str) -> FileResponse:
     raise HTTPException(status_code=404, detail="Frontend build not found.")
 
 
-def _sse(payload: dict) -> str:
-    return f"data: {json.dumps(payload)}\n\n"
-
-
 def _normalize_reasoning_effort(value: str | None) -> str | None:
     return normalize_reasoning_effort(value)
 
@@ -1299,6 +1066,7 @@ def create_app() -> FastAPI:
     application.add_exception_handler(ApplicationError, application_error_handler)
     application.add_exception_handler(Exception, unexpected_error_handler)
     application.include_router(text_chat_router)
+    application.include_router(document_qa_router)
     application.include_router(router)
     return application
 

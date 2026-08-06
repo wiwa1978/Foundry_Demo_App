@@ -193,7 +193,7 @@ The top bar includes a **Use cases** marketplace. Use cases are local UI presets
 | Use case | What changes |
 | --- | --- |
 | **Text Chat** | Shows the clean single-model chat workspace and hides voice/comparison sidebar controls. [Browse the implementation](frontend/src/features/textChat/README.md). |
-| **Document Q&A** | Shows document upload/index controls, stores original files in Blob Storage, stores chunks in Azure AI Search, retrieves relevant chunks with Foundry embeddings, and answers with the selected Foundry chat deployment. |
+| **Document Q&A** | Shows document upload/index controls, stores original files in Blob Storage, stores chunks in Azure AI Search, retrieves relevant chunks with Foundry embeddings, and answers with the selected Foundry chat deployment. [Browse the implementation](frontend/src/features/documentQa/README.md). |
 | **Side by Side comparison** | Opens the comparison workspace and shows model multi-select controls. |
 | **Browser based voice** | Keeps the text chat workspace and exposes browser dictation/readback controls. |
 | **STT -> Chat -> TTS** | Opens the traditional Foundry voice pipeline workspace. |

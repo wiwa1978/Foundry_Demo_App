@@ -5,7 +5,7 @@ Use this index to navigate from a customer demo to the code that implements it.
 | Use case | Implementation |
 | --- | --- |
 | Text Chat | [Frontend and backend walkthrough](../../frontend/src/features/textChat/README.md) |
-| Document Q&A | Metadata currently in [`documentQa.ts`](../../frontend/src/features/useCases/documentQa.ts); executable slice extraction is next. |
+| Document Q&A | [Frontend and backend walkthrough](../../frontend/src/features/documentQa/README.md) |
 | Side-by-side comparison | Metadata currently in [`comparison.ts`](../../frontend/src/features/useCases/comparison.ts). |
 | Browser voice | Metadata currently in [`browserVoice.ts`](../../frontend/src/features/useCases/browserVoice.ts). |
 | STT → Chat → TTS | Metadata currently in [`traditionalVoice.ts`](../../frontend/src/features/useCases/traditionalVoice.ts). |
@@ -17,5 +17,5 @@ Use this index to navigate from a customer demo to the code that implements it.
 | Image to image | Metadata currently in [`imageToImage.ts`](../../frontend/src/features/useCases/imageToImage.ts). |
 | Image comparison | Metadata currently in [`imageComparison.ts`](../../frontend/src/features/useCases/imageComparison.ts). |
 
-Text Chat is the reference feature structure. Other use cases will be migrated incrementally without
-breaking the runnable demo.
+Text Chat and Document Q&A use the reference feature structure. Other use cases are migrated
+incrementally without breaking the runnable demo.

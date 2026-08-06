@@ -60,10 +60,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { UseCaseMarketplace } from "@/features/marketplace/UseCaseMarketplace";
 import { SoundWaveIcon } from "@/features/shared/SoundWaveIcon";
 import { useTextChatRequest } from "@/features/textChat/useTextChatRequest";
-import { readServerSentEvents } from "@/features/textChat/sse";
+import {
+  listDocuments,
+  removeDocument,
+  streamDocumentAnswer,
+  uploadDocuments as uploadDocumentFiles,
+} from "@/features/documentQa/api";
+import type { DocumentSummary } from "@/features/documentQa/types";
 import type {
   ChatMessage,
-  ChatStreamEvent,
   Conversation,
   FoundryRequestTrace,
   FoundryResponseTrace,
@@ -241,17 +246,6 @@ declare global {
     webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
   }
 }
-
-type DocumentSummary = {
-  id: string;
-  filename: string;
-  content_type: string | null;
-  byte_size: number;
-  chunk_count: number;
-  blob_name: string | null;
-  blob_url: string | null;
-  created_at: string;
-};
 
 type MetricsDay = {
   date: string;
@@ -627,6 +621,7 @@ const traditionalTtsVoices = [
 
 export default function App() {
   const textChatRequest = useTextChatRequest();
+  const documentRequestControllerRef = useRef<AbortController | null>(null);
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [auth, setAuth] = useState<AuthResponse | null>(null);
   const [models, setModels] = useState<string[]>([]);
@@ -1531,15 +1526,7 @@ export default function App() {
     setDocumentsLoading(true);
     setDocumentMessage(null);
     try {
-      const response = await tracedFetch(
-        "/api/documents",
-        {},
-        { label: "List RAG documents", responseKind: "json" },
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail ?? "Failed to load documents.");
-      }
+      const data = await listDocuments(tracedFetch);
       setDocuments((current) => [
         ...(data.documents ?? []),
         ...current.filter(
@@ -1562,30 +1549,11 @@ export default function App() {
       return;
     }
 
-    const formData = new FormData();
-    const fileSummaries = Array.from(files).map((file) => ({
-      name: file.name,
-      type: file.type || "application/octet-stream",
-      bytes: file.size,
-    }));
-    Array.from(files).forEach((file) => formData.append("files", file));
     setDocumentsLoading(true);
     setDocumentMessage(null);
     try {
-      const response = await tracedFetch("/api/documents", {
-        method: "POST",
-        body: formData,
-      }, {
-        label: "Upload RAG documents",
-        request: { files: fileSummaries },
-        responseKind: "json",
-        traceResponse: false,
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail ?? "Failed to upload documents.");
-      }
-      for (const trace of data.embedding_traces ?? []) {
+      const { response, body } = await uploadDocumentFiles(tracedFetch, files);
+      for (const trace of body.embedding_traces ?? []) {
         if (trace.foundry_request) {
           appendFoundryTrace(trace.foundry_request, `Foundry embeddings for uploaded documents`);
         }
@@ -1598,12 +1566,12 @@ export default function App() {
         method: "RECV",
         url: "/api/documents",
         status: response.status,
-        response: data,
+        response: body,
       });
-      setDocuments(data.documents ?? []);
+      setDocuments(body.documents ?? []);
       setDocumentMessage({
         type: "success",
-        text: `Indexed ${(data.documents ?? []).length} document${(data.documents ?? []).length === 1 ? "" : "s"} in Azure AI Search.`,
+        text: `Indexed ${(body.documents ?? []).length} document${(body.documents ?? []).length === 1 ? "" : "s"} in Azure AI Search.`,
       });
     } catch (error) {
       setDocumentMessage({
@@ -1622,13 +1590,7 @@ export default function App() {
     setDocumentsLoading(true);
     setDocumentMessage(null);
     try {
-      const response = await tracedFetch(`/api/documents/${document.id}`, {
-        method: "DELETE",
-      }, { label: "Delete RAG document", responseKind: "json" });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail ?? "Failed to delete document.");
-      }
+      await removeDocument(tracedFetch, document.id);
       setDocuments((current) => current.filter((item) => item.id !== document.id));
       setDocumentMessage({ type: "success", text: `Removed ${document.filename} from Azure AI Search.` });
     } catch (error) {
@@ -1643,6 +1605,7 @@ export default function App() {
 
   async function startNewChat() {
     textChatRequest.cancel();
+    documentRequestControllerRef.current?.abort();
     setConversationsOpen(false);
     setActiveView("chat");
     setCurrentConversationId(null);
@@ -1771,6 +1734,7 @@ export default function App() {
     }
     if (useCase !== activeUseCase) {
       textChatRequest.cancel();
+      documentRequestControllerRef.current?.abort();
       useCaseSessionRef.current += 1;
       setCurrentConversationId(null);
       setMessages([]);
@@ -1807,6 +1771,7 @@ export default function App() {
 
   async function loadConversation(conversationId: string) {
     textChatRequest.cancel();
+    documentRequestControllerRef.current?.abort();
     const response = await tracedFetch(
       `/api/conversations/${conversationId}?use_case=${encodeURIComponent(activeUseCase)}`,
       {},
@@ -3055,26 +3020,14 @@ export default function App() {
         guardrail_comparison: guardrailComparisonEnabled,
         use_case: activeUseCase,
       };
-      const response = await tracedFetch("/api/documents/ask/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      }, { label: "Stream document RAG answer", request: requestBody, responseKind: "stream" });
-
-      if (useCaseSession !== useCaseSessionRef.current) {
-        return;
-      }
-
-      if (!response.ok) {
-        const data = await response.json();
-        replacePendingMessages(2, [
-          createUserMessage(userPrompt),
-          createAssistantMessage({ model: activeModel, error: data.detail ?? "Unknown error" }),
-        ]);
-        return;
-      }
-
-      const apiEvents = await readServerSentEvents<ChatStreamEvent>(response, (event) => {
+      documentRequestControllerRef.current?.abort();
+      const controller = new AbortController();
+      documentRequestControllerRef.current = controller;
+      const { response, events: apiEvents } = await streamDocumentAnswer({
+        fetchClient: tracedFetch,
+        request: requestBody,
+        signal: controller.signal,
+        onEvent: (event) => {
         if (useCaseSession !== useCaseSessionRef.current) {
           return;
         }
@@ -3228,6 +3181,7 @@ export default function App() {
             ),
           );
         }
+        },
       });
       appendApiResponseTrace({
         label: "Document RAG stream response",
@@ -3236,7 +3190,17 @@ export default function App() {
         status: response.status,
         response: { events: apiEvents },
       });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      replacePendingMessages(guardrailComparisonEnabled ? 3 : 2, [
+        createUserMessage(userPrompt),
+        createAssistantMessage({
+          model: activeModel,
+          error: error instanceof Error ? error.message : "Document question failed.",
+        }),
+      ]);
     } finally {
+      documentRequestControllerRef.current = null;
       if (useCaseSession === useCaseSessionRef.current) {
         setIsRunning(false);
       }
