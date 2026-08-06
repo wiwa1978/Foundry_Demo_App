@@ -14,7 +14,9 @@ param(
     [string]$AppName = "github-foundry-chat-demo-deploy",
     [string]$Branch = "main",
 
-    [string]$FederatedSubject
+    [string]$FederatedSubject,
+
+    [switch]$AssignBroadBootstrapRoles
 )
 
 $ErrorActionPreference = "Stop"
@@ -106,24 +108,28 @@ if (-not $existingCredential) {
     Write-Host "Federated credential '$credentialName' already exists."
 }
 
-$subscriptionScope = "/subscriptions/$SubscriptionId"
-Write-Host "Assigning Contributor and User Access Administrator at subscription scope..."
-foreach ($role in @("Contributor", "User Access Administrator")) {
-    $assignment = & az role assignment list `
-        --assignee $spId `
-        --role $role `
-        --scope $subscriptionScope `
-        --query "[0].id" `
-        --output tsv 2>$null
-    if (-not $assignment) {
-        Invoke-AzCli @(
-            "role", "assignment", "create",
-            "--assignee-object-id", $spId,
-            "--assignee-principal-type", "ServicePrincipal",
-            "--role", $role,
-            "--scope", $subscriptionScope
-        ) | Out-Null
+if ($AssignBroadBootstrapRoles) {
+    $subscriptionScope = "/subscriptions/$SubscriptionId"
+    Write-Warning "Assigning broad subscription-level bootstrap roles. Replace them with scoped roles after provisioning."
+    foreach ($role in @("Contributor", "User Access Administrator")) {
+        $assignment = & az role assignment list `
+            --assignee $spId `
+            --role $role `
+            --scope $subscriptionScope `
+            --query "[0].id" `
+            --output tsv 2>$null
+        if (-not $assignment) {
+            Invoke-AzCli @(
+                "role", "assignment", "create",
+                "--assignee-object-id", $spId,
+                "--assignee-principal-type", "ServicePrincipal",
+                "--role", $role,
+                "--scope", $subscriptionScope
+            ) | Out-Null
+        }
     }
+} else {
+    Write-Warning "No Azure roles were assigned. Apply the scoped roles documented in docs/rbac.md."
 }
 
 Write-Host ""

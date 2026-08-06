@@ -5,10 +5,14 @@ param(
     [string]$ContainerRegistryName = "acr66fb",
     [string]$ContainerAppName = "ca-foundry-chat",
     [string]$ImageName = "foundry-chat-app",
-    [string]$ImageTag = "latest"
+    [string]$ImageTag = (git rev-parse --short=12 HEAD)
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $ImageTag -or $ImageTag -eq "latest") {
+    throw "Use an immutable image tag such as a Git commit SHA; 'latest' is not allowed."
+}
 
 function Invoke-AzCli {
     param(

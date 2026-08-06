@@ -148,7 +148,10 @@ ENTRA_AUTH_CLIENT_SECRET
 
 Do not add `AZURE_STORAGE_ACCOUNT_URL`, `AZURE_SEARCH_ENDPOINT`, or `AZURE_COSMOS_ENDPOINT` as GitHub variables; the Bicep deployment derives those from Azure resources. Do not add `FOUNDRY_API_KEY` or `AZURE_COSMOS_KEY` unless you intentionally change the app to key-based auth. The app uses Microsoft Entra ID through `DefaultAzureCredential`.
 
-The workflow identity needs **Contributor** to create/update resources and **User Access Administrator** to create RBAC assignments for the Container App managed identity. If your organization prefers least-privilege custom roles, replace those broad assignments after the initial demo setup.
+The setup helper does not assign Azure roles by default. Apply the scoped permissions in
+[`docs/rbac.md`](../docs/rbac.md). For a temporary greenfield bootstrap only, pass
+`-AssignBroadBootstrapRoles`; this grants subscription-level **Contributor** and **User Access
+Administrator** and must be replaced with scoped roles after provisioning.
 
 ## Private networking note
 

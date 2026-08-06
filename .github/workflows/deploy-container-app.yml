@@ -11,6 +11,10 @@ on:
       - "frontend/**"
       - "infra/**"
       - "scripts/wait-for-container-app.sh"
+      - "scripts/smoke-test-container-app.sh"
+      - ".github/dependabot.yml"
+      - "SECURITY.md"
+      - "docs/**"
       - "tests/**"
       - "Dockerfile"
       - ".dockerignore"
@@ -159,6 +163,7 @@ jobs:
             --output table
 
       - name: Update Container App image
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.deploy_infra }}
         run: |
           bash scripts/wait-for-container-app.sh
 
