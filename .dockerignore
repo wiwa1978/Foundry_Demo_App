@@ -1,4 +1,5 @@
 .git
+.github
 .env*
 !.env.example
 .venv
@@ -8,4 +9,10 @@ data
 frontend/dist
 frontend/node_modules
 infra/main.json
+docs
+tests
+.pytest_cache
+.ruff_cache
+*.md
+requirements-dev*
 *.log

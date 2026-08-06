@@ -35,14 +35,14 @@ A lightweight local app for chatting with and comparing Microsoft Foundry model 
 2. Install dependencies.
 
    ```powershell
-   pip install -r requirements.txt
+   pip install --require-hashes -r requirements.lock
    ```
 
 3. Install frontend dependencies.
 
    ```powershell
    Set-Location frontend
-   npm install
+   npm ci
    Set-Location ..
    ```
 
