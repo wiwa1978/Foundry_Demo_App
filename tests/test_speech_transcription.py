@@ -20,7 +20,7 @@ class SpeechTranscriptionTests(unittest.TestCase):
 
         self.assertFalse(_is_transcription_model("gpt-5.5"))
 
-    @patch("app.foundry_client._create_openai_client")
+    @patch("app.foundry_client._create_audio_client")
     @patch("app.foundry_client.load_settings")
     def test_openai_transcription_returns_text_and_trace(
         self, load_settings: MagicMock, create_client: MagicMock
