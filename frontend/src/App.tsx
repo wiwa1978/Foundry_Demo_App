@@ -94,6 +94,8 @@ type ConfigResponse = {
 type ModelsResponse = {
   models: string[];
   transcription_models?: string[];
+  traditional_transcription_models?: string[];
+  tts_models?: string[];
   model_modalities?: Record<string, ModelModality[]>;
   discovery_error: string | null;
 };
@@ -739,6 +741,19 @@ function isTranscriptionModelName(model: string) {
   return normalized.includes("transcribe") || normalized.includes("whisper");
 }
 
+const traditionalTtsVoices = [
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "sage",
+  "shimmer",
+  "verse",
+  "marin",
+  "cedar",
+];
+
 export default function App() {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [auth, setAuth] = useState<AuthResponse | null>(null);
@@ -747,6 +762,11 @@ export default function App() {
   const [activeModel, setActiveModel] = useState("");
   const [transcriptionModels, setTranscriptionModels] = useState<string[]>([]);
   const [transcriptionModel, setTranscriptionModel] = useState("");
+  const [traditionalTranscriptionModels, setTraditionalTranscriptionModels] = useState<string[]>([]);
+  const [traditionalTranscriptionModel, setTraditionalTranscriptionModel] = useState("");
+  const [ttsModels, setTtsModels] = useState<string[]>([]);
+  const [ttsModel, setTtsModel] = useState("");
+  const [ttsVoice, setTtsVoice] = useState("alloy");
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [newModel, setNewModel] = useState("");
   const [modelEndpointMessage, setModelEndpointMessage] = useState<StatusMessage | null>(null);
@@ -1046,6 +1066,20 @@ export default function App() {
                 : data.transcription_models![0],
             );
           }
+          if (data.traditional_transcription_models?.length) {
+            setTraditionalTranscriptionModels(data.traditional_transcription_models);
+            setTraditionalTranscriptionModel((current) =>
+              current && data.traditional_transcription_models!.includes(current)
+                ? current
+                : data.traditional_transcription_models![0],
+            );
+          }
+          if (data.tts_models?.length) {
+            setTtsModels(data.tts_models);
+            setTtsModel((current) =>
+              current && data.tts_models!.includes(current) ? current : data.tts_models![0],
+            );
+          }
           if (data.discovery_error) {
             console.warn("Foundry deployment discovery unavailable:", data.discovery_error);
           }
@@ -1169,6 +1203,12 @@ export default function App() {
       recognitionRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (config?.tts_voice) {
+      setTtsVoice(config.tts_voice);
+    }
+  }, [config?.tts_voice]);
 
   useEffect(() => {
     localStorage.setItem(voiceReadbackStorageKey, String(voiceReadbackEnabled));
@@ -2065,6 +2105,10 @@ export default function App() {
       setTraditionalVoiceError("Select a chat model for the middle step of the STT -> Chat -> TTS pipeline.");
       return;
     }
+    if (!traditionalTranscriptionModel || !ttsModel) {
+      setTraditionalVoiceError("Select both an STT deployment and a TTS deployment.");
+      return;
+    }
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
       setTraditionalVoiceError("This browser does not support audio recording with MediaRecorder.");
       return;
@@ -2137,6 +2181,9 @@ export default function App() {
     const formData = new FormData();
     formData.append("audio", audioBlob, "foundry-voice-demo.webm");
     formData.append("model", activeModel);
+    formData.append("transcription_model", traditionalTranscriptionModel);
+    formData.append("tts_model", ttsModel);
+    formData.append("tts_voice", ttsVoice);
     formData.append("use_case", activeUseCase);
     if (currentConversationId) {
       formData.append("conversation_id", currentConversationId);
@@ -3674,50 +3721,58 @@ export default function App() {
         {!workspaceLocked ? (
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-4 shadow-sm dark:border-[#55555a] dark:bg-[#39393d]">
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
-          <div className="grid gap-2">
-            <Label htmlFor="active-model" className="palette-heading">
-              Model
-            </Label>
-            <div className="flex gap-2">
-              <div className="min-w-0 flex-1">
-                <Select
-                  value={activeUseCaseDetails.workspace === "transcribe" ? transcriptionModel : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel}
-                  onValueChange={(model) => {
-                    if (activeUseCaseDetails.workspace === "transcribe") {
-                      setTranscriptionModel(model);
-                    } else if (activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison") {
-                      setImageModel(model);
-                      setActiveModel(model);
-                    } else {
-                      setActiveModel(model);
-                    }
-                  }}
-                >
-                  <SelectTrigger id="active-model" className="h-9 w-full dark:border-[#606066] dark:bg-[#29292c]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent position="popper" align="start">
-                    {(activeUseCaseDetails.workspace === "transcribe" ? transcriptionModels : activeUseCaseDetails.workspace === "imageEdit" ? imageEditModels : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModels : textModels).map((model) => (
-                      <SelectItem key={model} value={model}>
-                        {formatModelName(model)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          {activeUseCaseDetails.workspace === "traditionalVoice" ? (
+            <div className="grid gap-4">
+              <SidebarPipelineSelect label="STT model" value={traditionalTranscriptionModel} models={traditionalTranscriptionModels} onChange={setTraditionalTranscriptionModel} disabled={traditionalVoiceStatus === "recording" || traditionalVoiceStatus === "processing"} />
+              <div className="grid gap-2">
+                <Label htmlFor="traditional-chat-model" className="palette-heading">Chat model</Label>
+                <div className="flex gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Select value={activeModel} onValueChange={setActiveModel} disabled={traditionalVoiceStatus === "recording" || traditionalVoiceStatus === "processing"}>
+                      <SelectTrigger id="traditional-chat-model" className="h-9 w-full dark:border-[#606066] dark:bg-[#29292c]"><SelectValue placeholder="Select chat model" /></SelectTrigger>
+                      <SelectContent position="popper" align="start">
+                        {textModels.map((model) => <SelectItem key={model} value={model}>{formatModelName(model)}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button type="button" variant="outline" size="icon" disabled={!canUseProtectedApis || !activeModel} onClick={() => void openSettings(activeModel)} title="Open chat model settings" className="shrink-0">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                disabled={!canUseProtectedApis}
-                onClick={() => void openSettings(activeUseCaseDetails.workspace === "transcribe" ? transcriptionModel : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)}
-                title="Open model settings"
-                className="shrink-0"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
+              <SidebarPipelineSelect label="TTS model" value={ttsModel} models={ttsModels} onChange={setTtsModel} disabled={traditionalVoiceStatus === "recording" || traditionalVoiceStatus === "processing"} />
+              <SidebarPipelineSelect label="TTS voice" value={ttsVoice} models={traditionalTtsVoices} onChange={setTtsVoice} disabled={traditionalVoiceStatus === "recording" || traditionalVoiceStatus === "processing"} />
             </div>
-          </div>
+          ) : (
+            <div className="grid gap-2">
+              <Label htmlFor="active-model" className="palette-heading">Model</Label>
+              <div className="flex gap-2">
+                <div className="min-w-0 flex-1">
+                  <Select
+                    value={activeUseCaseDetails.workspace === "transcribe" ? transcriptionModel : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel}
+                    onValueChange={(model) => {
+                      if (activeUseCaseDetails.workspace === "transcribe") {
+                        setTranscriptionModel(model);
+                      } else if (activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison") {
+                        setImageModel(model);
+                        setActiveModel(model);
+                      } else {
+                        setActiveModel(model);
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="active-model" className="h-9 w-full dark:border-[#606066] dark:bg-[#29292c]"><SelectValue /></SelectTrigger>
+                    <SelectContent position="popper" align="start">
+                      {(activeUseCaseDetails.workspace === "transcribe" ? transcriptionModels : activeUseCaseDetails.workspace === "imageEdit" ? imageEditModels : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageComparison" ? imageModels : textModels).map((model) => <SelectItem key={model} value={model}>{formatModelName(model)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button type="button" variant="outline" size="icon" disabled={!canUseProtectedApis} onClick={() => void openSettings(activeUseCaseDetails.workspace === "transcribe" ? transcriptionModel : activeUseCaseDetails.workspace === "image" || activeUseCaseDetails.workspace === "imageEdit" || activeUseCaseDetails.workspace === "imageComparison" ? imageModel : activeModel)} title="Open model settings" className="shrink-0">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
             <Button
@@ -4307,9 +4362,17 @@ export default function App() {
                 <TraditionalVoiceHero
                   configured={config?.is_traditional_voice_configured ?? false}
                   activeModel={activeModel}
-                  transcriptionModel={config?.transcription_model ?? "gpt-4o-mini-transcribe"}
-                  ttsModel={config?.tts_model ?? "gpt-4o-mini-tts"}
-                  ttsVoice={config?.tts_voice ?? "alloy"}
+                  chatModels={textModels}
+                  onChatModelChange={setActiveModel}
+                  transcriptionModels={traditionalTranscriptionModels}
+                  transcriptionModel={traditionalTranscriptionModel}
+                  onTranscriptionModelChange={setTraditionalTranscriptionModel}
+                  ttsModels={ttsModels}
+                  ttsModel={ttsModel}
+                  onTtsModelChange={setTtsModel}
+                  ttsVoice={ttsVoice}
+                  ttsVoices={traditionalTtsVoices}
+                  onTtsVoiceChange={setTtsVoice}
                   status={traditionalVoiceStatus}
                   error={traditionalVoiceError}
                   result={traditionalVoiceResult}
@@ -4643,9 +4706,17 @@ function ChatEmptyState({
 function TraditionalVoiceHero({
   configured,
   activeModel,
+  chatModels,
+  onChatModelChange,
+  transcriptionModels,
   transcriptionModel,
+  onTranscriptionModelChange,
+  ttsModels,
   ttsModel,
+  onTtsModelChange,
   ttsVoice,
+  ttsVoices,
+  onTtsVoiceChange,
   status,
   error,
   result,
@@ -4655,9 +4726,17 @@ function TraditionalVoiceHero({
 }: {
   configured: boolean;
   activeModel: string;
+  chatModels: string[];
+  onChatModelChange: (model: string) => void;
+  transcriptionModels: string[];
   transcriptionModel: string;
+  onTranscriptionModelChange: (model: string) => void;
+  ttsModels: string[];
   ttsModel: string;
+  onTtsModelChange: (model: string) => void;
   ttsVoice: string;
+  ttsVoices: string[];
+  onTtsVoiceChange: (voice: string) => void;
   status: TraditionalVoiceStatus;
   error: string;
   result: TraditionalVoiceResult | null;
@@ -4674,12 +4753,6 @@ function TraditionalVoiceHero({
       : result
         ? "Record again"
         : "Record voice prompt";
-  const pipelineSteps = [
-    { label: "STT", value: transcriptionModel },
-    { label: "Chat", value: activeModel || "Select a chat model" },
-    { label: "TTS", value: `${ttsModel} (${ttsVoice})` },
-  ];
-
   return (
     <div className="w-full rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
       <div className="text-center">
@@ -4694,26 +4767,16 @@ function TraditionalVoiceHero({
       </div>
 
       <div className="mt-5 grid gap-2 sm:grid-cols-3">
-        {pipelineSteps.map((step) => (
-          <div
-            key={step.label}
-            className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-[#606066] dark:bg-[#45454a]"
-          >
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {step.label}
-            </div>
-            <div className="mt-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-              {step.value}
-            </div>
-          </div>
-        ))}
+        <PipelineModelSelect label="STT" value={transcriptionModel} models={transcriptionModels} onChange={onTranscriptionModelChange} disabled={isRecording || isProcessing} />
+        <PipelineModelSelect label="Chat" value={activeModel} models={chatModels} onChange={onChatModelChange} disabled={isRecording || isProcessing} />
+        <PipelineTtsSelect model={ttsModel} models={ttsModels} onModelChange={onTtsModelChange} voice={ttsVoice} voices={ttsVoices} onVoiceChange={onTtsVoiceChange} disabled={isRecording || isProcessing} />
       </div>
 
       <div className="mt-5 flex justify-center">
         <Button
           type="button"
           onClick={isRecording ? onStop : onStart}
-          disabled={!configured || isProcessing || !activeModel}
+          disabled={!configured || isProcessing || !activeModel || !transcriptionModel || !ttsModel}
           variant={isRecording ? "destructive" : "default"}
           className="rounded-full px-5"
         >
@@ -4787,6 +4850,53 @@ function TraditionalVoiceHero({
           </p>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function PipelineModelSelect({ label, value, models, onChange, disabled, suffix = "" }: { label: string; value: string; models: string[]; onChange: (model: string) => void; disabled: boolean; suffix?: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-[#606066] dark:bg-[#45454a]">
+      <Label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</Label>
+      <Select value={value} onValueChange={onChange} disabled={disabled || models.length === 0}>
+        <SelectTrigger className="mt-1 h-8 border-0 bg-transparent px-0 text-sm font-medium shadow-none focus:ring-0 dark:bg-transparent">
+          <SelectValue placeholder={`No ${label} deployments`} />
+        </SelectTrigger>
+        <SelectContent>
+          {models.map((model) => <SelectItem key={model} value={model}>{model}{suffix}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function PipelineTtsSelect({ model, models, onModelChange, voice, voices, onVoiceChange, disabled }: { model: string; models: string[]; onModelChange: (model: string) => void; voice: string; voices: string[]; onVoiceChange: (voice: string) => void; disabled: boolean }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-[#606066] dark:bg-[#45454a]">
+      <Label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">TTS</Label>
+      <Select value={model} onValueChange={onModelChange} disabled={disabled || models.length === 0}>
+        <SelectTrigger className="mt-1 h-8 border-0 bg-transparent px-0 text-sm font-medium shadow-none focus:ring-0 dark:bg-transparent"><SelectValue placeholder="No TTS deployments" /></SelectTrigger>
+        <SelectContent>{models.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
+      </Select>
+      <Select value={voice} onValueChange={onVoiceChange} disabled={disabled}>
+        <SelectTrigger className="mt-1 h-7 border-0 bg-transparent px-0 text-xs text-slate-500 shadow-none focus:ring-0 dark:bg-transparent dark:text-slate-300"><SelectValue /></SelectTrigger>
+        <SelectContent>{voices.map((item) => <SelectItem key={item} value={item}>{formatModelName(item)}</SelectItem>)}</SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function SidebarPipelineSelect({ label, value, models, onChange, disabled }: { label: string; value: string; models: string[]; onChange: (model: string) => void; disabled: boolean }) {
+  const id = `traditional-${label.toLowerCase().replace(/ /g, "-")}`;
+  return (
+    <div className="grid gap-2">
+      <Label htmlFor={id} className="palette-heading">{label}</Label>
+      <Select value={value} onValueChange={onChange} disabled={disabled || models.length === 0}>
+        <SelectTrigger id={id} className="h-9 w-full dark:border-[#606066] dark:bg-[#29292c]"><SelectValue placeholder={`No ${label.toLowerCase()} deployments`} /></SelectTrigger>
+        <SelectContent position="popper" align="start">
+          {models.map((model) => <SelectItem key={model} value={model}>{formatModelName(model)}</SelectItem>)}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

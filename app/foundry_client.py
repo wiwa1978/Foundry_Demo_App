@@ -1,5 +1,6 @@
 import os
 import time
+import base64
 from io import BytesIO
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -14,7 +15,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from azure.identity import get_bearer_token_provider
-from openai import OpenAI
+from openai import AzureOpenAI, OpenAI
 
 from app.azure_credential import get_azure_credential
 from app.model_settings import list_models
@@ -439,6 +440,21 @@ def _openai_base_url(endpoint_value: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}{base_path}"
 
 
+def _azure_openai_endpoint(endpoint_value: str) -> str:
+    endpoint = _normalize_endpoint(endpoint_value)
+    parsed = urlparse(endpoint)
+    if not parsed.scheme or not parsed.netloc:
+        raise RuntimeError(
+            "FOUNDRY_PROJECT_ENDPOINT must be a Foundry project endpoint like "
+            "https://<resource-name>.services.ai.azure.com/api/projects/<project-name>."
+        )
+
+    hostname = parsed.hostname or ""
+    if hostname.endswith(".services.ai.azure.com"):
+        hostname = f"{hostname.removesuffix('.services.ai.azure.com')}.openai.azure.com"
+    return f"{parsed.scheme}://{hostname}"
+
+
 def _normalize_realtime_endpoint(endpoint_value: str) -> str:
     endpoint = endpoint_value.strip().rstrip("/")
     if not endpoint:
@@ -480,6 +496,20 @@ def _create_openai_client(settings: FoundrySettings) -> Iterator[OpenAI]:
     with OpenAI(
         base_url=_openai_base_url(endpoint),
         api_key=token_provider,
+    ) as openai_client:
+        yield openai_client
+
+
+@contextmanager
+def _create_audio_client(settings: FoundrySettings) -> Iterator[AzureOpenAI]:
+    token_provider = get_bearer_token_provider(
+        get_azure_credential(),
+        "https://cognitiveservices.azure.com/.default",
+    )
+    with AzureOpenAI(
+        azure_endpoint=_azure_openai_endpoint(settings.endpoint or ""),
+        api_version="2025-04-01-preview",
+        azure_ad_token_provider=token_provider,
     ) as openai_client:
         yield openai_client
 
@@ -812,7 +842,7 @@ def transcribe_audio(
         },
     }
 
-    with _create_openai_client(settings) as openai_client:
+    with _create_audio_client(settings) as openai_client:
         response = openai_client.audio.transcriptions.create(
             model=transcription_model,
             file=audio_file,
@@ -932,24 +962,39 @@ def synthesize_speech(
         raise RuntimeError("Cannot synthesize an empty response.")
 
     started = time.perf_counter()
-    request = {
-        "model": speech_model,
-        "voice": speech_voice,
-        "input": text,
-        "response_format": "mp3",
-    }
-
-    with _create_openai_client(settings) as openai_client:
-        response = openai_client.audio.speech.create(**request)
-
-    if hasattr(response, "read"):
-        audio = response.read()
-    elif isinstance(response, bytes):
-        audio = response
-    elif hasattr(response, "content"):
-        audio = response.content
-    else:
-        raise RuntimeError("Text-to-speech response did not include audio bytes.")
+    with _create_audio_client(settings) as openai_client:
+        if "gpt-audio" in speech_model.lower():
+            request = {
+                "model": speech_model,
+                "modalities": ["text", "audio"],
+                "audio": {"voice": speech_voice, "format": "mp3"},
+                "messages": [{"role": "user", "content": text}],
+            }
+            response = openai_client.chat.completions.create(**request)
+            response_audio = response.choices[0].message.audio
+            if response_audio is None or not response_audio.data:
+                raise RuntimeError("Audio completion response did not include audio bytes.")
+            audio = base64.b64decode(response_audio.data)
+            api_surface = "audio_chat_completions"
+            path = "/chat/completions"
+        else:
+            request = {
+                "model": speech_model,
+                "voice": speech_voice,
+                "input": text,
+                "response_format": "mp3",
+            }
+            response = openai_client.audio.speech.create(**request)
+            if hasattr(response, "read"):
+                audio = response.read()
+            elif isinstance(response, bytes):
+                audio = response
+            elif hasattr(response, "content"):
+                audio = response.content
+            else:
+                raise RuntimeError("Text-to-speech response did not include audio bytes.")
+            api_surface = "audio_speech"
+            path = "/audio/speech"
 
     return {
         "model": speech_model,
@@ -958,13 +1003,13 @@ def synthesize_speech(
         "audio_mime_type": "audio/mpeg",
         "duration_ms": round((time.perf_counter() - started) * 1000),
         "foundry_request": {
-            "api_surface": "audio_speech",
+            "api_surface": api_surface,
             "method": "POST",
-            "path": "/audio/speech",
-            "payload": {**request, "input": "[redacted]", "input_characters": len(text)},
+            "path": path,
+            "payload": {"model": speech_model, "voice": speech_voice, "input_characters": len(text)},
         },
         "foundry_response": {
-            "api_surface": "audio_speech",
+            "api_surface": api_surface,
             "payload": {
                 "audio_mime_type": "audio/mpeg",
                 "bytes": len(audio),

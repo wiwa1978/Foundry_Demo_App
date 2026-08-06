@@ -10,8 +10,8 @@ export const traditionalVoiceUseCase: UseCaseModule = {
   modalities: ["audio"],
   implementation: [
     "The browser records microphone audio with MediaRecorder and uploads the audio blob to the backend.",
-    "The backend calls Foundry `/audio/transcriptions`, sends the transcript to the selected chat model, then calls `/audio/speech`.",
-    "The response includes transcript text, assistant text, timing metadata, and base64 MP3 audio for playback in the browser.",
+    "Choose deployed transcription and audio-output models independently for the STT and TTS stages.",
+    "The backend calls Foundry `/audio/transcriptions`, sends the transcript to the selected chat model, then uses audio Chat Completions or `/audio/speech` for synthesis.",
   ],
   codeSnippet: {
     title: "Foundry SDK: STT, chat, and TTS",

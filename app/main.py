@@ -13,6 +13,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from openai import APIStatusError
 from pydantic import BaseModel, Field, field_validator, model_validator
 from websockets.asyncio.client import connect as websocket_connect
 
@@ -153,6 +154,16 @@ def _bounded_stream_chat(**kwargs: Any) -> Iterator[dict[str, Any]]:
 
 def _upstream_error(operation: str, exc: Exception) -> HTTPException:
     logger.exception("%s failed", operation, exc_info=exc)
+    if isinstance(exc, APIStatusError):
+        error = exc.body.get("error", {}) if isinstance(exc.body, dict) else {}
+        if error.get("code") == "DeploymentNotFound":
+            return HTTPException(
+                status_code=502,
+                detail=(
+                    f"{operation} failed because a configured model deployment was not found. "
+                    "Verify the deployment name and Foundry endpoint."
+                ),
+            )
     return HTTPException(status_code=502, detail=f"{operation} failed. Try again later.")
 
 
@@ -582,6 +593,10 @@ def get_models() -> dict:
                     if model.strip()
                 )
             ),
+            "traditional_transcription_models": [settings.transcription_model]
+            if settings.transcription_model.strip()
+            else [],
+            "tts_models": [settings.tts_model] if settings.tts_model.strip() else [],
             "deployments": [],
             "discovery_error": _public_provider_error("Model discovery", exc),
         }
@@ -614,9 +629,23 @@ def get_models() -> dict:
             ]
         )
     )
+    traditional_transcription_models = [
+        deployment["name"]
+        for deployment in deployments
+        if _is_transcription_model(deployment.get("model_name") or deployment["name"])
+        or _is_transcription_model(deployment["name"])
+    ]
+    tts_models = [
+        deployment["name"]
+        for deployment in deployments
+        if _is_tts_model(deployment.get("model_name") or deployment["name"])
+        or _is_tts_model(deployment["name"])
+    ]
     return {
         "models": models,
         "transcription_models": transcription_models,
+        "traditional_transcription_models": traditional_transcription_models,
+        "tts_models": tts_models,
         "deployments": deployments,
         "model_modalities": {
             model: list(get_model_settings(model).modalities) for model in models
@@ -628,6 +657,17 @@ def get_models() -> dict:
 def _is_transcription_model(model: str) -> bool:
     normalized_model = model.strip().lower()
     return "transcribe" in normalized_model or "whisper" in normalized_model
+
+
+def _is_tts_model(model: str) -> bool:
+    normalized_model = model.strip().lower()
+    return "gpt-audio" in normalized_model or normalized_model in {
+        "gpt-4o-mini-tts",
+        "tts",
+        "tts-hd",
+        "tts-1",
+        "tts-1-hd",
+    }
 
 
 @app.post("/api/images/generate")
@@ -724,6 +764,9 @@ async def post_traditional_voice(
     scope: Annotated[UserScope, Depends(_current_user_scope)],
     audio: UploadFile = File(...),
     model: str = Form(...),
+    transcription_model: str | None = Form(None),
+    tts_model: str | None = Form(None),
+    tts_voice: str | None = Form(None),
     conversation_id: str | None = Form(None),
     reasoning_effort: str | None = Form(None),
     use_case: str = Form("traditional_voice"),
@@ -744,6 +787,7 @@ async def post_traditional_voice(
             audio=audio_bytes,
             filename=audio.filename or "recording.webm",
             content_type=audio.content_type,
+            model=transcription_model,
         )
         transcript = transcription["text"].strip()
         if not transcript:
@@ -784,6 +828,8 @@ async def post_traditional_voice(
                 speech = await _run_model_call(
                     synthesize_speech,
                     text=result["content"],
+                    model=tts_model,
+                    voice=tts_voice,
                 )
             except Exception as exc:
                 return {**result, "speech_error": _public_provider_error("Speech synthesis", exc)}
