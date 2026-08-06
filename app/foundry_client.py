@@ -517,8 +517,24 @@ def generate_image(*, model: str, prompt: str, width: int, height: int) -> dict[
             "Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env."
         )
 
-    is_mai_model = "mai-image" in model.strip().lower()
-    if is_mai_model:
+    normalized_model = model.strip().lower()
+    is_mai_model = "mai-image" in normalized_model
+    is_flux_model = "flux" in normalized_model
+    if is_flux_model:
+        url = f"{_flux_base_url(settings.endpoint or '')}/providers/blackforestlabs/v1/{_flux_model_path(normalized_model)}?api-version=preview"
+        token_scope = "https://cognitiveservices.azure.com/.default"
+        payload = {
+            "model": normalized_model,
+            "prompt": prompt,
+            "width": width,
+            "height": height,
+            "output_format": "jpeg",
+            "n": 1,
+        }
+        api_name = "FLUX"
+        output_width, output_height = width, height
+        mime_type = "image/jpeg"
+    elif is_mai_model:
         endpoint = _normalize_endpoint(settings.endpoint or "")
         parsed = urlparse(endpoint)
         url = f"{parsed.scheme}://{parsed.netloc}/mai/v1/images/generations"
@@ -531,6 +547,7 @@ def generate_image(*, model: str, prompt: str, width: int, height: int) -> dict[
         }
         api_name = "MAI"
         output_width, output_height = width, height
+        mime_type = "image/png"
     else:
         url = f"{_openai_base_url(settings.endpoint or '')}/images/generations"
         token_scope = "https://ai.azure.com/.default"
@@ -542,6 +559,7 @@ def generate_image(*, model: str, prompt: str, width: int, height: int) -> dict[
         }
         api_name = "OpenAI"
         output_width, output_height = (int(value) for value in size.split("x"))
+        mime_type = "image/png"
 
     token = get_azure_credential().get_token(token_scope).token
     request = Request(
@@ -570,20 +588,60 @@ def generate_image(*, model: str, prompt: str, width: int, height: int) -> dict[
             f"Could not reach the {api_name} image generation endpoint: {exc.reason}"
         ) from exc
 
-    image = next(
-        (item for item in result.get("data", []) if item.get("b64_json")),
-        None,
-    )
-    if image is None:
+    image_base64, response_mime_type = _extract_generated_image(result)
+    if image_base64 is None:
         raise RuntimeError(f"{api_name} image generation returned no image data.")
     return {
         "model": model,
-        "image_base64": image["b64_json"],
-        "mime_type": "image/png",
+        "image_base64": image_base64,
+        "mime_type": response_mime_type or mime_type,
         "width": output_width,
         "height": output_height,
         "duration_ms": round((time.perf_counter() - started) * 1000),
     }
+
+
+def _flux_base_url(endpoint_value: str) -> str:
+    parsed = urlparse(_normalize_endpoint(endpoint_value))
+    if not parsed.scheme or not parsed.hostname:
+        raise RuntimeError("FOUNDRY_PROJECT_ENDPOINT must be a valid Foundry endpoint.")
+    hostname = parsed.hostname
+    if hostname.endswith(".services.ai.azure.com"):
+        resource_name = hostname.removesuffix(".services.ai.azure.com")
+        hostname = f"{resource_name}.api.cognitive.microsoft.com"
+    return f"{parsed.scheme}://{hostname}"
+
+
+def _flux_model_path(normalized_model: str) -> str:
+    if "flux.2-pro" in normalized_model or "flux-2-pro" in normalized_model or "flux.2_pro" in normalized_model:
+        return "flux-2-pro"
+    if "flux.2-flex" in normalized_model or "flux-2-flex" in normalized_model or "flux.2_flex" in normalized_model:
+        return "flux-2-flex"
+    if "kontext" in normalized_model:
+        return "flux-kontext-pro"
+    if "1.1" in normalized_model or "1-1" in normalized_model:
+        return "flux-pro-1.1"
+    raise RuntimeError(f"Unsupported FLUX image deployment: {normalized_model}.")
+
+
+def _extract_generated_image(result: dict[str, Any]) -> tuple[str | None, str | None]:
+    candidates = result.get("data", [])
+    if isinstance(candidates, dict):
+        candidates = [candidates]
+    if not candidates:
+        candidates = [result]
+    for image in candidates:
+        if not isinstance(image, dict):
+            continue
+        encoded = image.get("b64_json") or image.get("base64") or image.get("image")
+        if isinstance(encoded, str) and encoded:
+            return encoded, image.get("mime_type") or image.get("content_type")
+        image_url = image.get("url")
+        if isinstance(image_url, str) and image_url:
+            with urlopen(image_url, timeout=180) as response:
+                content_type = response.headers.get_content_type()
+                return base64.b64encode(response.read()).decode("ascii"), content_type
+    return None, None
 
 
 def edit_image(

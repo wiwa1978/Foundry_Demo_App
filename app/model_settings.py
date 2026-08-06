@@ -1,4 +1,4 @@
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 import json
@@ -50,6 +50,8 @@ def get_model_settings(model: str) -> ModelSettings:
             api_surface=_default_api_surface(normalized_model),
             modalities=_default_modalities(normalized_model),
         )
+    if "flux" in normalized_model.lower() and settings.modalities == ("text",):
+        return replace(settings, modalities=("image",))
     return settings
 
 
@@ -159,7 +161,7 @@ def _default_modalities(model: str) -> tuple[str, ...]:
     normalized_model = model.strip().lower()
     if any(
         token in normalized_model
-        for token in ("dall-e", "gpt-image", "imagen", "mai-image", "vision")
+        for token in ("dall-e", "gpt-image", "imagen", "mai-image", "vision", "flux")
     ):
         return ("image",)
     if any(
