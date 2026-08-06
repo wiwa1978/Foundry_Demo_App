@@ -17,7 +17,13 @@ from app.model_settings import ModelSettings, get_model_settings
 from app.persistence_models import Conversation, ConversationMessage
 from app.schemas import DocumentQuestionRequest
 from app.security import UserScope
-from app.services.chat import GuardrailOption, bounded_stream_chat, chat_service
+from app.services.chat import (
+    GuardrailOption,
+    bounded_stream_chat,
+    chat_service,
+    guardrail_error_details,
+    public_provider_error,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -178,9 +184,10 @@ class DocumentQaService:
                         ),
                         "assistant_message": message_to_dict(assistant_message),
                     }
-        except Exception:
+        except Exception as exc:
             logger.exception("document_answer_stream_failed")
-            public_error = "Document answer stream failed. Try again later."
+            guardrail_results = guardrail_error_details(exc)
+            public_error = public_provider_error("Document answer stream", exc)
             assistant_message = append_message(
                 scope=scope,
                 conversation_id=prepared.conversation.id,
@@ -189,6 +196,7 @@ class DocumentQaService:
                 model=request.model,
                 api_surface=prepared.model_settings.api_surface,
                 error=public_error,
+                guardrail_results=guardrail_results,
             )
             yield {
                 "type": "error",

@@ -30,6 +30,10 @@ from app.security import UserScope
 
 logger = logging.getLogger(__name__)
 GuardrailOption = tuple[GuardrailVariant | None, str | None]
+CONTENT_FILTER_MESSAGE = (
+    "Request blocked by the configured content safety policy. "
+    "Modify your prompt and try again."
+)
 
 
 @dataclass(frozen=True)
@@ -175,8 +179,8 @@ class ChatService:
             }
         except Exception as exc:
             logger.exception("model_request_failed")
-            guardrail_results = _guardrail_error_details(exc)
-            public_error = "Model request failed. Try again later."
+            guardrail_results = guardrail_error_details(exc)
+            public_error = public_provider_error("Model request", exc)
             assistant_message = append_message(
                 scope=scope,
                 conversation_id=conversation_id,
@@ -286,9 +290,10 @@ class ChatService:
                             ),
                             "assistant_message": message_to_dict(assistant_message),
                         }
-        except Exception:
+        except Exception as exc:
             logger.exception("model_stream_failed")
-            public_error = "Model stream failed. Try again later."
+            guardrail_results = guardrail_error_details(exc)
+            public_error = public_provider_error("Model stream", exc)
             assistant_message = append_message(
                 scope=scope,
                 conversation_id=prepared.conversation.id,
@@ -297,6 +302,7 @@ class ChatService:
                 model=request.model,
                 api_surface=prepared.model_settings.api_surface,
                 error=public_error,
+                guardrail_results=guardrail_results,
             )
             yield {
                 "type": "error",
@@ -346,9 +352,20 @@ class ChatService:
         }
 
 
-def _guardrail_error_details(exc: Exception) -> dict[str, Any] | None:
+def guardrail_error_details(exc: Exception) -> dict[str, Any] | None:
     body = getattr(exc, "body", None)
     return body if isinstance(body, dict) else None
+
+
+def public_provider_error(operation: str, exc: Exception) -> str:
+    body = guardrail_error_details(exc)
+    if body is not None:
+        error = body.get("error")
+        details = error if isinstance(error, dict) else body
+        code = details.get("code")
+        if isinstance(code, str) and code.lower() == "content_filter":
+            return CONTENT_FILTER_MESSAGE
+    return f"{operation} failed. Try again later."
 
 
 chat_service = ChatService()

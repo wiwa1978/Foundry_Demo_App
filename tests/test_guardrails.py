@@ -9,16 +9,26 @@ from app.foundry_admin import (
     list_guardrail_policies,
 )
 from app.foundry_client import complete_chat
-from app.main import _guardrail_variants
 from app.model_settings import (
     DEPLOYMENT_DEFAULT_GUARDRAIL,
     ModelSettings,
     _document_to_settings,
 )
 from app.security import UserScope
+from app.services.chat import (
+    guardrail_error_details,
+    guardrail_variants,
+    public_provider_error,
+)
 
 
 USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
+
+
+class ProviderError(Exception):
+    def __init__(self, body):
+        super().__init__("Provider request failed")
+        self.body = body
 
 
 def _policy(name: str, policy_type: str) -> SimpleNamespace:
@@ -30,6 +40,36 @@ def _policy(name: str, policy_type: str) -> SimpleNamespace:
             mode="Blocking",
             base_policy_name="Microsoft.Default",
         ),
+    )
+
+
+def test_content_filter_error_is_reported_as_a_blocked_request():
+    error = ProviderError(
+        {
+            "message": "The response was filtered.",
+            "code": "content_filter",
+            "content_filters": {"violence": {"filtered": True, "severity": "medium"}},
+        }
+    )
+
+    assert public_provider_error("Model request", error) == (
+        "Request blocked by the configured content safety policy. "
+        "Modify your prompt and try again."
+    )
+    assert guardrail_error_details(error) == error.body
+
+
+def test_nested_content_filter_error_is_reported_as_a_blocked_request():
+    error = ProviderError({"error": {"code": "content_filter"}})
+
+    assert public_provider_error("Model stream", error).startswith("Request blocked")
+
+
+def test_other_provider_errors_remain_generic():
+    error = ProviderError({"code": "rate_limit_exceeded"})
+
+    assert public_provider_error("Model request", error) == (
+        "Model request failed. Try again later."
     )
 
 
@@ -232,11 +272,11 @@ def test_guardrail_variants_use_two_selected_policies():
         guardrail_policy_names=(DEPLOYMENT_DEFAULT_GUARDRAIL, "strict-demo"),
     )
 
-    assert _guardrail_variants(settings, True) == [
+    assert guardrail_variants(settings, True) == [
         ("policy_1", None),
         ("policy_2", "strict-demo"),
     ]
-    assert _guardrail_variants(settings, False) == [(None, None)]
+    assert guardrail_variants(settings, False) == [(None, None)]
 
 
 def test_legacy_guardrail_setting_migrates_to_default_vs_custom():
