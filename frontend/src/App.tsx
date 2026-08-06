@@ -732,7 +732,7 @@ const colorPalettes: Array<{
 
 function isImageModelName(model: string) {
   const normalized = model.toLowerCase();
-  return ["mai-image", "gpt-image", "dall-e", "imagen", "vision"].some((token) =>
+  return ["mai-image", "gpt-image", "dall-e", "imagen", "vision", "flux"].some((token) =>
     normalized.includes(token),
   );
 }

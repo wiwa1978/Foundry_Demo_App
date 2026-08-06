@@ -673,7 +673,9 @@ def _is_tts_model(model: str) -> bool:
 @app.post("/api/images/generate")
 async def post_image_generation(request: ImageGenerationRequest) -> dict:
     configured_for_images = "image" in get_model_settings(request.model).modalities
-    if not configured_for_images and "mai-image" not in request.model.lower():
+    if not configured_for_images and not any(
+        token in request.model.lower() for token in ("mai-image", "flux")
+    ):
         raise HTTPException(
             status_code=400,
             detail=f"{request.model} is not configured with the image capability.",

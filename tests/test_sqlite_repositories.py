@@ -103,6 +103,18 @@ class SqliteRepositoryTests(unittest.TestCase):
 
         self.assertEqual(settings.modalities, ("image",))
 
+    def test_flux_model_defaults_to_image_capability(self) -> None:
+        settings = get_model_settings("FLUX.2-pro")
+
+        self.assertEqual(settings.modalities, ("image",))
+
+    def test_flux_stale_text_capability_is_corrected(self) -> None:
+        save_model_settings(ModelSettings(model="FLUX.2-pro", modalities=("text",)))
+
+        settings = get_model_settings("FLUX.2-pro")
+
+        self.assertEqual(settings.modalities, ("image",))
+
     def test_conversations_are_paginated_with_stable_cursor(self) -> None:
         conversations = [
             create_conversation(USER_SCOPE, f"Chat {index}")
