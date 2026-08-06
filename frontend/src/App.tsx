@@ -461,6 +461,7 @@ type TraditionalSpeechResult = {
   audio_base64: string;
   audio_mime_type: string;
   duration_ms: number;
+  spoken_transcript?: string | null;
   foundry_request?: { payload?: unknown };
   foundry_response?: { payload?: unknown };
 };
@@ -870,8 +871,6 @@ export default function App() {
   const [traditionalVoiceError, setTraditionalVoiceError] = useState("");
   const [traditionalVoiceResult, setTraditionalVoiceResult] =
     useState<TraditionalVoiceResult | null>(null);
-  const [traditionalAudioUrl, setTraditionalAudioUrl] = useState("");
-  const traditionalAudioUrlRef = useRef("");
   const transcriptionMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const transcriptionMediaStreamRef = useRef<MediaStream | null>(null);
   const transcriptionAudioChunksRef = useRef<Blob[]>([]);
@@ -1244,9 +1243,6 @@ export default function App() {
     () => () => {
       closeRealtimeConnection();
       closeTraditionalRecording();
-      if (traditionalAudioUrlRef.current) {
-        URL.revokeObjectURL(traditionalAudioUrlRef.current);
-      }
       if (transcriptionAudioUrlRef.current) {
         URL.revokeObjectURL(transcriptionAudioUrlRef.current);
       }
@@ -2072,14 +2068,6 @@ export default function App() {
     }
   }
 
-  function replaceTraditionalAudioUrl(url: string) {
-    if (traditionalAudioUrlRef.current) {
-      URL.revokeObjectURL(traditionalAudioUrlRef.current);
-    }
-    traditionalAudioUrlRef.current = url;
-    setTraditionalAudioUrl(url);
-  }
-
   function closeTraditionalRecording() {
     traditionalMediaRecorderRef.current = null;
     traditionalMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -2116,7 +2104,6 @@ export default function App() {
 
     setTraditionalVoiceError("");
     setTraditionalVoiceResult(null);
-    replaceTraditionalAudioUrl("");
     traditionalAudioChunksRef.current = [];
 
     try {
@@ -2222,13 +2209,6 @@ export default function App() {
         response: summarizeTraditionalVoiceResult(result),
       });
 
-      const primarySpeech = result.results.length === 1 ? result.results[0].speech : undefined;
-      const audioUrl = primarySpeech
-        ? URL.createObjectURL(
-            base64ToBlob(primarySpeech.audio_base64, primarySpeech.audio_mime_type),
-          )
-        : "";
-      replaceTraditionalAudioUrl(audioUrl);
       setTraditionalVoiceResult(result);
       setTraditionalVoiceStatus("complete");
       setCurrentConversationId(result.conversation.id);
@@ -2238,9 +2218,6 @@ export default function App() {
         mapStoredMessage(result.user_message),
         ...result.results.map((variant) => mapStoredMessage(variant.assistant_message)),
       ]);
-      if (audioUrl) {
-        void new Audio(audioUrl).play();
-      }
     } catch (error) {
       setTraditionalVoiceStatus("idle");
       setTraditionalVoiceError(
@@ -4357,31 +4334,26 @@ export default function App() {
               onModelChange={replaceComparisonModel}
             />
           ) : activeUseCaseDetails.workspace === "traditionalVoice" ? (
-            <div className="flex-1 overflow-auto p-5">
-              <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center">
-                <TraditionalVoiceHero
-                  configured={config?.is_traditional_voice_configured ?? false}
-                  activeModel={activeModel}
-                  chatModels={textModels}
-                  onChatModelChange={setActiveModel}
-                  transcriptionModels={traditionalTranscriptionModels}
-                  transcriptionModel={traditionalTranscriptionModel}
-                  onTranscriptionModelChange={setTraditionalTranscriptionModel}
-                  ttsModels={ttsModels}
-                  ttsModel={ttsModel}
-                  onTtsModelChange={setTtsModel}
-                  ttsVoice={ttsVoice}
-                  ttsVoices={traditionalTtsVoices}
-                  onTtsVoiceChange={setTtsVoice}
-                  status={traditionalVoiceStatus}
-                  error={traditionalVoiceError}
-                  result={traditionalVoiceResult}
-                  audioUrl={traditionalAudioUrl}
-                  onStart={() => void startTraditionalRecording()}
-                  onStop={stopTraditionalRecording}
-                />
-              </div>
-            </div>
+            <TraditionalVoiceWorkspace
+              configured={config?.is_traditional_voice_configured ?? false}
+              activeModel={activeModel}
+              chatModels={textModels}
+              onChatModelChange={setActiveModel}
+              transcriptionModels={traditionalTranscriptionModels}
+              transcriptionModel={traditionalTranscriptionModel}
+              onTranscriptionModelChange={setTraditionalTranscriptionModel}
+              ttsModels={ttsModels}
+              ttsModel={ttsModel}
+              onTtsModelChange={setTtsModel}
+              ttsVoice={ttsVoice}
+              ttsVoices={traditionalTtsVoices}
+              onTtsVoiceChange={setTtsVoice}
+              status={traditionalVoiceStatus}
+              error={traditionalVoiceError}
+              result={traditionalVoiceResult}
+              onStart={() => void startTraditionalRecording()}
+              onStop={stopTraditionalRecording}
+            />
           ) : activeUseCaseDetails.workspace === "transcribe" ? (
             <TranscriptionWorkspace
               configured={transcriptionModel.toLowerCase().startsWith("mai-transcribe")
@@ -4703,7 +4675,7 @@ function ChatEmptyState({
   );
 }
 
-function TraditionalVoiceHero({
+function TraditionalVoiceWorkspace({
   configured,
   activeModel,
   chatModels,
@@ -4720,7 +4692,6 @@ function TraditionalVoiceHero({
   status,
   error,
   result,
-  audioUrl,
   onStart,
   onStop,
 }: {
@@ -4740,12 +4711,13 @@ function TraditionalVoiceHero({
   status: TraditionalVoiceStatus;
   error: string;
   result: TraditionalVoiceResult | null;
-  audioUrl: string;
   onStart: () => void;
   onStop: () => void;
 }) {
   const isRecording = status === "recording";
   const isProcessing = status === "processing";
+  const playingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const actionLabel = isRecording
     ? "Stop recording"
     : isProcessing
@@ -4753,135 +4725,85 @@ function TraditionalVoiceHero({
       : result
         ? "Record again"
         : "Record voice prompt";
+
+  useEffect(() => () => {
+    playingAudioRef.current?.pause();
+    playingAudioRef.current = null;
+  }, []);
+
+  function playSpeech(messageId: string, audioUrl: string) {
+    if (playingAudioRef.current) {
+      return;
+    }
+    const audio = new Audio(audioUrl);
+    playingAudioRef.current = audio;
+    setPlayingMessageId(messageId);
+    const finish = () => {
+      if (playingAudioRef.current === audio) {
+        playingAudioRef.current = null;
+        setPlayingMessageId(null);
+      }
+    };
+    audio.addEventListener("ended", finish, { once: true });
+    audio.addEventListener("error", finish, { once: true });
+    void audio.play().catch(finish);
+  }
+
   return (
-    <div className="w-full rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
-      <div className="text-center">
-        <DictationHero active={isRecording || isProcessing} />
-        <Badge variant="outline">Traditional pipeline</Badge>
-        <h3 className="mt-3 text-2xl font-semibold tracking-tight">STT - Chat - TTS</h3>
-        <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-          Record audio in the browser, send it to Foundry transcription, ask{" "}
-          <span className="font-medium text-slate-700 dark:text-slate-200">{formatModelName(activeModel)}</span>,
-          then synthesize the answer with Foundry text-to-speech.
-        </p>
-      </div>
-
-      <div className="mt-5 grid gap-2 sm:grid-cols-3">
-        <PipelineModelSelect label="STT" value={transcriptionModel} models={transcriptionModels} onChange={onTranscriptionModelChange} disabled={isRecording || isProcessing} />
-        <PipelineModelSelect label="Chat" value={activeModel} models={chatModels} onChange={onChatModelChange} disabled={isRecording || isProcessing} />
-        <PipelineTtsSelect model={ttsModel} models={ttsModels} onModelChange={onTtsModelChange} voice={ttsVoice} voices={ttsVoices} onVoiceChange={onTtsVoiceChange} disabled={isRecording || isProcessing} />
-      </div>
-
-      <div className="mt-5 flex justify-center">
-        <Button
-          type="button"
-          onClick={isRecording ? onStop : onStart}
-          disabled={!configured || isProcessing || !activeModel || !transcriptionModel || !ttsModel}
-          variant={isRecording ? "destructive" : "default"}
-          className="rounded-full px-5"
-        >
-          {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          {actionLabel}
-        </Button>
-      </div>
-
-      {!configured ? (
-        <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-          Set FOUNDRY_PROJECT_ENDPOINT plus transcription and TTS deployments to enable the
-          server-side voice pipeline.
-        </p>
-      ) : null}
-      {error ? (
-        <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs leading-5 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
-          {error}
-        </p>
-      ) : null}
-      {result ? (
-        <div className="mt-5 grid gap-3 text-left">
-          <VoiceResultBlock label="Transcript" text={result.transcription.text} />
-          <div className={cn("grid gap-3", result.results.length > 1 && "lg:grid-cols-2")}>
+    <div className="flex min-h-0 flex-1 flex-col bg-slate-100/70 dark:bg-[#303033]">
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        {!result ? (
+          <div className="flex min-h-full items-center justify-center">
+            <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
+              <DictationHero active={isRecording || isProcessing} />
+              <h3 className="mt-4 text-2xl font-semibold tracking-tight">Start a voice conversation</h3>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+                Record a prompt, transcribe it with {formatModelName(transcriptionModel)}, ask {formatModelName(activeModel)}, and hear the answer in the {formatModelName(ttsVoice)} voice.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="mx-auto grid max-w-4xl gap-6 py-4">
+            <ChatBubble message={{ ...mapStoredMessage(result.user_message), content: result.transcription.text }} />
             {result.results.map((variant) => {
-              const variantAudioUrl = variant.speech
-                ? `data:${variant.speech.audio_mime_type};base64,${variant.speech.audio_base64}`
-                : "";
+              const audioUrl = variant.speech ? `data:${variant.speech.audio_mime_type};base64,${variant.speech.audio_base64}` : "";
               return (
-                <div
-                  key={variant.assistant_message.id}
-                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-[#606066] dark:bg-[#45454a]"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">
-                      {formatGuardrailLabel(variant)}
-                    </Badge>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {variant.duration_ms ?? 0} ms chat
-                      {variant.speech ? ` · ${variant.speech.duration_ms} ms TTS` : ""}
-                    </span>
+                <div key={variant.assistant_message.id} className="grid gap-2">
+                  <ChatBubble message={mapStoredMessage(variant.assistant_message)} />
+                  <div className="ml-11 flex flex-wrap items-center gap-2">
+                    {audioUrl ? (
+                      <Button type="button" variant="outline" size="sm" className="rounded-full" disabled={playingMessageId !== null} onClick={() => playSpeech(variant.assistant_message.id, audioUrl)}>
+                        <Volume2 className="h-4 w-4" /> {playingMessageId === variant.assistant_message.id ? "Playing..." : "Play TTS"}
+                      </Button>
+                    ) : variant.speech_error ? <p className="text-xs text-red-600 dark:text-red-300">{variant.speech_error}</p> : null}
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{variant.duration_ms ?? 0} ms chat{variant.speech ? ` · ${variant.speech.duration_ms} ms TTS` : ""}</span>
                   </div>
-                  <p className="whitespace-pre-wrap text-sm leading-6 text-slate-800 dark:text-slate-100">
-                    {variant.error ?? variant.content}
-                  </p>
-                  {variantAudioUrl ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="justify-self-start"
-                      onClick={() => void new Audio(variantAudioUrl).play()}
-                    >
-                      <Volume2 className="h-4 w-4" />
-                      Play TTS
-                    </Button>
-                  ) : variant.speech_error ? (
-                    <p className="text-xs text-red-600 dark:text-red-300">{variant.speech_error}</p>
+                  {variant.speech?.spoken_transcript && variant.speech.spoken_transcript !== variant.content ? (
+                    <p className="ml-11 text-xs text-amber-700 dark:text-amber-300">Spoken transcript: {variant.speech.spoken_transcript}</p>
                   ) : null}
                 </div>
               );
             })}
           </div>
-          {result.results.length === 1 && audioUrl ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => void new Audio(audioUrl).play()}>
-              <Volume2 className="h-4 w-4" />
-              Replay TTS
+        )}
+      </div>
+
+      <div className="border-t bg-slate-50 px-4 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
+        <div className="palette-focus mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_4px_rgba(15,23,42,0.16)] dark:border-[#606066] dark:bg-[#2f2f33] dark:shadow-none">
+          <div className="flex flex-wrap items-center gap-2">
+            <ComposerSelect id="voice-stt" ariaLabel="STT model" value={transcriptionModel} onChange={onTranscriptionModelChange} options={transcriptionModels.map((model) => ({ value: model, label: `STT · ${formatModelName(model)}` }))} disabled={isRecording || isProcessing} />
+            <ComposerSelect id="voice-chat" ariaLabel="Chat model" value={activeModel} onChange={onChatModelChange} options={chatModels.map((model) => ({ value: model, label: `Chat · ${formatModelName(model)}` }))} disabled={isRecording || isProcessing} />
+            <ComposerSelect id="voice-tts" ariaLabel="TTS model" value={ttsModel} onChange={onTtsModelChange} options={ttsModels.map((model) => ({ value: model, label: `TTS · ${formatModelName(model)}` }))} disabled={isRecording || isProcessing} />
+            <ComposerSelect id="voice-name" ariaLabel="TTS voice" value={ttsVoice} onChange={onTtsVoiceChange} options={ttsVoices.map((voice) => ({ value: voice, label: `Voice · ${formatModelName(voice)}` }))} disabled={isRecording || isProcessing} />
+            <Button type="button" onClick={isRecording ? onStop : onStart} disabled={!configured || isProcessing || !activeModel || !transcriptionModel || !ttsModel} variant={isRecording ? "destructive" : "default"} className="ml-auto rounded-full px-5">
+              {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />} {actionLabel}
             </Button>
-          ) : null}
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Shared transcription: {result.transcription.duration_ms} ms
-          </p>
+          </div>
+          {!configured ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Configure Foundry STT and TTS deployments to enable recording.</p> : null}
+          {error ? <p className="mt-2 text-xs text-red-600 dark:text-red-300">{error}</p> : null}
         </div>
-      ) : null}
-    </div>
-  );
-}
-
-function PipelineModelSelect({ label, value, models, onChange, disabled, suffix = "" }: { label: string; value: string; models: string[]; onChange: (model: string) => void; disabled: boolean; suffix?: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-[#606066] dark:bg-[#45454a]">
-      <Label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</Label>
-      <Select value={value} onValueChange={onChange} disabled={disabled || models.length === 0}>
-        <SelectTrigger className="mt-1 h-8 border-0 bg-transparent px-0 text-sm font-medium shadow-none focus:ring-0 dark:bg-transparent">
-          <SelectValue placeholder={`No ${label} deployments`} />
-        </SelectTrigger>
-        <SelectContent>
-          {models.map((model) => <SelectItem key={model} value={model}>{model}{suffix}</SelectItem>)}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-function PipelineTtsSelect({ model, models, onModelChange, voice, voices, onVoiceChange, disabled }: { model: string; models: string[]; onModelChange: (model: string) => void; voice: string; voices: string[]; onVoiceChange: (voice: string) => void; disabled: boolean }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-[#606066] dark:bg-[#45454a]">
-      <Label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">TTS</Label>
-      <Select value={model} onValueChange={onModelChange} disabled={disabled || models.length === 0}>
-        <SelectTrigger className="mt-1 h-8 border-0 bg-transparent px-0 text-sm font-medium shadow-none focus:ring-0 dark:bg-transparent"><SelectValue placeholder="No TTS deployments" /></SelectTrigger>
-        <SelectContent>{models.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
-      </Select>
-      <Select value={voice} onValueChange={onVoiceChange} disabled={disabled}>
-        <SelectTrigger className="mt-1 h-7 border-0 bg-transparent px-0 text-xs text-slate-500 shadow-none focus:ring-0 dark:bg-transparent dark:text-slate-300"><SelectValue /></SelectTrigger>
-        <SelectContent>{voices.map((item) => <SelectItem key={item} value={item}>{formatModelName(item)}</SelectItem>)}</SelectContent>
-      </Select>
+        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">AI-generated content may be incorrect</p>
+      </div>
     </div>
   );
 }
@@ -4897,19 +4819,6 @@ function SidebarPipelineSelect({ label, value, models, onChange, disabled }: { l
           {models.map((model) => <SelectItem key={model} value={model}>{formatModelName(model)}</SelectItem>)}
         </SelectContent>
       </Select>
-    </div>
-  );
-}
-
-function VoiceResultBlock({ label, text }: { label: string; text: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-[#606066] dark:bg-[#45454a]">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        {label}
-      </div>
-      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800 dark:text-slate-100">
-        {text}
-      </p>
     </div>
   );
 }
@@ -6747,6 +6656,7 @@ function ComposerSelect({
   options,
   onChange,
   title,
+  disabled = false,
 }: {
   id: string;
   ariaLabel: string;
@@ -6754,9 +6664,10 @@ function ComposerSelect({
   options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
   title?: string;
+  disabled?: boolean;
 }) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger id={id} aria-label={ariaLabel} title={title} className="composer-select h-8 w-auto max-w-[13rem] rounded-full py-0">
         <SelectValue />
       </SelectTrigger>
@@ -8140,15 +8051,6 @@ function redactTracePayload(value: unknown): unknown {
     return `[redacted ${value.length} characters]`;
   }
   return value;
-}
-
-function base64ToBlob(base64: string, mimeType: string) {
-  const binary = window.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return new Blob([bytes], { type: mimeType });
 }
 
 async function convertAudioToWav(source: Blob) {
