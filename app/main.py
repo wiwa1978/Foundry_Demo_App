@@ -61,7 +61,7 @@ from app.foundry_client import (
     stream_chat,
     synthesize_speech,
     transcribe_audio,
-    transcribe_llm_speech_audio,
+    transcribe_speech_audio,
 )
 from app.model_settings import (
     DEPLOYMENT_DEFAULT_GUARDRAIL,
@@ -970,7 +970,7 @@ async def post_transcription(
             raise ValueError("Transcription model deployment name cannot be blank.")
         if selected_model.lower() == load_settings().speech_transcription_model.lower():
             result = await _run_model_call(
-                transcribe_llm_speech_audio,
+                transcribe_speech_audio,
                 audio=audio_bytes,
                 language=language.strip() or "en-US",
                 model=selected_model,
