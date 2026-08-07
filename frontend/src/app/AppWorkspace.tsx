@@ -1,13 +1,4 @@
-import {
-  GitCompareArrows,
-  HelpCircle,
-  Infinity as InfinityIcon,
-  LogIn,
-  Mic,
-  MicOff,
-  Plus,
-  Settings,
-} from "lucide-react";
+import { GitCompareArrows, HelpCircle, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { loginUrl } from "@/api/auth";
@@ -20,10 +11,8 @@ import type { UseCaseId } from "@/app/types";
 import { useCaseModules } from "@/app/useCaseRegistry";
 import { AdminDeploymentModal } from "@/app/workspace/AdminDeploymentModal";
 import { ApiTraceDrawer } from "@/app/workspace/ApiTraceDrawer";
-import { AppSettingsPage } from "@/app/workspace/AppSettingsPage";
 import {
   deploymentDefaultGuardrail,
-  reasoningEffortOptions,
   traditionalTtsVoices,
 } from "@/app/workspace/constants";
 import type { ViewMode } from "@/app/workspace/contracts";
@@ -34,37 +23,25 @@ import {
   createUserMessage,
   mapStoredMessage,
 } from "@/app/workspace/messageUtils";
-import { ModelMetricsDashboard } from "@/app/workspace/ModelMetricsDashboard";
-import { ModelSettingsPage } from "@/app/workspace/ModelSettingsPage";
 import { useApiTrace } from "@/app/workspace/useApiTrace";
 import { useWorkspaceAppearance } from "@/app/workspace/useWorkspaceAppearance";
-import { WorkspaceHeader } from "@/app/workspace/WorkspaceHeader";
 import {
-  ChatEmptyState,
-  ComposerSelect,
-  UseCaseComposer,
-} from "@/app/workspace/WorkspacePrimitives";
+  WorkspaceContentRouter,
+  type WorkspaceContentRouterProps,
+} from "@/app/workspace/WorkspaceContentRouter";
+import { WorkspaceHeader } from "@/app/workspace/WorkspaceHeader";
 import { WorkspaceSidebar } from "@/app/workspace/WorkspaceSidebar";
-import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { useAdminDeployment } from "@/features/admin/useAdminDeployment";
 import { compareModels, comparisonEndpoint } from "@/features/comparison/api";
-import { ComparisonWorkspace } from "@/features/comparison/ComparisonWorkspace";
 import { documentAnswerStreamEndpoint } from "@/features/documentQa/api";
 import { useDocumentLibrary } from "@/features/documentQa/useDocumentLibrary";
-import { GuardrailComparisonWorkspace } from "@/features/guardrails/GuardrailWorkspaces";
 import { useGuardrailComparison } from "@/features/guardrails/useGuardrailComparison";
-import {
-  ImageComparisonWorkspace,
-  ImageToImageWorkspace,
-  TextToImageWorkspace,
-} from "@/features/images/ImageWorkspaces";
 import { useImageWorkspace } from "@/features/images/useImageWorkspace";
 import { UseCaseMarketplace } from "@/features/marketplace/UseCaseMarketplace";
 import { useModelMetrics } from "@/features/metrics/useModelMetrics";
 import { useModelCatalog } from "@/features/models/useModelCatalog";
 import { useModelSettingsController } from "@/features/models/useModelSettingsController";
-import { ChatMessageHistory } from "@/features/textChat/ChatMessages";
 import type {
   ChatMessage,
   Conversation,
@@ -81,13 +58,6 @@ import { useRealtimeVoice } from "@/features/voice/useRealtimeVoice";
 import { useTraditionalVoiceSession } from "@/features/voice/useTraditionalVoiceSession";
 import { useTranscriptionSession } from "@/features/voice/useTranscriptionSession";
 import { useVoiceLive } from "@/features/voice/useVoiceLive";
-import {
-  LiveTranslationHero,
-  RealtimeVoiceHero,
-  TraditionalVoiceWorkspace,
-  TranscriptionWorkspace,
-  VoiceLiveHero,
-} from "@/features/voice/VoiceWorkspaces";
 import { cn } from "@/lib/utils";
 
 import { useAppBootstrap } from "./useAppBootstrap";
@@ -225,14 +195,7 @@ export default function AppWorkspace() {
     setActiveModel,
     setPrompt,
   });
-  const {
-    error: traditionalVoiceError,
-    invalidate: invalidateTraditionalVoiceSession,
-    result: traditionalVoiceResult,
-    start: startTraditionalVoiceSession,
-    status: traditionalVoiceStatus,
-    stop: stopTraditionalRecording,
-  } = useTraditionalVoiceSession({
+  const traditionalVoice = useTraditionalVoiceSession({
     fetchClient: apiTrace.tracedFetch,
     sessionRef: useCaseSessionRef,
     appendApiTrace: apiTrace.append,
@@ -251,54 +214,19 @@ export default function AppWorkspace() {
       ]);
     },
   });
-  const {
-    audioUrl: transcriptionAudioUrl,
-    error: transcriptionError,
-    inputRef: transcriptionFileInputRef,
-    invalidate: invalidateTranscriptionSession,
-    language: transcriptionLanguage,
-    result: transcriptionResult,
-    selectFile: selectTranscriptionFile,
-    setLanguage: setTranscriptionLanguage,
-    sourceName: transcriptionSourceName,
-    start: startTranscriptionRecording,
-    status: transcriptionStatus,
-    stop: stopTranscriptionRecording,
-  } = useTranscriptionSession({
+  const transcription = useTranscriptionSession({
     fetchClient: apiTrace.tracedFetch,
     model: transcriptionModel,
   });
-  const {
-    status: realtimeStatus,
-    error: realtimeError,
-    transcript: realtimeTranscript,
-    sessionModel: realtimeSessionModel,
-    guardrailStatus: realtimeGuardrailStatus,
-    start: startRealtimeSession,
-    stop: stopRealtimeSession,
-  } = useRealtimeVoice({
+  const realtime = useRealtimeVoice({
     fetchClient: apiTrace.tracedFetch,
     model: config?.realtime_model ?? "gpt-realtime-2.1",
   });
-  const {
-    status: voiceLiveStatus,
-    error: voiceLiveError,
-    transcript: voiceLiveTranscript,
-    start: startVoiceLiveSession,
-    stop: stopVoiceLiveSession,
-  } = useVoiceLive({
+  const voiceLive = useVoiceLive({
     model: config?.voice_live_model ?? "gpt-realtime",
     voice: config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural",
   });
-  const {
-    status: liveTranslationStatus,
-    error: liveTranslationError,
-    targetLanguage: liveTranslationTarget,
-    transcript: liveTranslationTranscript,
-    setTargetLanguage: setLiveTranslationTarget,
-    start: startLiveTranslationSession,
-    stop: stopLiveTranslationSession,
-  } = useLiveTranslation();
+  const liveTranslation = useLiveTranslation();
   const chatStream = useChatStream({
     fetchClient: apiTrace.tracedFetch,
     sessionRef: useCaseSessionRef,
@@ -404,24 +332,24 @@ export default function AppWorkspace() {
     }
     if (
       nextUseCase.workspace !== "realtimeVoice" &&
-      realtimeStatus !== "idle"
+      realtime.status !== "idle"
     ) {
-      stopRealtimeSession();
+      realtime.stop();
     }
-    if (nextUseCase.workspace !== "voiceLive" && voiceLiveStatus !== "idle") {
-      stopVoiceLiveSession();
+    if (nextUseCase.workspace !== "voiceLive" && voiceLive.status !== "idle") {
+      voiceLive.stop();
     }
     if (
       nextUseCase.workspace !== "liveTranslation" &&
-      liveTranslationStatus !== "idle"
+      liveTranslation.status !== "idle"
     ) {
-      stopLiveTranslationSession();
+      liveTranslation.stop();
     }
     if (nextUseCase.workspace !== "traditionalVoice") {
-      invalidateTraditionalVoiceSession();
+      traditionalVoice.invalidate();
     }
     if (nextUseCase.workspace !== "transcribe") {
-      invalidateTranscriptionSession();
+      transcription.invalidate();
     }
   }
 
@@ -606,6 +534,176 @@ export default function AppWorkspace() {
           )
         : Boolean(activeModel));
   const authDisplayName = auth?.name || auth?.email || "Signed in";
+  const contentRouterProps: WorkspaceContentRouterProps = {
+    route: {
+      view: activeView,
+      workspace: activeUseCaseDetails.workspace,
+      useCase: activeUseCase,
+      enableComposerDictation:
+        activeUseCaseDetails.enableComposerDictation === true,
+    },
+    access: {
+      locked: workspaceLocked,
+      checking: auth === null,
+      canUseProtectedApis,
+      onSignIn: () => window.location.assign(loginUrl),
+    },
+    metrics: {
+      ...metricsController,
+      models,
+    },
+    settings: {
+      app: {
+        models,
+        modelModalities,
+        newModel,
+        message: modelEndpointMessage,
+        colorPalette: appearance.colorPalette,
+        canManageModels: canUseProtectedApis,
+        onNewModelChange: setNewModel,
+        onAddModel: () => void addModel(),
+        onOpenAdmin: () => void adminDeployment.open(),
+        onSaveCapabilities: modelSettingsController.saveModelCapabilities,
+        onColorPaletteChange: appearance.setColorPalette,
+      },
+      model: {
+        ...modelSettingsController,
+        onClose: () => {
+          modelSettingsController.close();
+          setActiveView("chat");
+        },
+      },
+    },
+    images: {
+      ...imageWorkspace,
+      onOpenSettings: (model) => void modelSettingsController.open(model),
+    },
+    comparison: {
+      allModels: textModels,
+      models: selected,
+      messages,
+      prompt,
+      isRunning,
+      canSubmit,
+      onPromptChange: setPrompt,
+      onSubmit: () => void runComparison(),
+      onToggleDictation: toggleDictation,
+      onOpenSettings: (model) => void modelSettingsController.open(model),
+      onModelChange: replaceComparisonModel,
+    },
+    traditionalVoice: {
+      configured: config?.is_traditional_voice_configured ?? false,
+      activeModel,
+      chatModels: textModels,
+      transcriptionModels: traditionalTranscriptionModels,
+      transcriptionModel: traditionalTranscriptionModel,
+      ttsModels,
+      ttsModel,
+      ttsVoice,
+      ttsVoices: traditionalTtsVoices,
+      status: traditionalVoice.status,
+      error: traditionalVoice.error,
+      result: traditionalVoice.result,
+      request: {
+        models: textModels,
+        prompt,
+        activeModel,
+        conversation:
+          conversations.find(
+            (conversation) => conversation.id === currentConversationId,
+          ) ?? null,
+        conversationId: currentConversationId,
+        useCase: activeUseCase,
+        reasoningEffort,
+        guardrails: {
+          comparisonEnabled: guardrailComparison.enabled,
+          policies: guardrailComparison.activePolicies,
+        },
+        transcriptionModel: traditionalTranscriptionModel,
+        tts: { model: ttsModel, voice: ttsVoice },
+      },
+      onChatModelChange: setActiveModel,
+      onTranscriptionModelChange: setTraditionalTranscriptionModel,
+      onTtsModelChange: setTtsModel,
+      onTtsVoiceChange: setTtsVoice,
+      onStart: (request) => void traditionalVoice.start(request),
+      onStop: traditionalVoice.stop,
+    },
+    transcription: {
+      configured: transcriptionModel.toLowerCase().startsWith("mai-transcribe")
+        ? (config?.is_speech_transcription_configured ?? false)
+        : (config?.is_configured ?? false),
+      model: transcriptionModel,
+      status: transcription.status,
+      error: transcription.error,
+      result: transcription.result,
+      language: transcription.language,
+      sourceName: transcription.sourceName,
+      audioUrl: transcription.audioUrl,
+      fileInputRef: transcription.inputRef,
+      onLanguageChange: transcription.setLanguage,
+      onStart: () => void transcription.start(),
+      onStop: transcription.stop,
+      onFileSelected: (file) => void transcription.selectFile(file),
+    },
+    realtime: {
+      session: {
+        configured: config?.is_realtime_configured ?? false,
+        model:
+          realtime.sessionModel ?? config?.realtime_model ?? "gpt-realtime-2.1",
+        status: realtime.status,
+        error: realtime.error,
+        guardrailStatus: realtime.guardrailStatus,
+        transcript: realtime.transcript,
+        onStart: () => void realtime.start(),
+        onStop: realtime.stop,
+      },
+      voiceLive: {
+        configured: config?.is_voice_live_configured ?? false,
+        model: config?.voice_live_model ?? "gpt-realtime",
+        voice: config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural",
+        status: voiceLive.status,
+        error: voiceLive.error,
+        transcript: voiceLive.transcript,
+        onStart: () => void voiceLive.start(),
+        onStop: voiceLive.stop,
+      },
+      liveTranslation: {
+        configured: config?.is_live_interpreter_configured ?? false,
+        status: liveTranslation.status,
+        error: liveTranslation.error,
+        targetLanguage: liveTranslation.targetLanguage,
+        transcript: liveTranslation.transcript,
+        onTargetLanguageChange: liveTranslation.setTargetLanguage,
+        onStart: () => void liveTranslation.start(),
+        onStop: liveTranslation.stop,
+      },
+    },
+    guardrails: {
+      enabled: guardrailComparison.enabled,
+      policyNames: guardrailComparison.activePolicies,
+      deploymentPolicyName: guardrailComparison.deploymentPolicy?.policy_name,
+    },
+    chat: {
+      activeModel,
+      models: textModels,
+      messages,
+      prompt,
+      isRunning,
+      canSubmit,
+      isListening,
+      speechRecognitionSupported,
+      reasoningEffort,
+      onPromptChange: setPrompt,
+      onSubmit: () => void runChat(),
+      onDocumentSubmit: () => void runDocumentChat(),
+      onOpenSettings: (model) => void modelSettingsController.open(model),
+      onActiveModelChange: setActiveModel,
+      onToggleDictation: toggleDictation,
+      onReasoningEffortChange: setReasoningEffort,
+      onOpenUseCases: () => setUseCaseMarketplaceOpen(true),
+    },
+  };
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-[#303033] dark:text-slate-50">
       <WorkspaceHeader
@@ -635,10 +733,10 @@ export default function AppWorkspace() {
         activity={{
           useCaseName: activeUseCaseDetails.shortTitle,
           status:
-            realtimeStatus !== "idle"
+            realtime.status !== "idle"
               ? "Live"
-              : traditionalVoiceStatus === "recording" ||
-                  transcriptionStatus === "recording"
+              : traditionalVoice.status === "recording" ||
+                  transcription.status === "recording"
                 ? "Recording"
                 : null,
         }}
@@ -733,7 +831,7 @@ export default function AppWorkspace() {
               onToggle: guardrailComparison.toggle,
             }}
             voice={{
-              status: traditionalVoiceStatus,
+              status: traditionalVoice.status,
               traditionalTranscriptionModels,
               traditionalTranscriptionModel,
               ttsModels,
@@ -843,390 +941,7 @@ export default function AppWorkspace() {
             </div>
           ) : null}
 
-          {workspaceLocked ? (
-            <div className="flex flex-1 items-center justify-center p-6">
-              <div className="max-w-md text-center">
-                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 dark:bg-violet-500/15 dark:text-violet-200">
-                  <LogIn className="h-7 w-7" />
-                </div>
-                <h2 className="text-2xl font-semibold">
-                  {auth === null
-                    ? "Checking access..."
-                    : "Sign in to Foundry Demo"}
-                </h2>
-                <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  {auth === null
-                    ? "Confirming your Microsoft account session."
-                    : "Use your Microsoft account to access chat, voice, document, and model comparison demos."}
-                </p>
-                {auth !== null ? (
-                  <Button
-                    type="button"
-                    className="mt-6"
-                    onClick={() => window.location.assign(loginUrl)}
-                  >
-                    <LogIn className="h-4 w-4" />
-                    Sign in with Microsoft
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          ) : activeView === "metrics" ? (
-            <ModelMetricsDashboard
-              models={models}
-              metrics={metricsController.metrics}
-              selectedModel={metricsController.model}
-              days={metricsController.days}
-              loading={metricsController.loading}
-              error={metricsController.error}
-              onModelChange={metricsController.setModel}
-              onDaysChange={metricsController.setDays}
-              onRefresh={() => void metricsController.refresh()}
-            />
-          ) : activeView === "settings" ? (
-            <AppSettingsPage
-              models={models}
-              modelModalities={modelModalities}
-              newModel={newModel}
-              message={modelEndpointMessage}
-              colorPalette={appearance.colorPalette}
-              canManageModels={canUseProtectedApis}
-              onNewModelChange={setNewModel}
-              onAddModel={() => void addModel()}
-              onOpenAdmin={() => void adminDeployment.open()}
-              onSaveCapabilities={modelSettingsController.saveModelCapabilities}
-              onColorPaletteChange={appearance.setColorPalette}
-            />
-          ) : activeView === "model-settings" &&
-            modelSettingsController.settingsModel ? (
-            <ModelSettingsPage
-              model={modelSettingsController.settingsModel}
-              draft={modelSettingsController.draft}
-              saving={modelSettingsController.saving}
-              policies={modelSettingsController.policies}
-              deploymentPolicy={modelSettingsController.deploymentPolicy}
-              policiesLoading={modelSettingsController.policiesLoading}
-              error={modelSettingsController.error}
-              onClose={() => {
-                modelSettingsController.close();
-                setActiveView("chat");
-              }}
-              onSave={() => void modelSettingsController.save()}
-              onReset={modelSettingsController.resetDraft}
-              onChange={modelSettingsController.changeDraft}
-            />
-          ) : activeUseCaseDetails.workspace === "image" ? (
-            <TextToImageWorkspace
-              model={imageWorkspace.model}
-              models={imageWorkspace.models}
-              prompt={imageWorkspace.prompt}
-              size={imageWorkspace.size}
-              result={imageWorkspace.result}
-              generating={imageWorkspace.generating}
-              error={imageWorkspace.error}
-              onPromptChange={imageWorkspace.setPrompt}
-              onSizeChange={imageWorkspace.setSize}
-              onModelChange={imageWorkspace.setModel}
-              onGenerate={() => void imageWorkspace.runGeneration()}
-            />
-          ) : activeUseCaseDetails.workspace === "imageEdit" ? (
-            <ImageToImageWorkspace
-              model={imageWorkspace.model}
-              models={imageWorkspace.editModels}
-              prompt={imageWorkspace.prompt}
-              size={imageWorkspace.size}
-              source={imageWorkspace.editSource}
-              result={imageWorkspace.editResult}
-              generating={imageWorkspace.editGenerating}
-              error={imageWorkspace.editError}
-              onPromptChange={imageWorkspace.setPrompt}
-              onSizeChange={imageWorkspace.setSize}
-              onSourceChange={imageWorkspace.setEditSource}
-              onModelChange={imageWorkspace.setModel}
-              onGenerate={() => void imageWorkspace.runEdit()}
-            />
-          ) : activeUseCaseDetails.workspace === "imageComparison" ? (
-            <ImageComparisonWorkspace
-              allModels={imageWorkspace.models}
-              models={imageWorkspace.selected}
-              prompt={imageWorkspace.prompt}
-              size={imageWorkspace.size}
-              results={imageWorkspace.comparisonResults}
-              errors={imageWorkspace.comparisonErrors}
-              generating={imageWorkspace.comparisonGenerating}
-              onPromptChange={imageWorkspace.setPrompt}
-              onSizeChange={imageWorkspace.setSize}
-              onGenerate={() => void imageWorkspace.runComparison()}
-              onOpenSettings={(model) =>
-                void modelSettingsController.open(model)
-              }
-              onModelChange={imageWorkspace.replaceComparisonModel}
-            />
-          ) : activeUseCaseDetails.workspace === "comparison" ? (
-            <ComparisonWorkspace
-              allModels={textModels}
-              models={selected}
-              messages={messages}
-              prompt={prompt}
-              isRunning={isRunning}
-              canSubmit={canSubmit}
-              speechRecognitionSupported={false}
-              isListening={false}
-              onPromptChange={setPrompt}
-              onSubmit={() => void runComparison()}
-              onToggleDictation={toggleDictation}
-              onOpenSettings={(model) =>
-                void modelSettingsController.open(model)
-              }
-              onModelChange={replaceComparisonModel}
-            />
-          ) : activeUseCaseDetails.workspace === "traditionalVoice" ? (
-            <TraditionalVoiceWorkspace
-              configured={config?.is_traditional_voice_configured ?? false}
-              activeModel={activeModel}
-              chatModels={textModels}
-              onChatModelChange={setActiveModel}
-              transcriptionModels={traditionalTranscriptionModels}
-              transcriptionModel={traditionalTranscriptionModel}
-              onTranscriptionModelChange={setTraditionalTranscriptionModel}
-              ttsModels={ttsModels}
-              ttsModel={ttsModel}
-              onTtsModelChange={setTtsModel}
-              ttsVoice={ttsVoice}
-              ttsVoices={traditionalTtsVoices}
-              onTtsVoiceChange={setTtsVoice}
-              status={traditionalVoiceStatus}
-              error={traditionalVoiceError}
-              result={traditionalVoiceResult}
-              onStart={() =>
-                void startTraditionalVoiceSession({
-                  models: textModels,
-                  prompt,
-                  activeModel,
-                  conversation:
-                    conversations.find(
-                      (conversation) =>
-                        conversation.id === currentConversationId,
-                    ) ?? null,
-                  conversationId: currentConversationId,
-                  useCase: activeUseCase,
-                  reasoningEffort,
-                  guardrails: {
-                    comparisonEnabled: guardrailComparison.enabled,
-                    policies: guardrailComparison.activePolicies,
-                  },
-                  transcriptionModel: traditionalTranscriptionModel,
-                  tts: { model: ttsModel, voice: ttsVoice },
-                })
-              }
-              onStop={stopTraditionalRecording}
-            />
-          ) : activeUseCaseDetails.workspace === "transcribe" ? (
-            <TranscriptionWorkspace
-              configured={
-                transcriptionModel.toLowerCase().startsWith("mai-transcribe")
-                  ? (config?.is_speech_transcription_configured ?? false)
-                  : (config?.is_configured ?? false)
-              }
-              model={transcriptionModel}
-              status={transcriptionStatus}
-              error={transcriptionError}
-              result={transcriptionResult}
-              language={transcriptionLanguage}
-              sourceName={transcriptionSourceName}
-              audioUrl={transcriptionAudioUrl}
-              fileInputRef={transcriptionFileInputRef}
-              onLanguageChange={setTranscriptionLanguage}
-              onStart={() => void startTranscriptionRecording()}
-              onStop={stopTranscriptionRecording}
-              onFileSelected={(file) => void selectTranscriptionFile(file)}
-            />
-          ) : activeUseCaseDetails.workspace === "realtimeVoice" ? (
-            <div className="flex-1 overflow-auto p-5">
-              <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center">
-                <RealtimeVoiceHero
-                  configured={config?.is_realtime_configured ?? false}
-                  model={
-                    realtimeSessionModel ??
-                    config?.realtime_model ??
-                    "gpt-realtime-2.1"
-                  }
-                  status={realtimeStatus}
-                  error={realtimeError}
-                  guardrailStatus={realtimeGuardrailStatus}
-                  transcript={realtimeTranscript}
-                  onStart={() => void startRealtimeSession()}
-                  onStop={stopRealtimeSession}
-                />
-              </div>
-            </div>
-          ) : activeUseCaseDetails.workspace === "voiceLive" ? (
-            <div className="flex-1 overflow-auto p-5">
-              <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center">
-                <VoiceLiveHero
-                  configured={config?.is_voice_live_configured ?? false}
-                  model={config?.voice_live_model ?? "gpt-realtime"}
-                  voice={
-                    config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural"
-                  }
-                  status={voiceLiveStatus}
-                  error={voiceLiveError}
-                  transcript={voiceLiveTranscript}
-                  onStart={() => void startVoiceLiveSession()}
-                  onStop={stopVoiceLiveSession}
-                />
-              </div>
-            </div>
-          ) : activeUseCaseDetails.workspace === "liveTranslation" ? (
-            <div className="flex-1 overflow-auto p-5">
-              <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center">
-                <LiveTranslationHero
-                  configured={config?.is_live_interpreter_configured ?? false}
-                  status={liveTranslationStatus}
-                  error={liveTranslationError}
-                  targetLanguage={liveTranslationTarget}
-                  transcript={liveTranslationTranscript}
-                  onTargetLanguageChange={setLiveTranslationTarget}
-                  onStart={() => void startLiveTranslationSession()}
-                  onStop={stopLiveTranslationSession}
-                />
-              </div>
-            </div>
-          ) : guardrailComparison.enabled &&
-            activeUseCaseDetails.workspace === "chat" ? (
-            <GuardrailComparisonWorkspace
-              model={activeModel}
-              policyNames={guardrailComparison.activePolicies}
-              deploymentPolicyName={
-                guardrailComparison.deploymentPolicy?.policy_name
-              }
-              messages={messages}
-              prompt={prompt}
-              isRunning={isRunning}
-              canSubmit={canSubmit}
-              onPromptChange={setPrompt}
-              onSubmit={() =>
-                activeUseCase === "document_qa"
-                  ? void runDocumentChat()
-                  : void runChat()
-              }
-              onOpenSettings={() =>
-                void modelSettingsController.open(activeModel)
-              }
-            />
-          ) : (
-            <>
-              <div className="flex-1 overflow-auto p-5">
-                {messages.length ? (
-                  <div className="mx-auto grid max-w-5xl gap-4">
-                    <ChatMessageHistory messages={messages} />
-                  </div>
-                ) : (
-                  <div className="flex h-full items-center justify-center">
-                    <ChatEmptyState
-                      useCase={activeUseCase}
-                      activeModel={activeModel}
-                      onOpenUseCases={() => setUseCaseMarketplaceOpen(true)}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <UseCaseComposer
-                ariaLabel="Chat prompt"
-                placeholder="Ask anything..."
-                value={prompt}
-                disabled={!canSubmit}
-                submitting={isRunning}
-                disclaimer="AI-generated content may be incorrect"
-                onChange={setPrompt}
-                onSubmit={() => {
-                  if (activeUseCase === "document_qa") {
-                    void runDocumentChat();
-                  } else {
-                    void runChat();
-                  }
-                }}
-                leftControls={
-                  <>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      disabled={!activeModel || !canUseProtectedApis}
-                      onClick={() =>
-                        void modelSettingsController.open(activeModel)
-                      }
-                      title="Open active model settings"
-                      className="h-8 w-8 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-300 dark:hover:bg-[#3b3b40] dark:hover:text-slate-100"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                    <ComposerSelect
-                      id="composer-model"
-                      ariaLabel="Composer model"
-                      value={activeModel}
-                      onChange={setActiveModel}
-                      options={textModels.map((model) => ({
-                        value: model,
-                        label: formatModelName(model),
-                      }))}
-                    />
-                    {activeUseCase === "document_qa" ? (
-                      <span className="rounded-full px-2 py-1 text-sm text-slate-700 dark:text-slate-200">
-                        Document RAG
-                      </span>
-                    ) : null}
-                  </>
-                }
-                rightControls={
-                  <>
-                    {activeUseCaseDetails.enableComposerDictation ? (
-                      <>
-                        <InfinityIcon
-                          className="h-4 w-4 text-slate-500 dark:text-slate-400"
-                          aria-hidden="true"
-                        />
-                        <Button
-                          type="button"
-                          variant={isListening ? "destructive" : "ghost"}
-                          size="icon"
-                          disabled={!speechRecognitionSupported}
-                          onClick={toggleDictation}
-                          title={
-                            isListening
-                              ? "Stop browser dictation"
-                              : "Start browser dictation (speech-to-text into the prompt)"
-                          }
-                          className={cn(
-                            "h-8 w-8 rounded-full",
-                            !isListening &&
-                              "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-300 dark:hover:bg-[#3b3b40] dark:hover:text-slate-100",
-                          )}
-                        >
-                          {isListening ? (
-                            <MicOff className="h-4 w-4" />
-                          ) : (
-                            <Mic className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </>
-                    ) : null}
-                    <ComposerSelect
-                      id="composer-reasoning"
-                      ariaLabel="Reasoning level"
-                      value={reasoningEffort}
-                      onChange={(value) =>
-                        setReasoningEffort(value as ReasoningEffort)
-                      }
-                      options={reasoningEffortOptions}
-                      title="Reasoning effort is sent to Responses API reasoning-capable deployments."
-                    />
-                  </>
-                }
-              />
-            </>
-          )}
+          <WorkspaceContentRouter {...contentRouterProps} />
         </section>
       </div>
 
