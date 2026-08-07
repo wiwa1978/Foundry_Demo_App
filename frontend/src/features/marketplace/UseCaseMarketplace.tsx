@@ -1,11 +1,22 @@
+import {
+  AudioLines,
+  Bot,
+  FileText,
+  GitCompareArrows,
+  Image,
+  Mic,
+  Sparkles,
+  Type,
+  Video,
+  X,
+} from "lucide-react";
 import { useState } from "react";
-import { AudioLines, Bot, FileText, GitCompareArrows, Image, Mic, Sparkles, Type, Video, X } from "lucide-react";
 
 import type { UseCaseId, UseCaseModality, UseCaseModule } from "@/app/types";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { SoundWaveIcon } from "@/features/shared/SoundWaveIcon";
 import { useModalDialog } from "@/hooks/useModalDialog";
+import { cn } from "@/lib/utils";
 
 type UseCaseMarketplaceProps = {
   activeUseCase: UseCaseId;
@@ -14,7 +25,11 @@ type UseCaseMarketplaceProps = {
   onClose: () => void;
 };
 
-const modalityOptions: { value: UseCaseModality; label: string; icon: typeof Type }[] = [
+const modalityOptions: {
+  value: UseCaseModality;
+  label: string;
+  icon: typeof Type;
+}[] = [
   { value: "text", label: "Text", icon: Type },
   { value: "image", label: "Image", icon: Image },
   { value: "audio", label: "Audio", icon: AudioLines },
@@ -28,10 +43,14 @@ export function UseCaseMarketplace({
   onClose,
 }: UseCaseMarketplaceProps) {
   const dialogRef = useModalDialog<HTMLDivElement>(onClose);
-  const [selectedModalities, setSelectedModalities] = useState<UseCaseModality[]>([]);
+  const [selectedModalities, setSelectedModalities] = useState<
+    UseCaseModality[]
+  >([]);
   const filteredUseCases = selectedModalities.length
     ? useCases.filter((useCase) =>
-        useCase.modalities.some((modality) => selectedModalities.includes(modality)),
+        useCase.modalities.some((modality) =>
+          selectedModalities.includes(modality),
+        ),
       )
     : useCases;
 
@@ -59,10 +78,15 @@ export function UseCaseMarketplace({
               <Sparkles className="h-3.5 w-3.5" />
               Marketplace
             </div>
-            <h2 id="use-case-marketplace-title" className="mt-3 text-xl font-semibold tracking-tight">Choose a use case</h2>
+            <h2
+              id="use-case-marketplace-title"
+              className="mt-3 text-xl font-semibold tracking-tight"
+            >
+              Choose a use case
+            </h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-              Tune the workspace for a focused scenario. The app always opens in Text Chat by
-              default; other use cases are session-level presets.
+              Tune the workspace for a focused scenario. The app always opens in
+              Text Chat by default; other use cases are session-level presets.
             </p>
           </div>
           <button

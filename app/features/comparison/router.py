@@ -1,30 +1,39 @@
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
-from app.conversation_store import append_message, build_model_history, conversation_to_dict, get_conversation, get_or_create_conversation, message_to_dict
+from app.conversation_store import (
+    append_message,
+    build_model_history,
+    conversation_to_dict,
+    get_conversation,
+    get_or_create_conversation,
+    message_to_dict,
+)
+from app.errors import ExternalServiceError
+from app.features.comparison.schemas import ComparisonResponse
 from app.features.dependencies import current_user_scope
 from app.model_settings import get_model_settings
 from app.schemas import CompareRequest
 from app.security import UserScope
 from app.services.chat import chat_service
 
-
 router = APIRouter(tags=["Comparison"])
 
 
-@router.post("/api/compare")
+@router.post(
+    "/api/compare",
+    response_model=ComparisonResponse,
+    response_model_exclude_unset=True,
+)
 async def compare(
     request: CompareRequest,
     scope: Annotated[UserScope, Depends(current_user_scope)],
 ) -> dict:
-    try:
-        conversation = get_or_create_conversation(
-            scope, request.conversation_id, request.prompt, request.use_case
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    conversation = get_or_create_conversation(
+        scope, request.conversation_id, request.prompt, request.use_case
+    )
     settings = {model: get_model_settings(model) for model in request.models}
     variants = {
         model: chat_service.guardrail_variants(model_settings, False)
@@ -71,6 +80,12 @@ async def compare(
         }
 
     results = await asyncio.gather(*(run_model(model) for model in request.models))
+    if any(
+        result.get("error")
+        or any(variant.get("error") for variant in result.get("variants", []))
+        for result in results
+    ):
+        raise ExternalServiceError("Model comparison")
     return {
         "conversation": conversation_to_dict(get_conversation(scope, conversation.id) or conversation),
         "user_message": message_to_dict(user_message),

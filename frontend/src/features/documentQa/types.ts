@@ -1,4 +1,7 @@
-import type { FoundryRequestTrace, FoundryResponseTrace } from "@/features/textChat/types";
+import type {
+  FoundryRequestTrace,
+  FoundryResponseTrace,
+} from "@/features/textChat/types";
 
 export type DocumentSummary = {
   id: string;

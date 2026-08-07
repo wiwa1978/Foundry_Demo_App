@@ -50,6 +50,8 @@ param enableEntraAuthentication = true
 param entraAuthenticationClientId = ''
 param entraAuthenticationClientSecret = ''
 param entraAuthenticationTenantId = ''
+// Prefer immutable Microsoft Entra object IDs. Empty denies privileged operations.
+param adminPrincipals = ''
 
 param containerAppMinReplicas = 1
 param containerAppMaxReplicas = 1

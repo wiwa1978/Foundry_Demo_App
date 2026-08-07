@@ -1,23 +1,56 @@
 import js from "@eslint/js";
-import globals from "globals";
+import importX from "eslint-plugin-import-x";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import reactHooks from "eslint-plugin-react-hooks";
+import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules"] },
+  { ignores: ["coverage", "dist", "node_modules"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    files: ["**/*.{js,ts,tsx}"],
+    plugins: {
+      "import-x": importX,
+    },
+    rules: {
+      "import-x/order": [
+        "error",
+        {
+          alphabetize: { order: "asc", caseInsensitive: true },
+          groups: [
+            "builtin",
+            "external",
+            "internal",
+            ["parent", "sibling", "index"],
+          ],
+          "newlines-between": "always",
+          pathGroups: [
+            {
+              pattern: "@/**",
+              group: "internal",
+              position: "before",
+            },
+          ],
+          pathGroupsExcludedImportTypes: ["builtin"],
+        },
+      ],
+    },
+  },
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
       globals: globals.browser,
     },
     plugins: {
+      "jsx-a11y": jsxA11y,
       "react-hooks": reactHooks,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-hooks/exhaustive-deps": "off",
+      ...jsxA11y.flatConfigs.recommended.rules,
+      "react-hooks/exhaustive-deps": "error",
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-empty-object-type": "off",
     },

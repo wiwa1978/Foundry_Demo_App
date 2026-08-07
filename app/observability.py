@@ -2,11 +2,11 @@ import logging
 import re
 import time
 import uuid
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
-
 
 logger = logging.getLogger("app.requests")
 audit_logger = logging.getLogger("app.audit")
@@ -53,7 +53,10 @@ async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResp
     logger.exception("unhandled_request_error request_id=%s", request_id, exc_info=exc)
     return JSONResponse(
         status_code=500,
-        content={"detail": "An unexpected error occurred."},
+        content={
+            "detail": "An unexpected error occurred.",
+            "code": "internal_error",
+        },
         headers={"X-Request-ID": request_id},
     )
 

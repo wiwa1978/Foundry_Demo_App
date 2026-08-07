@@ -16,7 +16,7 @@ from app.conversation_store import (
     get_or_create_conversation,
     message_to_dict,
 )
-from app.foundry_client import redact_foundry_trace
+from app.errors import InvalidRequestError
 from app.gateways.foundry_chat import DefaultFoundryChatGateway, FoundryChatGateway
 from app.model_settings import (
     DEPLOYMENT_DEFAULT_GUARDRAIL,
@@ -24,9 +24,9 @@ from app.model_settings import (
     get_model_settings,
 )
 from app.persistence_models import GuardrailVariant
+from app.providers.tracing import redact_foundry_trace
 from app.schemas import ChatRequest
 from app.security import UserScope
-
 
 logger = logging.getLogger(__name__)
 GuardrailOption = tuple[GuardrailVariant | None, str | None]
@@ -67,7 +67,7 @@ class ChatService:
         if not enabled:
             return [(None, None)]
         if len(model_settings.guardrail_policy_names) != 2:
-            raise ValueError(
+            raise InvalidRequestError(
                 f"Guardrail comparison is enabled for {model_settings.model}, "
                 "but two policies are not selected."
             )
@@ -159,24 +159,6 @@ class ChatService:
         try:
             with self._semaphore:
                 response = self.gateway.complete(**request_arguments)
-            assistant_message = append_message(
-                scope=scope,
-                conversation_id=conversation_id,
-                role="assistant",
-                content=response["content"],
-                model=model_settings.model,
-                api_surface=response["api_surface"],
-                duration_ms=response["duration_ms"],
-                usage=response["usage"],
-                guardrail_variant=variant,
-                guardrail_policy_name=policy_name,
-                guardrail_results=response["guardrail_results"],
-            )
-            return {
-                **response,
-                "guardrail_variant": variant,
-                "assistant_message": message_to_dict(assistant_message),
-            }
         except Exception as exc:
             logger.exception("model_request_failed")
             guardrail_results = guardrail_error_details(exc)
@@ -203,6 +185,24 @@ class ChatService:
                 "assistant_message": message_to_dict(assistant_message),
                 "foundry_request": redact_foundry_trace(foundry_request),
             }
+        assistant_message = append_message(
+            scope=scope,
+            conversation_id=conversation_id,
+            role="assistant",
+            content=response["content"],
+            model=model_settings.model,
+            api_surface=response["api_surface"],
+            duration_ms=response["duration_ms"],
+            usage=response["usage"],
+            guardrail_variant=variant,
+            guardrail_policy_name=policy_name,
+            guardrail_results=response["guardrail_results"],
+        )
+        return {
+            **response,
+            "guardrail_variant": variant,
+            "assistant_message": message_to_dict(assistant_message),
+        }
 
     async def complete(self, request: ChatRequest, scope: UserScope) -> dict[str, Any]:
         import asyncio

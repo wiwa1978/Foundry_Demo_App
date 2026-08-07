@@ -158,12 +158,20 @@
   }
 
   .palette-action:hover {
-    background: color-mix(in srgb, var(--palette-color-1) 86%, black) !important;
+    background: color-mix(
+      in srgb,
+      var(--palette-color-1) 86%,
+      black
+    ) !important;
   }
 
   .palette-action:disabled {
     color: rgb(255 255 255 / 0.55) !important;
-    background: color-mix(in srgb, var(--palette-color-1) 35%, #64748b) !important;
+    background: color-mix(
+      in srgb,
+      var(--palette-color-1) 35%,
+      #64748b
+    ) !important;
   }
 
   .palette-selected {
@@ -174,13 +182,15 @@
 
   .palette-focus:focus-within {
     border-color: var(--palette-soft-border);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--palette-accent) 14%, transparent);
+    box-shadow: 0 0 0 2px
+      color-mix(in srgb, var(--palette-accent) 14%, transparent);
   }
 
   .palette-icon-surface {
     color: var(--palette-accent);
     background: var(--palette-soft);
-    box-shadow: 0 0 0 8px color-mix(in srgb, var(--palette-accent) 10%, transparent);
+    box-shadow: 0 0 0 8px
+      color-mix(in srgb, var(--palette-accent) 10%, transparent);
   }
 
   .palette-outline {
@@ -195,8 +205,15 @@
   .composer-select {
     color: var(--palette-accent);
     background: color-mix(in srgb, var(--palette-soft) 70%, transparent);
-    border-color: color-mix(in srgb, var(--palette-soft-border) 65%, transparent);
-    transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+    border-color: color-mix(
+      in srgb,
+      var(--palette-soft-border) 65%,
+      transparent
+    );
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      box-shadow 150ms ease;
   }
 
   .composer-select:hover {
@@ -206,7 +223,8 @@
 
   .composer-select:focus-within {
     border-color: var(--palette-accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--palette-accent) 14%, transparent);
+    box-shadow: 0 0 0 2px
+      color-mix(in srgb, var(--palette-accent) 14%, transparent);
   }
 
   .chat-assistant-avatar {
@@ -237,7 +255,8 @@
     color: var(--palette-accent);
     background: var(--palette-soft);
     border-color: var(--palette-soft-border);
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--palette-accent) 18%, transparent);
+    box-shadow: 0 1px 3px
+      color-mix(in srgb, var(--palette-accent) 18%, transparent);
   }
 
   .palette-thinking-pulse {
@@ -246,7 +265,11 @@
 
   .palette-thinking-ring {
     border-top-color: var(--palette-accent);
-    border-right-color: color-mix(in srgb, var(--palette-accent) 65%, transparent);
+    border-right-color: color-mix(
+      in srgb,
+      var(--palette-accent) 65%,
+      transparent
+    );
   }
 }
 @layer utilities {

@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from "react";
 import {
   ChevronsUpDown,
   Download,
@@ -9,13 +8,17 @@ import {
   Sparkles,
   UploadCloud,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { ComposerSelect, UseCaseComposer } from "@/app/workspace/WorkspacePrimitives";
 import type { ImageGenerationResult } from "@/app/workspace/contracts";
 import { formatModelName } from "@/app/workspace/formatters";
-import { Button } from "@/components/ui/button";
+import {
+  ComposerSelect,
+  UseCaseComposer,
+} from "@/app/workspace/WorkspacePrimitives";
 import { PromptExamples } from "@/components/PromptExamples";
+import { Button } from "@/components/ui/button";
 import { imageToImagePrompts } from "@/features/useCases/imageToImagePrompts";
 import { textToImagePrompts } from "@/features/useCases/textToImagePrompts";
 
@@ -63,37 +66,46 @@ export function TextToImageWorkspace({
       <div className="flex flex-1 overflow-auto p-5">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-center">
           <div className="flex min-h-[360px] w-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 dark:border-[#55555a] dark:bg-[#303033]/70 sm:min-h-[520px]">
-          {imageUrl && result ? (
-            <div className="w-full">
-              <div className="mx-auto mb-4 max-w-3xl rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-200">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Submitted prompt</div>
-                <p className="whitespace-pre-wrap">{result.prompt}</p>
+            {imageUrl && result ? (
+              <div className="w-full">
+                <div className="mx-auto mb-4 max-w-3xl rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-200">
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    Submitted prompt
+                  </div>
+                  <p className="whitespace-pre-wrap">{result.prompt}</p>
+                </div>
+                <img
+                  src={imageUrl}
+                  alt={result.prompt || "AI-generated image"}
+                  className="mx-auto max-h-[68vh] w-auto rounded-2xl object-contain shadow-2xl"
+                />
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+                  <span>
+                    {result.model} · {result.width} × {result.height} ·
+                    Generation time: {(result.duration_ms / 1000).toFixed(1)}s
+                  </span>
+                  <a
+                    href={imageUrl}
+                    download="foundry-generated-image.png"
+                    className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Download PNG
+                  </a>
+                </div>
               </div>
-              <img
-                src={imageUrl}
-                alt={result.prompt || "AI-generated image"}
-                className="mx-auto max-h-[68vh] w-auto rounded-2xl object-contain shadow-2xl"
-              />
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-                <span>{result.model} · {result.width} × {result.height} · Generation time: {(result.duration_ms / 1000).toFixed(1)}s</span>
-                <a
-                  href={imageUrl}
-                  download="foundry-generated-image.png"
-                  className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Download className="h-3.5 w-3.5" /> Download PNG
-                </a>
+            ) : (
+              <div className="max-w-xs text-center text-slate-400">
+                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-violet-100 text-violet-500 dark:bg-violet-500/15 dark:text-violet-200">
+                  <Image className="h-9 w-9" />
+                </div>
+                <h3 className="mt-5 text-lg font-semibold text-slate-700 dark:text-slate-200">
+                  Imagine it. Describe it.
+                </h3>
+                <p className="mt-2 text-sm leading-6">
+                  Enter a prompt below to generate a high-quality PNG.
+                </p>
               </div>
-            </div>
-          ) : (
-            <div className="max-w-xs text-center text-slate-400">
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-violet-100 text-violet-500 dark:bg-violet-500/15 dark:text-violet-200">
-                <Image className="h-9 w-9" />
-              </div>
-              <h3 className="mt-5 text-lg font-semibold text-slate-700 dark:text-slate-200">Imagine it. Describe it.</h3>
-              <p className="mt-2 text-sm leading-6">Enter a prompt below to generate a high-quality PNG.</p>
-            </div>
-          )}
+            )}
           </div>
         </div>
       </div>
@@ -171,7 +183,9 @@ export function ImageToImageWorkspace({
 }: ImageToImageWorkspaceProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
-  const resultUrl = result ? `data:${result.mime_type};base64,${result.image_base64}` : "";
+  const resultUrl = result
+    ? `data:${result.mime_type};base64,${result.image_base64}`
+    : "";
 
   useEffect(() => {
     if (!source) {
@@ -213,8 +227,12 @@ export function ImageToImageWorkspace({
           <div className="flex min-h-[360px] flex-col rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 dark:border-[#606066] dark:bg-[#29292c]/70">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Source</div>
-                <div className="mt-1 max-w-xs truncate text-sm text-slate-600 dark:text-slate-300">{source?.name ?? "No image selected"}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Source
+                </div>
+                <div className="mt-1 max-w-xs truncate text-sm text-slate-600 dark:text-slate-300">
+                  {source?.name ?? "No image selected"}
+                </div>
               </div>
             </div>
             <input
@@ -233,31 +251,52 @@ export function ImageToImageWorkspace({
               className="flex flex-1 items-center justify-center overflow-hidden rounded-xl bg-slate-50 text-slate-400 dark:bg-[#303033]"
             >
               {sourceUrl ? (
-                <img src={sourceUrl} alt="Source upload" className="max-h-[62vh] w-full object-contain" />
+                <img
+                  src={sourceUrl}
+                  alt="Source upload"
+                  className="max-h-[62vh] w-full object-contain"
+                />
               ) : (
                 <div className="p-8 text-center">
                   <UploadCloud className="mx-auto h-10 w-10" />
-                  <p className="mt-3 text-sm">Upload a PNG, JPEG, or WebP image up to 10 MB.</p>
+                  <p className="mt-3 text-sm">
+                    Upload a PNG, JPEG, or WebP image up to 10 MB.
+                  </p>
                 </div>
               )}
             </button>
           </div>
           <div className="flex min-h-[360px] flex-col rounded-2xl border border-slate-200 bg-white/70 p-4 dark:border-[#55555a] dark:bg-[#29292c]/70">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Transformed result</div>
+            <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Transformed result
+            </div>
             <div className="flex flex-1 items-center justify-center overflow-hidden rounded-xl bg-slate-50 dark:bg-[#303033]">
               {resultUrl && result ? (
-                <img src={resultUrl} alt={result.prompt || "AI-edited image"} className="max-h-[62vh] w-full object-contain" />
+                <img
+                  src={resultUrl}
+                  alt={result.prompt || "AI-edited image"}
+                  className="max-h-[62vh] w-full object-contain"
+                />
               ) : (
                 <div className="max-w-xs p-8 text-center text-slate-400">
                   <Image className="mx-auto h-10 w-10" />
-                  <p className="mt-3 text-sm">Your transformed image will appear here.</p>
+                  <p className="mt-3 text-sm">
+                    Your transformed image will appear here.
+                  </p>
                 </div>
               )}
             </div>
             {resultUrl && result ? (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-                <span>{result.model} · {result.width} × {result.height} · {(result.duration_ms / 1000).toFixed(1)}s</span>
-                <a href={resultUrl} download="foundry-edited-image.png" className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-background px-3 font-medium">
+                <span>
+                  {result.model} · {result.width} × {result.height} ·{" "}
+                  {(result.duration_ms / 1000).toFixed(1)}s
+                </span>
+                <a
+                  href={resultUrl}
+                  download="foundry-edited-image.png"
+                  className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-background px-3 font-medium"
+                >
                   <Download className="h-3.5 w-3.5" /> Download PNG
                 </a>
               </div>
@@ -272,7 +311,11 @@ export function ImageToImageWorkspace({
         disabled={!model || !source || !prompt.trim() || generating}
         submitting={generating}
         disclaimer="Image edits may alter details you intended to preserve"
-        error={models.length ? error : "Add a gpt-image deployment to use image editing."}
+        error={
+          models.length
+            ? error
+            : "Add a gpt-image deployment to use image editing."
+        }
         onChange={onPromptChange}
         onSubmit={onGenerate}
         leftControls={
@@ -284,7 +327,8 @@ export function ImageToImageWorkspace({
               onClick={() => inputRef.current?.click()}
               title={source ? `Replace ${source.name}` : "Upload source image"}
             >
-              <UploadCloud className="mr-2 h-4 w-4" /> {source ? "Replace source" : "Upload source"}
+              <UploadCloud className="mr-2 h-4 w-4" />{" "}
+              {source ? "Replace source" : "Upload source"}
             </Button>
             <ComposerSelect
               id="image-edit-size"
@@ -302,7 +346,10 @@ export function ImageToImageWorkspace({
               ariaLabel="Image edit model"
               value={model}
               onChange={onModelChange}
-              options={models.map((modelName) => ({ value: modelName, label: formatModelName(modelName) }))}
+              options={models.map((modelName) => ({
+                value: modelName,
+                label: formatModelName(modelName),
+              }))}
             />
           </>
         }
@@ -345,9 +392,12 @@ export function ImageComparisonWorkspace({
       <div className="flex flex-1 items-center justify-center p-6 text-center">
         <div className="max-w-md">
           <GitCompareArrows className="mx-auto mb-4 h-10 w-10 text-slate-300 dark:text-[#77777d]" />
-          <h3 className="text-lg font-semibold">Select image models to compare</h3>
+          <h3 className="text-lg font-semibold">
+            Select image models to compare
+          </h3>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-            Turn on up to two image endpoints in the comparison list to start side-by-side generation.
+            Turn on up to two image endpoints in the comparison list to start
+            side-by-side generation.
           </p>
         </div>
       </div>
@@ -367,7 +417,9 @@ export function ImageComparisonWorkspace({
       <div className="flex-1 overflow-x-auto p-4">
         <div
           className="grid h-full min-w-[44rem] gap-4"
-          style={{ gridTemplateColumns: `repeat(${models.length}, minmax(20rem, 1fr))` }}
+          style={{
+            gridTemplateColumns: `repeat(${models.length}, minmax(20rem, 1fr))`,
+          }}
         >
           {models.map((model) => (
             <ImageComparisonPane
@@ -390,7 +442,8 @@ export function ImageComparisonWorkspace({
         </div>
       </div>
       <p className="border-t bg-white px-4 py-2 text-center text-xs text-slate-500 dark:border-[#55555a] dark:bg-[#29292c] dark:text-slate-400">
-        Text typed in either prompt is mirrored to both panes. Sending generates the same image size with every selected model.
+        Text typed in either prompt is mirrored to both panes. Sending generates
+        the same image size with every selected model.
       </p>
     </div>
   );
@@ -425,7 +478,9 @@ function ImageComparisonPane({
   onOpenSettings: (model: string) => void;
   onModelChange: (currentModel: string, nextModel: string) => void;
 }) {
-  const imageUrl = result ? `data:${result.mime_type};base64,${result.image_base64}` : "";
+  const imageUrl = result
+    ? `data:${result.mime_type};base64,${result.image_base64}`
+    : "";
 
   return (
     <form
@@ -444,14 +499,24 @@ function ImageComparisonPane({
             className="h-9 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 py-1 pr-8 text-sm font-medium shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
           >
             {allModels.map((option) => (
-              <option key={option} value={option} disabled={option !== model && selectedModels.includes(option)}>
+              <option
+                key={option}
+                value={option}
+                disabled={option !== model && selectedModels.includes(option)}
+              >
                 {formatModelName(option)}
               </option>
             ))}
           </select>
           <ChevronsUpDown className="pointer-events-none absolute right-2.5 top-2.5 h-4 w-4 text-slate-500 dark:text-slate-400" />
         </div>
-        <Button type="button" variant="outline" size="icon" onClick={() => onOpenSettings(model)} title={`Open settings for ${model}`}>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={() => onOpenSettings(model)}
+          title={`Open settings for ${model}`}
+        >
           <Settings className="h-4 w-4" />
         </Button>
       </header>
@@ -460,24 +525,45 @@ function ImageComparisonPane({
         {imageUrl && result ? (
           <div className="m-auto w-full">
             <div className="mb-3 rounded-xl border bg-white px-3 py-2 text-sm leading-5 text-slate-700 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-200">
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Submitted prompt</div>
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Submitted prompt
+              </div>
               <p className="whitespace-pre-wrap">{result.prompt}</p>
             </div>
-            <img src={imageUrl} alt={result.prompt || "AI-generated image"} className="mx-auto max-h-[52vh] w-auto rounded-xl object-contain shadow-xl" />
+            <img
+              src={imageUrl}
+              alt={result.prompt || "AI-generated image"}
+              className="mx-auto max-h-[52vh] w-auto rounded-xl object-contain shadow-xl"
+            />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <span>{result.width} × {result.height} · Generation time: {(result.duration_ms / 1000).toFixed(1)}s</span>
-              <a href={imageUrl} download={`${model}-generated-image.png`} className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground">
+              <span>
+                {result.width} × {result.height} · Generation time:{" "}
+                {(result.duration_ms / 1000).toFixed(1)}s
+              </span>
+              <a
+                href={imageUrl}
+                download={`${model}-generated-image.png`}
+                className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
                 <Download className="h-3.5 w-3.5" /> Download
               </a>
             </div>
           </div>
         ) : (
           <div className="m-auto max-w-xs text-center text-slate-400">
-            {generating ? <LoaderCircle className="mx-auto h-9 w-9 animate-spin" /> : <Image className="mx-auto h-9 w-9 text-slate-300 dark:text-[#77777d]" />}
+            {generating ? (
+              <LoaderCircle className="mx-auto h-9 w-9 animate-spin" />
+            ) : (
+              <Image className="mx-auto h-9 w-9 text-slate-300 dark:text-[#77777d]" />
+            )}
             <h3 className="mt-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
-              {generating ? `Generating with ${formatModelName(model)}...` : `Ready for ${formatModelName(model)}`}
+              {generating
+                ? `Generating with ${formatModelName(model)}...`
+                : `Ready for ${formatModelName(model)}`}
             </h3>
-            <p className="mt-1 text-xs">Use either prompt below. Both inputs stay synchronized.</p>
+            <p className="mt-1 text-xs">
+              Use either prompt below. Both inputs stay synchronized.
+            </p>
           </div>
         )}
       </div>

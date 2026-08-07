@@ -1,8 +1,12 @@
-import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react";
-
+import {
+  Component,
+  lazy,
+  Suspense,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 
 const AppWorkspace = lazy(() => import("@/app/AppWorkspace"));
-
 
 export default function App() {
   return (
@@ -14,7 +18,6 @@ export default function App() {
   );
 }
 
-
 export function AppLoadingState() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700 dark:bg-[#303033] dark:text-slate-200">
@@ -22,7 +25,6 @@ export function AppLoadingState() {
     </main>
   );
 }
-
 
 export class AppErrorBoundary extends Component<
   { children: ReactNode },
@@ -43,9 +45,12 @@ export class AppErrorBoundary extends Component<
       return (
         <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-slate-900 dark:bg-[#303033] dark:text-slate-50">
           <section className="max-w-lg rounded-2xl border border-red-200 bg-white p-6 shadow-lg dark:border-red-500/40 dark:bg-[#39393d]">
-            <h1 className="text-lg font-semibold">Foundry Demo could not start</h1>
+            <h1 className="text-lg font-semibold">
+              Foundry Demo could not start
+            </h1>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-              Refresh the page. If the problem continues, use the request logs to investigate.
+              Refresh the page. If the problem continues, use the request logs
+              to investigate.
             </p>
           </section>
         </main>

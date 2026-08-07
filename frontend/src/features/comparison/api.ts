@@ -1,6 +1,9 @@
-import type { FetchClient } from "@/features/textChat/api";
-import type { ReasoningEffort } from "@/features/textChat/types";
+import { readPublicApiError } from "@/api/errors";
+import type { FetchClient } from "@/api/types";
 import type { UseCaseId } from "@/app/types";
+import type { ReasoningEffort } from "@/features/textChat/types";
+
+export const comparisonEndpoint = "/api/compare";
 
 export async function compareModels(
   fetchClient: FetchClient,
@@ -13,7 +16,7 @@ export async function compareModels(
   },
 ) {
   const response = await fetchClient(
-    "/api/compare",
+    comparisonEndpoint,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -22,8 +25,9 @@ export async function compareModels(
     { label: "Compare models", request, responseKind: "json" },
   );
   if (!response.ok) {
-    const data = (await response.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(data.detail ?? "Model comparison failed.");
+    throw new Error(
+      await readPublicApiError(response, "Model comparison failed."),
+    );
   }
   return response;
 }

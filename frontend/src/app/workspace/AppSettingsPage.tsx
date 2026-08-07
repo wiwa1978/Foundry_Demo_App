@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { Plus, Rocket, Tags } from "lucide-react";
+import { useState } from "react";
 
 import { colorPalettes, modelModalitiesList } from "@/app/workspace/constants";
 import type {
@@ -31,7 +31,10 @@ type AppSettingsPageProps = {
   onNewModelChange: (value: string) => void;
   onAddModel: () => void;
   onOpenAdmin: () => void;
-  onSaveCapabilities: (model: string, modalities: ModelModality[]) => Promise<void>;
+  onSaveCapabilities: (
+    model: string,
+    modalities: ModelModality[],
+  ) => Promise<void>;
   onColorPaletteChange: (palette: ColorPalette) => void;
 };
 
@@ -48,9 +51,12 @@ export function AppSettingsPage({
   onSaveCapabilities,
   onColorPaletteChange,
 }: AppSettingsPageProps) {
-  const [capabilityDrafts, setCapabilityDrafts] = useState<Record<string, ModelModality[]>>({});
+  const [capabilityDrafts, setCapabilityDrafts] = useState<
+    Record<string, ModelModality[]>
+  >({});
   const [capabilitySaving, setCapabilitySaving] = useState("");
-  const [capabilityMessage, setCapabilityMessage] = useState<StatusMessage | null>(null);
+  const [capabilityMessage, setCapabilityMessage] =
+    useState<StatusMessage | null>(null);
 
   function capabilitiesFor(model: string) {
     return capabilityDrafts[model] ?? modelModalities[model] ?? ["text"];
@@ -78,11 +84,17 @@ export function AppSettingsPage({
         delete next[model];
         return next;
       });
-      setCapabilityMessage({ type: "success", text: `Saved capabilities for ${model}.` });
+      setCapabilityMessage({
+        type: "success",
+        text: `Saved capabilities for ${model}.`,
+      });
     } catch (error) {
       setCapabilityMessage({
         type: "error",
-        text: error instanceof Error ? error.message : "Failed to save capabilities.",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Failed to save capabilities.",
       });
     } finally {
       setCapabilitySaving("");
@@ -96,11 +108,16 @@ export function AppSettingsPage({
           <CardHeader>
             <CardTitle>Color palette</CardTitle>
             <CardDescription>
-              Choose a coordinated accent and surface palette. Your selection is saved in this browser.
+              Choose a coordinated accent and surface palette. Your selection is
+              saved in this browser.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="radiogroup" aria-label="Color palette">
+            <div
+              className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+              role="radiogroup"
+              aria-label="Color palette"
+            >
               {colorPalettes.map((palette) => {
                 const selected = colorPalette === palette.id;
                 return (
@@ -117,12 +134,21 @@ export function AppSettingsPage({
                         : "border-slate-200 bg-slate-50 hover:border-slate-300 dark:border-[#55555a] dark:bg-[#303033] dark:hover:border-[#77777d]",
                     )}
                   >
-                    <span className="mb-3 flex h-8 overflow-hidden rounded-lg" aria-hidden="true">
+                    <span
+                      className="mb-3 flex h-8 overflow-hidden rounded-lg"
+                      aria-hidden="true"
+                    >
                       {palette.swatches.map((color) => (
-                        <span key={color} className="flex-1" style={{ backgroundColor: color }} />
+                        <span
+                          key={color}
+                          className="flex-1"
+                          style={{ backgroundColor: color }}
+                        />
                       ))}
                     </span>
-                    <span className="block text-sm font-semibold">{palette.name}</span>
+                    <span className="block text-sm font-semibold">
+                      {palette.name}
+                    </span>
                     <span className="mt-1 block text-xs leading-4 text-slate-500 dark:text-slate-400">
                       {palette.description}
                     </span>
@@ -138,104 +164,109 @@ export function AppSettingsPage({
             <CardHeader>
               <CardTitle>Model endpoints</CardTitle>
               <CardDescription>
-                Model deployment names are stored in the local database. Values from `.env` are only
-                used to seed the registry.
+                Model deployment names are stored in the local database. Values
+                from `.env` are only used to seed the registry.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
-            <div className="flex gap-2">
-              <Input
-                aria-label="Deployment name"
-                placeholder="deployment-name"
-                value={newModel}
-                onChange={(event) => onNewModelChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    onAddModel();
-                  }
-                }}
-              />
-              <Button type="button" variant="outline" onClick={onAddModel}>
-                <Plus className="h-4 w-4" />
-                Add local endpoint
-              </Button>
-            </div>
-            {message ? (
-              <div
-                className={cn(
-                  "rounded-lg border p-3 text-sm",
-                  message.type === "success"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100"
-                    : "border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100",
-                )}
-              >
-                {message.text}
+              <div className="flex gap-2">
+                <Input
+                  aria-label="Deployment name"
+                  placeholder="deployment-name"
+                  value={newModel}
+                  onChange={(event) => onNewModelChange(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      onAddModel();
+                    }
+                  }}
+                />
+                <Button type="button" variant="outline" onClick={onAddModel}>
+                  <Plus className="h-4 w-4" />
+                  Add local endpoint
+                </Button>
               </div>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              {models.map((model) => (
-                <Badge key={model} variant="secondary">
-                  {formatModelName(model)}
-                </Badge>
-              ))}
-            </div>
-            <div className="border-t pt-4 dark:border-[#55555a]">
-              <h3 className="font-semibold">Deployment capabilities</h3>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Control which deployments are available in text, image, and voice workflows.
-              </p>
-              <div className="mt-4 grid gap-3">
-                {models.map((model) => {
-                  const capabilities = capabilitiesFor(model);
-                  const dirty = capabilityDrafts[model] !== undefined;
-                  return (
-                    <div
-                      key={model}
-                      className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-[#55555a] dark:bg-[#303033] sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="min-w-0 font-medium">{formatModelName(model)}</div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {modelModalitiesList.map((modality) => (
-                          <button
-                            key={modality}
-                            type="button"
-                            onClick={() => toggleCapability(model, modality)}
-                            className={cn(
-                              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs capitalize transition",
-                              capabilities.includes(modality)
-                                ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-[#77777d] dark:bg-[#505056] dark:text-slate-50"
-                                : "border-slate-200 text-slate-500 hover:bg-white dark:border-[#606066] dark:text-slate-400 dark:hover:bg-[#45454a]",
-                            )}
-                          >
-                            <Tags className="h-3 w-3" /> {modality}
-                          </button>
-                        ))}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={!dirty || capabilitySaving === model}
-                          onClick={() => void saveCapabilities(model)}
-                        >
-                          {capabilitySaving === model ? "Saving..." : "Save"}
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {capabilityMessage ? (
-                <p className={cn(
-                  "mt-3 text-sm",
-                  capabilityMessage.type === "success"
-                    ? "text-emerald-700 dark:text-emerald-300"
-                    : "text-red-700 dark:text-red-300",
-                )}>
-                  {capabilityMessage.text}
-                </p>
+              {message ? (
+                <div
+                  className={cn(
+                    "rounded-lg border p-3 text-sm",
+                    message.type === "success"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100"
+                      : "border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100",
+                  )}
+                >
+                  {message.text}
+                </div>
               ) : null}
-            </div>
+              <div className="flex flex-wrap gap-2">
+                {models.map((model) => (
+                  <Badge key={model} variant="secondary">
+                    {formatModelName(model)}
+                  </Badge>
+                ))}
+              </div>
+              <div className="border-t pt-4 dark:border-[#55555a]">
+                <h3 className="font-semibold">Deployment capabilities</h3>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Control which deployments are available in text, image, and
+                  voice workflows.
+                </p>
+                <div className="mt-4 grid gap-3">
+                  {models.map((model) => {
+                    const capabilities = capabilitiesFor(model);
+                    const dirty = capabilityDrafts[model] !== undefined;
+                    return (
+                      <div
+                        key={model}
+                        className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-[#55555a] dark:bg-[#303033] sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0 font-medium">
+                          {formatModelName(model)}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {modelModalitiesList.map((modality) => (
+                            <button
+                              key={modality}
+                              type="button"
+                              onClick={() => toggleCapability(model, modality)}
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs capitalize transition",
+                                capabilities.includes(modality)
+                                  ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-[#77777d] dark:bg-[#505056] dark:text-slate-50"
+                                  : "border-slate-200 text-slate-500 hover:bg-white dark:border-[#606066] dark:text-slate-400 dark:hover:bg-[#45454a]",
+                              )}
+                            >
+                              <Tags className="h-3 w-3" /> {modality}
+                            </button>
+                          ))}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!dirty || capabilitySaving === model}
+                            onClick={() => void saveCapabilities(model)}
+                          >
+                            {capabilitySaving === model ? "Saving..." : "Save"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {capabilityMessage ? (
+                  <p
+                    className={cn(
+                      "mt-3 text-sm",
+                      capabilityMessage.type === "success"
+                        ? "text-emerald-700 dark:text-emerald-300"
+                        : "text-red-700 dark:text-red-300",
+                    )}
+                  >
+                    {capabilityMessage.text}
+                  </p>
+                ) : null}
+              </div>
             </CardContent>
             <CardFooter className="border-t pt-4 dark:border-[#55555a]">
               <Button type="button" onClick={onOpenAdmin}>
@@ -245,7 +276,6 @@ export function AppSettingsPage({
             </CardFooter>
           </Card>
         ) : null}
-
       </div>
     </div>
   );

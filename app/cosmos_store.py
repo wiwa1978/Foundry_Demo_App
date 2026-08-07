@@ -1,8 +1,15 @@
 from functools import lru_cache
+
 from azure.cosmos import CosmosClient, PartitionKey
-from azure.cosmos.exceptions import CosmosResourceExistsError, CosmosResourceNotFoundError
+from azure.cosmos.exceptions import (
+    CosmosBatchOperationError,
+    CosmosResourceExistsError,
+    CosmosResourceNotFoundError,
+)
+
 from app.azure_credential import get_azure_credential
 from app.config import env_bool, env_text
+from app.errors import InvalidRequestError
 from app.persistence_models import (
     CONVERSATION_TYPE,
     MESSAGE_TYPE,
@@ -18,11 +25,30 @@ from app.persistence_models import (
     settings_document,
     settings_from_record,
 )
-from app.repository_contracts import UsageRecord
+from app.repository_contracts import ConversationPageKey, UsageRecord
 from app.security import UserScope
 
 PARTITION_KEY_PATH = "/partition_key"
-CONTAINER_SCHEMA_VERSION = "v2"
+CONTAINER_SCHEMA_VERSION = "v3"
+MAX_BATCH_OPERATIONS = 100
+CONVERSATION_STATE_ACTIVE = "active"
+CONVERSATION_STATE_DELETING = "deleting"
+INDEXING_POLICY = {
+    "automatic": True,
+    "indexingMode": "consistent",
+    "includedPaths": [{"path": "/*"}],
+    "excludedPaths": [{"path": '/"_etag"/?'}],
+    "compositeIndexes": [
+        [
+            {"path": "/updated_at", "order": "descending"},
+            {"path": "/id", "order": "ascending"},
+        ],
+        [
+            {"path": "/created_at", "order": "ascending"},
+            {"path": "/id", "order": "ascending"},
+        ],
+    ],
+}
 
 
 @lru_cache(maxsize=1)
@@ -46,6 +72,7 @@ def get_container():
         return database.create_container_if_not_exists(
             id=container_name,
             partition_key=PartitionKey(path=PARTITION_KEY_PATH),
+            indexing_policy=INDEXING_POLICY,
         )
 
     container = database.get_container_client(container_name)
@@ -71,25 +98,43 @@ class CosmosConversationRepository:
         scope: UserScope,
         use_case: str,
         limit: int,
-        offset: int,
+        after: ConversationPageKey | None,
     ) -> list[Conversation]:
+        parameters = [
+            {"name": "@document_type", "value": CONVERSATION_TYPE},
+            {"name": "@tenant_id", "value": scope.tenant_id},
+            {"name": "@owner_id", "value": scope.user_id},
+            {"name": "@use_case", "value": use_case},
+            {"name": "@state", "value": CONVERSATION_STATE_ACTIVE},
+            {"name": "@limit", "value": limit},
+        ]
+        if after is not None:
+            parameters.extend(
+                (
+                    {"name": "@updated_at", "value": after.updated_at},
+                    {"name": "@id", "value": scoped_document_id(scope, after.id)},
+                )
+            )
+            query = (
+                "SELECT TOP @limit c.id, c.conversation_id, c.title, c.use_case, "
+                "c.created_at, c.updated_at FROM c "
+                "WHERE c.document_type = @document_type AND c.tenant_id = @tenant_id "
+                "AND c.owner_id = @owner_id AND c.use_case = @use_case AND c.state = @state "
+                "AND (c.updated_at < @updated_at OR "
+                "(c.updated_at = @updated_at AND c.id > @id)) "
+                "ORDER BY c.updated_at DESC, c.id ASC"
+            )
+        else:
+            query = (
+                "SELECT TOP @limit c.id, c.conversation_id, c.title, c.use_case, "
+                "c.created_at, c.updated_at FROM c "
+                "WHERE c.document_type = @document_type AND c.tenant_id = @tenant_id "
+                "AND c.owner_id = @owner_id AND c.use_case = @use_case AND c.state = @state "
+                "ORDER BY c.updated_at DESC, c.id ASC"
+            )
         rows = get_container().query_items(
-            query=(
-                "SELECT c.id, c.conversation_id, c.title, c.use_case, c.created_at, "
-                "c.updated_at FROM c WHERE c.document_type = @document_type AND "
-                "c.tenant_id = @tenant_id AND c.owner_id = @owner_id AND "
-                "((IS_DEFINED(c.use_case) AND c.use_case = @use_case) OR "
-                "(@use_case = 'text_chat' AND NOT IS_DEFINED(c.use_case))) "
-                "ORDER BY c.updated_at DESC, c.id ASC OFFSET @offset LIMIT @limit"
-            ),
-            parameters=[
-                {"name": "@document_type", "value": CONVERSATION_TYPE},
-                {"name": "@tenant_id", "value": scope.tenant_id},
-                {"name": "@owner_id", "value": scope.user_id},
-                {"name": "@use_case", "value": use_case},
-                {"name": "@offset", "value": offset},
-                {"name": "@limit", "value": limit},
-            ],
+            query=query,
+            parameters=parameters,
             partition_key=scope.owner_key,
         )
         return [conversation_from_record(row) for row in rows]
@@ -103,6 +148,7 @@ class CosmosConversationRepository:
                 "document_type": CONVERSATION_TYPE,
                 "tenant_id": scope.tenant_id,
                 "owner_id": scope.user_id,
+                "state": CONVERSATION_STATE_ACTIVE,
                 "title": conversation.title,
                 "use_case": conversation.use_case,
                 "created_at": conversation.created_at,
@@ -126,6 +172,7 @@ class CosmosConversationRepository:
             document.get("document_type") != CONVERSATION_TYPE
             or document.get("tenant_id") != scope.tenant_id
             or document.get("owner_id") != scope.user_id
+            or document.get("state") != CONVERSATION_STATE_ACTIVE
         ):
             return None
         return conversation_from_record(document)
@@ -138,11 +185,14 @@ class CosmosConversationRepository:
         rows = get_container().query_items(
             query=(
                 "SELECT * FROM c WHERE c.document_type = @document_type "
+                "AND c.tenant_id = @tenant_id AND c.owner_id = @owner_id "
                 "AND c.conversation_id = @conversation_id "
                 "ORDER BY c.created_at ASC, c.id ASC"
             ),
             parameters=[
                 {"name": "@document_type", "value": MESSAGE_TYPE},
+                {"name": "@tenant_id", "value": scope.tenant_id},
+                {"name": "@owner_id", "value": scope.user_id},
                 {"name": "@conversation_id", "value": conversation_id},
             ],
             partition_key=scope.owner_key,
@@ -170,31 +220,96 @@ class CosmosConversationRepository:
             "guardrail_results": message.guardrail_results,
             "created_at": message.created_at,
         }
-        get_container().execute_item_batch(
-            batch_operations=[
-                ("create", (document,)),
-                (
-                    "patch",
+        try:
+            get_container().execute_item_batch(
+                batch_operations=[
+                    ("create", (document,)),
                     (
-                        scoped_document_id(scope, message.conversation_id),
-                        [{"op": "replace", "path": "/updated_at", "value": message.created_at}],
+                        "patch",
+                        (
+                            scoped_document_id(scope, message.conversation_id),
+                            [
+                                {
+                                    "op": "replace",
+                                    "path": "/updated_at",
+                                    "value": message.created_at,
+                                }
+                            ],
+                        ),
+                        {
+                            "filter_predicate": (
+                                f'FROM c WHERE c.state = "{CONVERSATION_STATE_ACTIVE}"'
+                            )
+                        },
                     ),
-                ),
-            ],
-            partition_key=scope.owner_key,
-        )
-
-    def delete_conversation(self, scope: UserScope, conversation_id: str) -> bool:
-        if self.get_conversation(scope, conversation_id) is None:
-            return False
-        container = get_container()
-        for message in self.list_messages(scope, conversation_id):
-            container.delete_item(
-                item=scoped_document_id(scope, message.id),
+                ],
                 partition_key=scope.owner_key,
             )
-        container.delete_item(
-            item=scoped_document_id(scope, conversation_id),
+        except CosmosBatchOperationError as exc:
+            if exc.status_code == 412:
+                raise InvalidRequestError("Conversation is being deleted.") from exc
+            raise
+
+    def delete_conversation(self, scope: UserScope, conversation_id: str) -> bool:
+        container = get_container()
+        conversation_document_id = scoped_document_id(scope, conversation_id)
+        try:
+            document = container.read_item(
+                item=conversation_document_id,
+                partition_key=scope.owner_key,
+            )
+        except CosmosResourceNotFoundError:
+            return False
+        if (
+            document.get("document_type") != CONVERSATION_TYPE
+            or document.get("tenant_id") != scope.tenant_id
+            or document.get("owner_id") != scope.user_id
+        ):
+            return False
+        state = document.get("state")
+        if state == CONVERSATION_STATE_ACTIVE:
+            container.patch_item(
+                item=conversation_document_id,
+                partition_key=scope.owner_key,
+                patch_operations=[
+                    {
+                        "op": "replace",
+                        "path": "/state",
+                        "value": CONVERSATION_STATE_DELETING,
+                    }
+                ],
+                filter_predicate=f'FROM c WHERE c.state = "{CONVERSATION_STATE_ACTIVE}"',
+            )
+        elif state != CONVERSATION_STATE_DELETING:
+            return False
+
+        message_ids = list(
+            container.query_items(
+                query=(
+                    "SELECT VALUE c.id FROM c WHERE c.document_type = @document_type "
+                    "AND c.tenant_id = @tenant_id AND c.owner_id = @owner_id "
+                    "AND c.conversation_id = @conversation_id"
+                ),
+                parameters=[
+                    {"name": "@document_type", "value": MESSAGE_TYPE},
+                    {"name": "@tenant_id", "value": scope.tenant_id},
+                    {"name": "@owner_id", "value": scope.user_id},
+                    {"name": "@conversation_id", "value": conversation_id},
+                ],
+                partition_key=scope.owner_key,
+            )
+        )
+        while len(message_ids) >= MAX_BATCH_OPERATIONS:
+            chunk = message_ids[:MAX_BATCH_OPERATIONS]
+            container.execute_item_batch(
+                batch_operations=[("delete", (message_id,)) for message_id in chunk],
+                partition_key=scope.owner_key,
+            )
+            del message_ids[:MAX_BATCH_OPERATIONS]
+
+        final_ids = [*message_ids, conversation_document_id]
+        container.execute_item_batch(
+            batch_operations=[("delete", (item_id,)) for item_id in final_ids],
             partition_key=scope.owner_key,
         )
         return True
@@ -217,8 +332,9 @@ class CosmosConversationRepository:
             model_filter = " AND c.model = @model"
             parameters.append({"name": "@model", "value": model})
         rows = get_container().query_items(
+            # `model_filter` is a fixed literal; the value is bound via the @model parameter.
             query=(
-                "SELECT c.model, c.duration_ms, c.usage, c.created_at FROM c "
+                "SELECT c.model, c.duration_ms, c.usage, c.created_at FROM c "  # noqa: S608
                 "WHERE c.document_type = @document_type AND c.role = @role "
                 "AND c.tenant_id = @tenant_id AND c.owner_id = @owner_id "
                 "AND IS_DEFINED(c.model) AND NOT IS_NULL(c.model) AND c.created_at >= @start"

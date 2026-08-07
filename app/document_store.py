@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from azure.core.exceptions import ResourceNotFoundError
-from app.azure_credential import get_azure_credential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
@@ -25,11 +24,14 @@ from azure.search.documents.indexes.models import (
 from azure.search.documents.models import VectorizedQuery
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
-from app.foundry_client import create_embeddings, load_settings
+from app.azure_credential import get_azure_credential
 from app.config import env_int, first_env
+from app.document_limits import MAX_DOCUMENT_BYTES
+from app.errors import InvalidRequestError
+from app.providers.chat import create_embeddings
+from app.providers.settings import load_settings
 from app.security import UserScope
 
-MAX_DOCUMENT_BYTES = 12 * 1024 * 1024
 CHUNK_TARGET_CHARS = 1400
 CHUNK_OVERLAP_CHARS = 180
 DEFAULT_TOP_K = 6
@@ -121,21 +123,21 @@ def add_document(
     settings = _require_search_settings()
     safe_filename = Path(filename or "uploaded-document").name
     if not data:
-        raise ValueError("Uploaded document is empty.")
+        raise InvalidRequestError("Uploaded document is empty.")
     if len(data) > MAX_DOCUMENT_BYTES:
-        raise ValueError("Uploaded document exceeds the 12 MB limit.")
+        raise InvalidRequestError("Uploaded document exceeds the 12 MB limit.")
     if not _is_supported_file(safe_filename, content_type):
-        raise ValueError(
+        raise InvalidRequestError(
             "Unsupported document type. Upload PDF, DOCX, TXT, Markdown, CSV, JSON, HTML, XML, or log files."
         )
 
     extracted_text = _extract_text(safe_filename, content_type, data)
     if not extracted_text.strip():
-        raise ValueError("No readable text was found in the uploaded document.")
+        raise InvalidRequestError("No readable text was found in the uploaded document.")
 
     chunks = _chunk_text(extracted_text)
     if not chunks:
-        raise ValueError("No readable text chunks were found in the uploaded document.")
+        raise InvalidRequestError("No readable text chunks were found in the uploaded document.")
 
     document_id = str(uuid.uuid4())
     created_at = datetime.now(UTC).isoformat()

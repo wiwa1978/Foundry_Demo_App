@@ -1,10 +1,11 @@
 import json
+import logging
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from collections.abc import Iterator
-from typing import Any
 
+from app.config import env_text
 from app.persistence_models import (
     Conversation,
     ConversationMessage,
@@ -13,13 +14,75 @@ from app.persistence_models import (
     message_from_record,
     settings_from_record,
 )
-from app.config import env_text
-from app.repository_contracts import UsageRecord
+from app.repository_contracts import ConversationPageKey, UsageRecord
 from app.security import UserScope
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "foundry_chat.sqlite3"
+SCHEMA_VERSION = 3
+
+logger = logging.getLogger(__name__)
+
+_DROP_APP_TABLE_STATEMENTS = (
+    "DROP TABLE IF EXISTS conversation_messages",
+    "DROP TABLE IF EXISTS conversations",
+    "DROP TABLE IF EXISTS model_settings",
+)
+_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS conversations (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        use_case TEXT NOT NULL DEFAULT 'text_chat',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS conversation_messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        model TEXT,
+        api_surface TEXT,
+        duration_ms INTEGER,
+        error TEXT,
+        usage_json TEXT,
+        guardrail_variant TEXT,
+        guardrail_policy_name TEXT,
+        guardrail_results_json TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation_created
+        ON conversation_messages(tenant_id, owner_id, conversation_id, created_at, id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_conversations_owner_updated
+        ON conversations(tenant_id, owner_id, use_case, updated_at DESC, id ASC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS model_settings (
+        model TEXT PRIMARY KEY,
+        api_surface TEXT NOT NULL DEFAULT 'responses',
+        modalities_json TEXT NOT NULL DEFAULT '["text"]',
+        system_prompt TEXT NOT NULL,
+        temperature REAL NOT NULL,
+        top_p REAL NOT NULL,
+        max_tokens INTEGER NOT NULL,
+        repetition_penalty REAL NOT NULL,
+        guardrail_policy_names_json TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL
+    )
+    """,
+)
 
 
 @contextmanager
@@ -34,6 +97,10 @@ def connect() -> Iterator[sqlite3.Connection]:
     connection.execute("PRAGMA foreign_keys=ON")
     try:
         yield connection
+    except BaseException:
+        connection.rollback()
+        raise
+    else:
         connection.commit()
     finally:
         connection.close()
@@ -41,68 +108,37 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 def initialize_sqlite_store() -> None:
     with connect() as connection:
-        schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
-        if schema_version != 2:
-            connection.executescript(
-                """
-                DROP TABLE IF EXISTS conversation_messages;
-                DROP TABLE IF EXISTS conversations;
-                DROP TABLE IF EXISTS model_settings;
-                """
-            )
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS conversations (
-                id TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                owner_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                use_case TEXT NOT NULL DEFAULT 'text_chat',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS conversation_messages (
-                id TEXT PRIMARY KEY,
-                conversation_id TEXT NOT NULL,
-                tenant_id TEXT NOT NULL,
-                owner_id TEXT NOT NULL,
-                role TEXT NOT NULL,
-                content TEXT NOT NULL,
-                model TEXT,
-                api_surface TEXT,
-                duration_ms INTEGER,
-                error TEXT,
-                usage_json TEXT,
-                guardrail_variant TEXT,
-                guardrail_policy_name TEXT,
-                guardrail_results_json TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS idx_messages_conversation_created
-                ON conversation_messages(tenant_id, owner_id, conversation_id, created_at);
-            CREATE INDEX IF NOT EXISTS idx_conversations_owner_updated
-                ON conversations(tenant_id, owner_id, use_case, updated_at DESC);
-            CREATE TABLE IF NOT EXISTS model_settings (
-                model TEXT PRIMARY KEY,
-                api_surface TEXT NOT NULL DEFAULT 'responses',
-                modalities_json TEXT NOT NULL DEFAULT '["text"]',
-                system_prompt TEXT NOT NULL,
-                temperature REAL NOT NULL,
-                top_p REAL NOT NULL,
-                max_tokens INTEGER NOT NULL,
-                repetition_penalty REAL NOT NULL,
-                guardrail_policy_names_json TEXT NOT NULL DEFAULT '[]',
-                updated_at TEXT NOT NULL
-            );
-            """
-        )
-        connection.execute("PRAGMA user_version = 2")
+        connection.execute("BEGIN IMMEDIATE")
+        schema_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+        if schema_version != SCHEMA_VERSION:
+            app_tables_exist = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                "AND name IN ('conversations', 'conversation_messages', 'model_settings') LIMIT 1"
+            ).fetchone()
+            if app_tables_exist:
+                logger.warning(
+                    "sqlite_schema_reset development_mvp_reset=true previous_version=%d "
+                    "target_version=%d",
+                    schema_version,
+                    SCHEMA_VERSION,
+                )
+                for statement in _DROP_APP_TABLE_STATEMENTS:
+                    connection.execute(statement)
+            else:
+                logger.info("sqlite_schema_initialize target_version=%d", SCHEMA_VERSION)
+        for statement in _SCHEMA_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
 def check_sqlite_store() -> None:
     with connect() as connection:
-        connection.execute("SELECT 1").fetchone()
+        schema_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+        if schema_version != SCHEMA_VERSION:
+            raise RuntimeError(
+                f"SQLite schema version {schema_version} does not match {SCHEMA_VERSION}."
+            )
+        connection.execute("SELECT 1 FROM conversations LIMIT 1").fetchone()
 
 
 class SQLiteConversationRepository:
@@ -111,14 +147,20 @@ class SQLiteConversationRepository:
         scope: UserScope,
         use_case: str,
         limit: int,
-        offset: int,
+        after: ConversationPageKey | None,
     ) -> list[Conversation]:
+        query = (
+            "SELECT * FROM conversations WHERE tenant_id = ? AND owner_id = ? "
+            "AND use_case = ?"
+        )
+        values: list[str | int] = [scope.tenant_id, scope.user_id, use_case]
+        if after is not None:
+            query += " AND (updated_at < ? OR (updated_at = ? AND id > ?))"
+            values.extend((after.updated_at, after.updated_at, after.id))
+        query += " ORDER BY updated_at DESC, id ASC LIMIT ?"
+        values.append(limit)
         with connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM conversations WHERE tenant_id = ? AND owner_id = ? "
-                "AND use_case = ? ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?",
-                (scope.tenant_id, scope.user_id, use_case, limit, offset),
-            ).fetchall()
+            rows = connection.execute(query, values).fetchall()
         return [conversation_from_record(dict(row)) for row in rows]
 
     def create_conversation(self, scope: UserScope, conversation: Conversation) -> None:
@@ -177,6 +219,13 @@ class SQLiteConversationRepository:
 
     def append_message(self, scope: UserScope, message: ConversationMessage) -> None:
         with connect() as connection:
+            updated = connection.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ? "
+                "AND tenant_id = ? AND owner_id = ?",
+                (message.created_at, message.conversation_id, scope.tenant_id, scope.user_id),
+            )
+            if updated.rowcount != 1:
+                raise sqlite3.IntegrityError("Conversation does not exist for this user scope.")
             connection.execute(
                 """
                 INSERT INTO conversation_messages (
@@ -205,11 +254,6 @@ class SQLiteConversationRepository:
                     message.created_at,
                 ),
             )
-            connection.execute(
-                "UPDATE conversations SET updated_at = ? WHERE id = ? "
-                "AND tenant_id = ? AND owner_id = ?",
-                (message.created_at, message.conversation_id, scope.tenant_id, scope.user_id),
-            )
 
     def delete_conversation(self, scope: UserScope, conversation_id: str) -> bool:
         with connect() as connection:
@@ -230,7 +274,7 @@ class SQLiteConversationRepository:
             "WHERE tenant_id = ? AND owner_id = ? AND role = 'assistant' "
             "AND model IS NOT NULL AND created_at >= ?"
         )
-        values: list[Any] = [scope.tenant_id, scope.user_id, start_at]
+        values: list[str] = [scope.tenant_id, scope.user_id, start_at]
         if model:
             query += " AND model = ?"
             values.append(model)
@@ -306,7 +350,9 @@ class SQLiteModelSettingsRepository:
             )
 
 
-def _settings_values(settings: ModelSettings) -> tuple[Any, ...]:
+def _settings_values(
+    settings: ModelSettings,
+) -> tuple[str, str, str, str, float, float, int, float, str, str]:
     from datetime import UTC, datetime
 
     return (

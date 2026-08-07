@@ -19,7 +19,18 @@ def test_document_list_contract(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     with patch(
         "app.services.document_qa.document_qa_service.list_documents",
-        return_value=[{"id": "doc-1", "filename": "demo.pdf"}],
+        return_value=[
+            {
+                "id": "doc-1",
+                "filename": "demo.pdf",
+                "content_type": "application/pdf",
+                "byte_size": 100,
+                "chunk_count": 1,
+                "blob_name": "documents/doc-1/demo.pdf",
+                "blob_url": "https://example.test/demo.pdf",
+                "created_at": "2026-01-01T00:00:00+00:00",
+            }
+        ],
     ):
         response = TestClient(create_app()).get("/api/documents")
     assert response.status_code == 200
@@ -73,7 +84,7 @@ def test_document_question_emits_retrieval_and_completion(monkeypatch, tmp_path)
 def test_document_upload_provider_failure_is_sanitized(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     with patch(
-        "app.services.document_qa.document_qa_service.add_document",
+        "app.services.document_qa.document_qa_service.gateway.add",
         side_effect=RuntimeError("storage secret"),
     ):
         response = TestClient(create_app(), raise_server_exceptions=False).post(
@@ -81,5 +92,38 @@ def test_document_upload_provider_failure_is_sanitized(monkeypatch):
             files={"files": ("demo.txt", b"content", "text/plain")},
         )
     assert response.status_code == 502
-    assert response.json() == {"detail": "Document upload failed. Try again later."}
+    assert response.json() == {
+        "detail": "Document upload failed. Try again later.",
+        "code": "external_service_error",
+    }
     assert "storage secret" not in response.text
+
+
+def test_document_upload_rejects_more_than_ten_files(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    files = [("files", (f"{index}.txt", b"x", "text/plain")) for index in range(11)]
+
+    response = TestClient(create_app()).post("/api/documents", files=files)
+
+    assert response.status_code == 413
+    assert response.json()["code"] == "payload_too_large"
+
+
+def test_document_upload_rejects_aggregate_over_50_mb_before_indexing(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    monkeypatch.setattr("app.features.document_qa.router.MAX_DOCUMENT_BYTES", 4)
+    monkeypatch.setattr("app.features.document_qa.router.MAX_DOCUMENT_AGGREGATE_BYTES", 6)
+    files = [
+        ("files", ("one.txt", b"xxxx", "text/plain")),
+        ("files", ("two.txt", b"xxx", "text/plain")),
+    ]
+
+    with patch("app.services.document_qa.document_qa_service.add_document") as add_document:
+        response = TestClient(create_app()).post("/api/documents", files=files)
+
+    assert response.status_code == 413
+    assert response.json() == {
+        "detail": "Document uploads cannot exceed 50 MB in total.",
+        "code": "payload_too_large",
+    }
+    add_document.assert_not_called()

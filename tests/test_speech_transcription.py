@@ -3,8 +3,9 @@ import unittest
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.foundry_client import FoundrySettings, transcribe_audio, transcribe_speech_audio
-from app.main import _is_transcription_model
+from app.features.models.service import is_transcription_model
+from app.providers.settings import FoundrySettings
+from app.providers.speech import transcribe_audio, transcribe_speech_audio
 
 
 class SpeechTranscriptionTests(unittest.TestCase):
@@ -16,12 +17,12 @@ class SpeechTranscriptionTests(unittest.TestCase):
             "MAI-Transcribe-1.5",
         ):
             with self.subTest(model=model):
-                self.assertTrue(_is_transcription_model(model))
+                self.assertTrue(is_transcription_model(model))
 
-        self.assertFalse(_is_transcription_model("gpt-5.5"))
+        self.assertFalse(is_transcription_model("gpt-5.5"))
 
-    @patch("app.foundry_client._create_audio_client")
-    @patch("app.foundry_client.load_settings")
+    @patch("app.providers.speech.create_audio_client")
+    @patch("app.providers.speech.load_settings")
     def test_openai_transcription_returns_text_and_trace(
         self, load_settings: MagicMock, create_client: MagicMock
     ) -> None:
@@ -51,8 +52,8 @@ class SpeechTranscriptionTests(unittest.TestCase):
         self.assertEqual(result["foundry_request"]["path"], "/audio/transcriptions")
         client.audio.transcriptions.create.assert_called_once()
 
-    @patch("app.foundry_client.get_azure_credential")
-    @patch("app.foundry_client.load_settings")
+    @patch("app.providers.speech.get_azure_credential")
+    @patch("app.providers.speech.load_settings")
     def test_transcribe_speech_audio_collects_continuous_segments(
         self, load_settings: MagicMock, get_credential: MagicMock
     ) -> None:
@@ -87,13 +88,17 @@ class SpeechTranscriptionTests(unittest.TestCase):
 
         recognizer.start_continuous_recognition.side_effect = start_recognition
         speechsdk = ModuleType("azure.cognitiveservices.speech")
-        speechsdk.SpeechConfig = MagicMock()
-        speechsdk.SpeechRecognizer = MagicMock(return_value=recognizer)
-        speechsdk.ResultReason = SimpleNamespace(RecognizedSpeech="recognized")
-        speechsdk.CancellationReason = SimpleNamespace(Error="error")
-        speechsdk.audio = SimpleNamespace(AudioConfig=MagicMock())
+        speechsdk.__dict__.update(
+            {
+                "SpeechConfig": MagicMock(),
+                "SpeechRecognizer": MagicMock(return_value=recognizer),
+                "ResultReason": SimpleNamespace(RecognizedSpeech="recognized"),
+                "CancellationReason": SimpleNamespace(Error="error"),
+                "audio": SimpleNamespace(AudioConfig=MagicMock()),
+            }
+        )
         cognitive_services = ModuleType("azure.cognitiveservices")
-        cognitive_services.speech = speechsdk
+        cognitive_services.__dict__["speech"] = speechsdk
 
         with patch.dict(
             sys.modules,

@@ -5,10 +5,13 @@ import { listDocuments, removeDocument } from "./api";
 describe("Document Q&A API", () => {
   it("lists documents", async () => {
     const fetchClient = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ documents: [{ id: "doc-1", filename: "demo.pdf" }] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({ documents: [{ id: "doc-1", filename: "demo.pdf" }] }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     );
     const result = await listDocuments(fetchClient);
     expect(result.documents[0].id).toBe("doc-1");
@@ -21,6 +24,8 @@ describe("Document Q&A API", () => {
         headers: { "Content-Type": "application/json" },
       }),
     );
-    await expect(removeDocument(fetchClient, "missing")).rejects.toThrow("Document not found.");
+    await expect(removeDocument(fetchClient, "missing")).rejects.toThrow(
+      "Document not found.",
+    );
   });
 });

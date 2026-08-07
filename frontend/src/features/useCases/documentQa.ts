@@ -4,7 +4,8 @@ export const documentQaUseCase: UseCaseModule = {
   id: "document_qa",
   title: "Document Q&A",
   shortTitle: "Documents",
-  description: "Upload documents, retrieve relevant chunks with Azure AI Search, and ask grounded questions.",
+  description:
+    "Upload documents, retrieve relevant chunks with Azure AI Search, and ask grounded questions.",
   badge: "RAG",
   icon: "documents",
   modalities: ["text"],

@@ -4,7 +4,8 @@ export const transcribeUseCase: UseCaseModule = {
   id: "transcribe",
   title: "Recorded Audio Transcription",
   shortTitle: "Recorded transcription",
-  description: "Record or upload completed audio and return a finalized speech-to-text transcript.",
+  description:
+    "Record or upload completed audio and return a finalized speech-to-text transcript.",
   badge: "Speech to text",
   icon: "voiceWave",
   modalities: ["audio"],

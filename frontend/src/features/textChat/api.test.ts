@@ -31,7 +31,10 @@ describe("streamTextChat", () => {
 
     expect(fetchClient).toHaveBeenCalledWith(
       "/api/chat/stream",
-      expect.objectContaining({ method: "POST", body: JSON.stringify(request) }),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
       expect.objectContaining({ responseKind: "stream" }),
     );
     expect(result.events).toEqual([{ type: "delta", delta: "Hi" }]);

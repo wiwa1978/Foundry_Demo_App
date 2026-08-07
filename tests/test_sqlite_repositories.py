@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -8,20 +9,20 @@ from app.conversation_store import (
     create_conversation,
     delete_conversation,
     get_conversation_messages,
-    initialize_conversation_database,
-    list_conversations,
     list_conversation_page,
+    list_conversations,
 )
+from app.errors import InvalidRequestError
 from app.model_settings import (
     ModelSettings,
     get_model_settings,
-    initialize_database,
     list_models,
     save_model_settings,
 )
-from app.persistence import reset_repositories
+from app.persistence import initialize_persistence, reset_repositories
+from app.persistence_models import Conversation, ConversationMessage
 from app.security import UserScope
-
+from app.sqlite_store import SCHEMA_VERSION, SQLiteConversationRepository
 
 USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
 OTHER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-2")
@@ -39,8 +40,7 @@ class SqliteRepositoryTests(unittest.TestCase):
         )
         self.environment.start()
         reset_repositories()
-        initialize_database()
-        initialize_conversation_database()
+        initialize_persistence()
 
     def tearDown(self) -> None:
         reset_repositories()
@@ -116,10 +116,20 @@ class SqliteRepositoryTests(unittest.TestCase):
         self.assertEqual(settings.modalities, ("image",))
 
     def test_conversations_are_paginated_with_stable_cursor(self) -> None:
+        repository = SQLiteConversationRepository()
+        timestamp = "2026-01-01T00:00:00+00:00"
         conversations = [
-            create_conversation(USER_SCOPE, f"Chat {index}")
-            for index in range(3)
+            Conversation(
+                id=f"conversation-{index}",
+                title=f"Chat {index}",
+                use_case="text_chat",
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+            for index in range(5)
         ]
+        for conversation in conversations:
+            repository.create_conversation(USER_SCOPE, conversation)
 
         first_page = list_conversation_page(USER_SCOPE, limit=2)
         second_page = list_conversation_page(
@@ -127,19 +137,94 @@ class SqliteRepositoryTests(unittest.TestCase):
             limit=2,
             cursor=first_page.next_cursor,
         )
+        third_page = list_conversation_page(
+            USER_SCOPE,
+            limit=2,
+            cursor=second_page.next_cursor,
+        )
 
         self.assertEqual(len(first_page.conversations), 2)
         self.assertIsNotNone(first_page.next_cursor)
-        paged_ids = {
+        paged_ids = [
             item.id
-            for item in [*first_page.conversations, *second_page.conversations]
-        }
-        self.assertEqual(paged_ids, {item.id for item in conversations})
-        self.assertIsNone(second_page.next_cursor)
+            for item in [
+                *first_page.conversations,
+                *second_page.conversations,
+                *third_page.conversations,
+            ]
+        ]
+        self.assertEqual(paged_ids, [item.id for item in conversations])
+        self.assertEqual(len(paged_ids), len(set(paged_ids)))
+        self.assertIsNone(third_page.next_cursor)
 
     def test_invalid_conversation_cursor_is_rejected(self) -> None:
-        with self.assertRaisesRegex(ValueError, "Invalid conversation cursor"):
+        with self.assertRaisesRegex(InvalidRequestError, "Invalid conversation cursor"):
             list_conversation_page(USER_SCOPE, cursor="not-a-cursor")
+
+    def test_schema_mismatch_resets_app_tables(self) -> None:
+        conversation = create_conversation(USER_SCOPE, "Will be reset")
+        database_path = os.environ["SQLITE_DATABASE_PATH"]
+        connection = sqlite3.connect(database_path)
+        try:
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION - 1}")
+            connection.commit()
+        finally:
+            connection.close()
+
+        with self.assertLogs("app.sqlite_store", level="WARNING") as logs:
+            initialize_persistence()
+
+        self.assertEqual(list_conversations(USER_SCOPE), [])
+        self.assertIn("development_mvp_reset=true", " ".join(logs.output))
+        connection = sqlite3.connect(database_path)
+        try:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertIsNotNone(conversation.id)
+
+    def test_append_rolls_back_timestamp_when_message_insert_fails(self) -> None:
+        repository = SQLiteConversationRepository()
+        conversation = Conversation(
+            id="conversation-rollback",
+            title="Rollback",
+            use_case="text_chat",
+            created_at="2026-01-01T00:00:00+00:00",
+            updated_at="2026-01-01T00:00:00+00:00",
+        )
+        repository.create_conversation(USER_SCOPE, conversation)
+        message = ConversationMessage(
+            id="message-1",
+            conversation_id=conversation.id,
+            role="user",
+            content="first",
+            model=None,
+            api_surface=None,
+            duration_ms=None,
+            error=None,
+            usage=None,
+            guardrail_variant=None,
+            guardrail_policy_name=None,
+            guardrail_results=None,
+            created_at="2026-01-02T00:00:00+00:00",
+        )
+        repository.append_message(USER_SCOPE, message)
+
+        duplicate = ConversationMessage(
+            **{
+                **message.__dict__,
+                "created_at": "2026-01-03T00:00:00+00:00",
+            }
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            repository.append_message(USER_SCOPE, duplicate)
+
+        stored = repository.get_conversation(USER_SCOPE, conversation.id)
+        self.assertIsNotNone(stored)
+        assert stored is not None
+        self.assertEqual(stored.updated_at, message.created_at)
+        self.assertEqual(len(repository.list_messages(USER_SCOPE, conversation.id)), 1)
 
 
 if __name__ == "__main__":

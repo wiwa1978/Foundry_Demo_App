@@ -8,19 +8,18 @@ from app.foundry_admin import (
     list_foundry_deployments,
     list_guardrail_policies,
 )
-from app.foundry_client import complete_chat
 from app.model_settings import (
     DEPLOYMENT_DEFAULT_GUARDRAIL,
     ModelSettings,
     _document_to_settings,
 )
+from app.providers.chat import complete_chat
 from app.security import UserScope
 from app.services.chat import (
     guardrail_error_details,
     guardrail_variants,
     public_provider_error,
 )
-
 
 USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
 
@@ -184,8 +183,8 @@ def test_reads_policy_assigned_to_deployment(mock_config, mock_client):
     )
 
 
-@patch("app.foundry_client._create_openai_client")
-@patch("app.foundry_client.load_settings")
+@patch("app.providers.chat.create_openai_client")
+@patch("app.providers.chat.load_settings")
 def test_guarded_chat_sends_policy_header(mock_settings, mock_client_context):
     mock_settings.return_value = SimpleNamespace(is_configured=True, endpoint="endpoint")
     response = SimpleNamespace(

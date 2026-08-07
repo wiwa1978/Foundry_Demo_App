@@ -7,7 +7,8 @@ export type Usage = {
 };
 
 export type GuardrailVariant = "baseline" | "guarded" | "policy_1" | "policy_2";
-export type ReasoningEffort = "default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ReasoningEffort =
+  "default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type ModelResult = {
   model: string;
@@ -108,7 +109,11 @@ export type ChatStreamEvent =
       };
     }
   | { type: "delta"; delta: string }
-  | { type: "completed"; conversation: Conversation; assistant_message: StoredMessage }
+  | {
+      type: "completed";
+      conversation: Conversation;
+      assistant_message: StoredMessage;
+    }
   | {
       type: "error";
       error: string;

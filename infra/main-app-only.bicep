@@ -104,6 +104,9 @@ param entraAuthenticationClientSecret string = ''
 @description('Tenant ID for the Entra app registration used by Container Apps authentication.')
 param entraAuthenticationTenantId string = ''
 
+@description('Comma-separated administrator object IDs or email addresses. Use Entra object IDs in production. Empty denies all privileged operations when authentication is enabled.')
+param adminPrincipals string = ''
+
 @description('Minimum Container App replicas.')
 param containerAppMinReplicas int = 1
 
@@ -220,6 +223,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'PERSISTENCE_BACKEND',           value: 'cosmos' }
             { name: 'APP_AUTH_MODE',                value: enableEntraAuthentication ? 'container_apps' : 'disabled' }
             { name: 'APP_AUTH_TENANT_ID',           value: entraAuthenticationTenantId }
+            { name: 'ADMIN_PRINCIPALS',             value: adminPrincipals }
             { name: 'FOUNDRY_SUBSCRIPTION_ID',      value: subscription().subscriptionId }
             { name: 'FOUNDRY_RESOURCE_GROUP',       value: sharedResourceGroupName }
             { name: 'FOUNDRY_ACCOUNT_NAME',         value: foundryAccountName }

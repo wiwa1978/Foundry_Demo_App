@@ -1,4 +1,8 @@
-import type { ChatMessage, ModelResult, StoredMessage } from "@/features/textChat/types";
+import type {
+  ChatMessage,
+  ModelResult,
+  StoredMessage,
+} from "@/features/textChat/types";
 
 export function createUserMessage(content: string): ChatMessage {
   return {

@@ -10,7 +10,10 @@ type UseCaseDetailsPanelProps = {
   onClose: () => void;
 };
 
-export function UseCaseDetailsPanel({ useCase, onClose }: UseCaseDetailsPanelProps) {
+export function UseCaseDetailsPanel({
+  useCase,
+  onClose,
+}: UseCaseDetailsPanelProps) {
   const dialogRef = useModalDialog<HTMLElement>(onClose);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#303033]/60 p-4">
@@ -26,9 +29,16 @@ export function UseCaseDetailsPanel({ useCase, onClose }: UseCaseDetailsPanelPro
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge>{useCase.badge}</Badge>
-              <span className="text-xs text-slate-500 dark:text-slate-400">Use-case implementation</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Use-case implementation
+              </span>
             </div>
-            <h2 id="use-case-details-title" className="mt-3 text-xl font-semibold tracking-tight">{useCase.title}</h2>
+            <h2
+              id="use-case-details-title"
+              className="mt-3 text-xl font-semibold tracking-tight"
+            >
+              {useCase.title}
+            </h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
               {useCase.description}
             </p>
@@ -63,9 +73,13 @@ export function UseCaseDetailsPanel({ useCase, onClose }: UseCaseDetailsPanelPro
               <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <Code2 className="h-4 w-4 text-violet-300" />
-                  <h3 className="truncate text-sm font-semibold">{useCase.codeSnippet.title}</h3>
+                  <h3 className="truncate text-sm font-semibold">
+                    {useCase.codeSnippet.title}
+                  </h3>
                 </div>
-                <Badge variant="secondary">{useCase.codeSnippet.language}</Badge>
+                <Badge variant="secondary">
+                  {useCase.codeSnippet.language}
+                </Badge>
               </div>
               <pre className="max-h-[28rem] overflow-auto p-4 text-xs leading-5">
                 <code>{useCase.codeSnippet.code}</code>

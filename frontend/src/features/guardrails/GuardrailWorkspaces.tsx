@@ -1,10 +1,16 @@
 import { GitCompareArrows, Settings, ShieldCheck } from "lucide-react";
 
+import {
+  deploymentDefaultGuardrail,
+  guardrailPromptExamples,
+} from "@/app/workspace/constants";
+import {
+  formatConfiguredGuardrail,
+  formatModelName,
+} from "@/app/workspace/formatters";
 import { UseCaseComposer } from "@/app/workspace/WorkspacePrimitives";
-import { deploymentDefaultGuardrail, guardrailPromptExamples } from "@/app/workspace/constants";
-import { formatConfiguredGuardrail, formatModelName } from "@/app/workspace/formatters";
-import { Button } from "@/components/ui/button";
 import { PromptExamples } from "@/components/PromptExamples";
+import { Button } from "@/components/ui/button";
 import {
   ComparisonModelResponse,
   groupComparisonTurns,
@@ -69,7 +75,8 @@ export function GuardrailComparisonWorkspace({
         </div>
       </div>
       <p className="border-t bg-white px-4 py-2 text-center text-xs text-slate-500 dark:border-[#55555a] dark:bg-[#29292c] dark:text-slate-400">
-        Both panes use {formatModelName(model)} with the same prompt and model parameters. Only the guardrail policy differs.
+        Both panes use {formatModelName(model)} with the same prompt and model
+        parameters. Only the guardrail policy differs.
       </p>
     </div>
   );
@@ -114,10 +121,16 @@ function GuardrailComparisonPane({
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">{title}</div>
           <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-            {formatConfiguredGuardrail(policyName, deploymentPolicyName)} · {formatModelName(model)}
+            {formatConfiguredGuardrail(policyName, deploymentPolicyName)} ·{" "}
+            {formatModelName(model)}
           </div>
         </div>
-        <Button type="button" variant="outline" size="icon" onClick={onOpenSettings}>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={onOpenSettings}
+        >
           <Settings className="h-4 w-4" />
         </Button>
       </header>
@@ -126,7 +139,9 @@ function GuardrailComparisonPane({
         {turns.length ? (
           <div className="grid gap-4">
             {turns.map((turn) => {
-              const response = turn.responses.find((item) => item.guardrail_variant === variant);
+              const response = turn.responses.find(
+                (item) => item.guardrail_variant === variant,
+              );
               return (
                 <section key={turn.user.id} className="grid gap-2">
                   <div className="chat-user-bubble ml-auto max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-6 shadow-sm">
@@ -136,7 +151,9 @@ function GuardrailComparisonPane({
                     <ComparisonModelResponse message={response} />
                   ) : (
                     <div className="rounded-2xl border bg-white px-3 py-2 text-sm text-slate-500 shadow-sm dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-400">
-                      {isRunning ? `Running ${title.toLowerCase()}...` : "Waiting for a response..."}
+                      {isRunning
+                        ? `Running ${title.toLowerCase()}...`
+                        : "Waiting for a response..."}
                     </div>
                   )}
                 </section>
@@ -166,7 +183,9 @@ function GuardrailComparisonPane({
         onChange={onPromptChange}
         onSubmit={onSubmit}
         leftControls={
-          <span className="text-xs font-medium">{formatConfiguredGuardrail(policyName, deploymentPolicyName)}</span>
+          <span className="text-xs font-medium">
+            {formatConfiguredGuardrail(policyName, deploymentPolicyName)}
+          </span>
         }
       />
     </form>

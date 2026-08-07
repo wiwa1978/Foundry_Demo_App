@@ -6,7 +6,6 @@ export function readStorage(key: string, fallback = "") {
   }
 }
 
-
 export function writeStorage(key: string, value: string | null) {
   try {
     if (value === null) window.localStorage.removeItem(key);

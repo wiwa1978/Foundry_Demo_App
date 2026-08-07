@@ -1,12 +1,13 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.foundry_client import FoundrySettings, create_voice_live_connection_info
+from app.providers.realtime import create_voice_live_connection_info
+from app.providers.settings import FoundrySettings
 
 
 class VoiceLiveTests(unittest.TestCase):
-    @patch("app.foundry_client.get_azure_credential")
-    @patch("app.foundry_client.load_settings")
+    @patch("app.providers.realtime.get_azure_credential")
+    @patch("app.providers.realtime.load_settings")
     def test_connection_info_uses_resource_endpoint_and_entra_token(
         self, load_settings: MagicMock, get_credential: MagicMock
     ) -> None:
@@ -40,7 +41,7 @@ class VoiceLiveTests(unittest.TestCase):
             "https://ai.azure.com/.default"
         )
 
-    @patch("app.foundry_client.load_settings")
+    @patch("app.providers.realtime.load_settings")
     def test_connection_info_requires_endpoint(self, load_settings: MagicMock) -> None:
         load_settings.return_value = FoundrySettings(
             endpoint=None,
@@ -57,6 +58,27 @@ class VoiceLiveTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(RuntimeError, "Voice Live is not configured"):
+            create_voice_live_connection_info()
+
+    @patch("app.providers.realtime.load_settings")
+    def test_connection_info_rejects_http_endpoint(self, load_settings: MagicMock) -> None:
+        load_settings.return_value = FoundrySettings(
+            endpoint=None,
+            models=[],
+            realtime_endpoint=None,
+            realtime_model="",
+            embedding_model="",
+            transcription_model="",
+            tts_model="",
+            tts_voice="",
+            speech_endpoint=None,
+            speech_key=None,
+            speech_transcription_model="",
+            voice_live_endpoint="http://demo.services.ai.azure.com/",
+            voice_live_model="gpt-realtime",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "absolute HTTPS"):
             create_voice_live_connection_info()
 
 

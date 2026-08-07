@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "7897621794994347126"
+      "templateHash": "16259796583529958802"
     }
   },
   "parameters": {
@@ -66,6 +66,25 @@
       "type": "string",
       "metadata": {
         "description": "Existing Foundry account name in the hub RG."
+      }
+    },
+    "cosmosAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Existing shared Cosmos DB account name in the hub RG."
+      }
+    },
+    "cosmosDatabaseName": {
+      "type": "string",
+      "metadata": {
+        "description": "Existing shared Cosmos DB for NoSQL database name."
+      }
+    },
+    "cosmosContainerName": {
+      "type": "string",
+      "defaultValue": "foundry-chat-app",
+      "metadata": {
+        "description": "App-specific Cosmos DB container name."
       }
     },
     "containerAppsEnvironmentId": {
@@ -139,9 +158,23 @@
         "description": "Foundry realtime model deployment name."
       }
     },
+    "azureSpeechEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure AI Speech resource endpoint for the Transcribe use case."
+      }
+    },
+    "azureSpeechKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure AI Speech resource key for the Transcribe use case."
+      }
+    },
     "enableEntraAuthentication": {
       "type": "bool",
-      "defaultValue": false,
+      "defaultValue": true,
       "metadata": {
         "description": "Enable Microsoft Entra sign-in through Azure Container Apps authentication."
       }
@@ -165,6 +198,13 @@
       "defaultValue": "",
       "metadata": {
         "description": "Tenant ID for the Entra app registration used by Container Apps authentication."
+      }
+    },
+    "adminPrincipals": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Comma-separated administrator object IDs or email addresses. Use Entra object IDs in production. Empty denies all privileged operations when authentication is enabled."
       }
     },
     "containerAppMinReplicas": {
@@ -234,67 +274,38 @@
               "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('containerAppManagedIdentityName'))]"
             }
           ],
-          "secrets": "[if(parameters('enableEntraAuthentication'), createArray(createObject('name', variables('entraAuthenticationSecretName'), 'value', parameters('entraAuthenticationClientSecret'))), createArray())]"
+          "secrets": "[concat(if(parameters('enableEntraAuthentication'), createArray(createObject('name', variables('entraAuthenticationSecretName'), 'value', parameters('entraAuthenticationClientSecret'))), createArray()), if(not(empty(parameters('azureSpeechKey'))), createArray(createObject('name', 'azure-speech-key', 'value', parameters('azureSpeechKey'))), createArray()))]"
         },
         "template": {
           "containers": [
             {
               "name": "foundry-chat-app",
               "image": "[parameters('containerImage')]",
-              "env": [
-                {
-                  "name": "AZURE_CLIENT_ID",
-                  "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('containerAppManagedIdentityName')), '2023-01-31').clientId]"
-                },
-                {
-                  "name": "ENTRA_AUTH_ENABLED",
-                  "value": "[string(parameters('enableEntraAuthentication'))]"
-                },
-                {
-                  "name": "FOUNDRY_PROJECT_ENDPOINT",
-                  "value": "[parameters('foundryProjectEndpoint')]"
-                },
-                {
-                  "name": "FOUNDRY_OPENAI_ENDPOINT",
-                  "value": "[parameters('foundryOpenAiEndpoint')]"
-                },
-                {
-                  "name": "FOUNDRY_MODELS",
-                  "value": "[parameters('foundryModels')]"
-                },
-                {
-                  "name": "FOUNDRY_REALTIME_ENDPOINT",
-                  "value": "[if(empty(parameters('foundryRealtimeEndpoint')), parameters('foundryProjectEndpoint'), parameters('foundryRealtimeEndpoint'))]"
-                },
-                {
-                  "name": "FOUNDRY_REALTIME_MODEL",
-                  "value": "[parameters('foundryRealtimeModel')]"
-                },
-                {
-                  "name": "AZURE_STORAGE_ACCOUNT_URL",
-                  "value": "[format('https://{0}.blob.{1}', parameters('storageAccountName'), environment().suffixes.storage)]"
-                },
-                {
-                  "name": "AZURE_STORAGE_CONTAINER_NAME",
-                  "value": "[parameters('storageContainerName')]"
-                },
-                {
-                  "name": "AZURE_SEARCH_ENDPOINT",
-                  "value": "[format('https://{0}.search.windows.net', parameters('searchServiceName'))]"
-                },
-                {
-                  "name": "AZURE_SEARCH_INDEX_NAME",
-                  "value": "[parameters('searchIndexName')]"
-                },
-                {
-                  "name": "FOUNDRY_EMBEDDING_MODEL",
-                  "value": "[parameters('foundryEmbeddingModel')]"
-                }
-              ],
+              "env": "[concat(createArray(createObject('name', 'AZURE_CLIENT_ID', 'value', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('containerAppManagedIdentityName')), '2023-01-31').clientId), createObject('name', 'PERSISTENCE_BACKEND', 'value', 'cosmos'), createObject('name', 'APP_AUTH_MODE', 'value', if(parameters('enableEntraAuthentication'), 'container_apps', 'disabled')), createObject('name', 'APP_AUTH_TENANT_ID', 'value', parameters('entraAuthenticationTenantId')), createObject('name', 'ADMIN_PRINCIPALS', 'value', parameters('adminPrincipals')), createObject('name', 'FOUNDRY_SUBSCRIPTION_ID', 'value', subscription().subscriptionId), createObject('name', 'FOUNDRY_RESOURCE_GROUP', 'value', parameters('sharedResourceGroupName')), createObject('name', 'FOUNDRY_ACCOUNT_NAME', 'value', parameters('foundryAccountName')), createObject('name', 'FOUNDRY_PROJECT_ENDPOINT', 'value', parameters('foundryProjectEndpoint')), createObject('name', 'FOUNDRY_OPENAI_ENDPOINT', 'value', parameters('foundryOpenAiEndpoint')), createObject('name', 'FOUNDRY_MODELS', 'value', parameters('foundryModels')), createObject('name', 'FOUNDRY_REALTIME_ENDPOINT', 'value', if(empty(parameters('foundryRealtimeEndpoint')), parameters('foundryProjectEndpoint'), parameters('foundryRealtimeEndpoint'))), createObject('name', 'FOUNDRY_REALTIME_MODEL', 'value', parameters('foundryRealtimeModel')), createObject('name', 'AZURE_STORAGE_ACCOUNT_URL', 'value', format('https://{0}.blob.{1}', parameters('storageAccountName'), environment().suffixes.storage)), createObject('name', 'AZURE_STORAGE_CONTAINER_NAME', 'value', parameters('storageContainerName')), createObject('name', 'AZURE_SEARCH_ENDPOINT', 'value', format('https://{0}.search.windows.net', parameters('searchServiceName'))), createObject('name', 'AZURE_SEARCH_INDEX_NAME', 'value', parameters('searchIndexName')), createObject('name', 'FOUNDRY_EMBEDDING_MODEL', 'value', parameters('foundryEmbeddingModel')), createObject('name', 'AZURE_COSMOS_ENDPOINT', 'value', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('sharedResourceGroupName')), 'Microsoft.Resources/deployments', format('cosmos-shared-{0}', parameters('containerAppName'))), '2025-04-01').outputs.endpoint.value), createObject('name', 'AZURE_COSMOS_DATABASE_NAME', 'value', parameters('cosmosDatabaseName')), createObject('name', 'AZURE_COSMOS_CONTAINER_NAME', 'value', parameters('cosmosContainerName'))), if(not(empty(parameters('azureSpeechEndpoint'))), createArray(createObject('name', 'AZURE_SPEECH_ENDPOINT', 'value', parameters('azureSpeechEndpoint')), createObject('name', 'AZURE_SPEECH_TRANSCRIPTION_MODEL', 'value', 'MAI-Transcribe-1.5')), createArray()), if(not(empty(parameters('azureSpeechKey'))), createArray(createObject('name', 'AZURE_SPEECH_KEY', 'secretRef', 'azure-speech-key')), createArray()))]",
               "resources": {
                 "cpu": "[json('0.5')]",
                 "memory": "1Gi"
-              }
+              },
+              "probes": [
+                {
+                  "type": "Liveness",
+                  "httpGet": {
+                    "path": "/api/health",
+                    "port": 8000
+                  },
+                  "initialDelaySeconds": 10,
+                  "periodSeconds": 30
+                },
+                {
+                  "type": "Readiness",
+                  "httpGet": {
+                    "path": "/api/ready",
+                    "port": 8000
+                  },
+                  "initialDelaySeconds": 5,
+                  "periodSeconds": 10
+                }
+              ]
             }
           ],
           "scale": {
@@ -315,6 +326,7 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('containerAppManagedIdentityName'))]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('sharedResourceGroupName')), 'Microsoft.Resources/deployments', format('cosmos-shared-{0}', parameters('containerAppName')))]",
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('sharedResourceGroupName')), 'Microsoft.Resources/deployments', format('rbac-shared-{0}', parameters('containerAppName')))]"
       ]
     },
@@ -400,7 +412,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.46.1.21595",
-              "templateHash": "10540079823083899666"
+              "templateHash": "12768557984568522186"
             }
           },
           "parameters": {
@@ -443,7 +455,8 @@
             "searchServiceContributorRoleId": "7ca78c08-252a-4471-8644-bb5ff32d4ba0",
             "cognitiveServicesUserRoleId": "a97b65f3-24c7-4388-baec-2e87135dc908",
             "cognitiveServicesOpenAiUserRoleId": "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd",
-            "azureAiDeveloperRoleId": "64702f94-c441-49e6-a78b-ef80e0188fee"
+            "azureAiDeveloperRoleId": "64702f94-c441-49e6-a78b-ef80e0188fee",
+            "cognitiveServicesSpeechUserRoleId": "f2dc8367-1007-4938-bd23-fe263f013447"
           },
           "resources": [
             {
@@ -533,8 +546,159 @@
                 "principalType": "ServicePrincipal",
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('azureAiDeveloperRoleId'))]"
               }
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.CognitiveServices/accounts', parameters('foundryAccountName'))]",
+              "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', parameters('foundryAccountName')), parameters('principalId'), variables('cognitiveServicesSpeechUserRoleId'))]",
+              "properties": {
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cognitiveServicesSpeechUserRoleId'))]"
+              }
             }
           ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('containerAppManagedIdentityName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('cosmos-shared-{0}', parameters('containerAppName'))]",
+      "resourceGroup": "[parameters('sharedResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "accountName": {
+            "value": "[parameters('cosmosAccountName')]"
+          },
+          "databaseName": {
+            "value": "[parameters('cosmosDatabaseName')]"
+          },
+          "containerName": {
+            "value": "[parameters('cosmosContainerName')]"
+          },
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('containerAppManagedIdentityName')), '2023-01-31').principalId]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "13313521215933545626"
+            }
+          },
+          "parameters": {
+            "accountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Existing shared Cosmos DB account name."
+              }
+            },
+            "databaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Existing shared Cosmos DB for NoSQL database name."
+              }
+            },
+            "containerName": {
+              "type": "string",
+              "metadata": {
+                "description": "App-specific Cosmos DB container name."
+              }
+            },
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Managed identity principal ID that receives access to this app container."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+              "apiVersion": "2024-05-15",
+              "name": "[format('{0}/{1}/{2}-v3', parameters('accountName'), parameters('databaseName'), parameters('containerName'))]",
+              "properties": {
+                "resource": {
+                  "id": "[format('{0}-v3', parameters('containerName'))]",
+                  "partitionKey": {
+                    "paths": [
+                      "/partition_key"
+                    ],
+                    "kind": "Hash",
+                    "version": 2
+                  },
+                  "indexingPolicy": {
+                    "indexingMode": "consistent",
+                    "automatic": true,
+                    "includedPaths": [
+                      {
+                        "path": "/*"
+                      }
+                    ],
+                    "excludedPaths": [
+                      {
+                        "path": "/\"_etag\"/?"
+                      }
+                    ],
+                    "compositeIndexes": [
+                      [
+                        {
+                          "path": "/updated_at",
+                          "order": "descending"
+                        },
+                        {
+                          "path": "/id",
+                          "order": "ascending"
+                        }
+                      ],
+                      [
+                        {
+                          "path": "/created_at",
+                          "order": "ascending"
+                        },
+                        {
+                          "path": "/id",
+                          "order": "ascending"
+                        }
+                      ]
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments",
+              "apiVersion": "2024-05-15",
+              "name": "[format('{0}/{1}', parameters('accountName'), guid(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('accountName')), resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers', split(format('{0}/{1}/{2}-v3', parameters('accountName'), parameters('databaseName'), parameters('containerName')), '/')[0], split(format('{0}/{1}/{2}-v3', parameters('accountName'), parameters('databaseName'), parameters('containerName')), '/')[1], split(format('{0}/{1}/{2}-v3', parameters('accountName'), parameters('databaseName'), parameters('containerName')), '/')[2]), parameters('principalId')))]",
+              "properties": {
+                "principalId": "[parameters('principalId')]",
+                "roleDefinitionId": "[format('{0}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002', resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('accountName')))]",
+                "scope": "[format('{0}/dbs/{1}/colls/{2}-v3', resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('accountName')), parameters('databaseName'), parameters('containerName'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers', split(format('{0}/{1}/{2}-v3', parameters('accountName'), parameters('databaseName'), parameters('containerName')), '/')[0], split(format('{0}/{1}/{2}-v3', parameters('accountName'), parameters('databaseName'), parameters('containerName')), '/')[1], split(format('{0}/{1}/{2}-v3', parameters('accountName'), parameters('databaseName'), parameters('containerName')), '/')[2])]"
+              ]
+            }
+          ],
+          "outputs": {
+            "endpoint": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('accountName')), '2024-05-15').documentEndpoint]"
+            }
+          }
         }
       },
       "dependsOn": [

@@ -4,7 +4,8 @@ export const browserVoiceUseCase: UseCaseModule = {
   id: "browser_voice",
   title: "Browser based voice",
   shortTitle: "Browser voice",
-  description: "Use browser dictation and readback around the normal text chat flow.",
+  description:
+    "Use browser dictation and readback around the normal text chat flow.",
   badge: "Browser APIs",
   icon: "browserVoice",
   modalities: ["audio"],

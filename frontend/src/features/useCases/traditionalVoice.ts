@@ -4,7 +4,8 @@ export const traditionalVoiceUseCase: UseCaseModule = {
   id: "traditional_voice",
   title: "STT -> Chat -> TTS",
   shortTitle: "STT -> TTS",
-  description: "Record audio, transcribe it in Foundry, ask the chat model, then synthesize speech.",
+  description:
+    "Record audio, transcribe it in Foundry, ask the chat model, then synthesize speech.",
   badge: "Foundry audio",
   icon: "voiceWave",
   modalities: ["audio"],

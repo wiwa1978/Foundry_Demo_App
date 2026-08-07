@@ -4,7 +4,8 @@ export const textChatUseCase: UseCaseModule = {
   id: "text_chat",
   title: "Text Chat",
   shortTitle: "Text chat",
-  description: "A clean single-model Foundry chat experience with only the controls needed to chat.",
+  description:
+    "A clean single-model Foundry chat experience with only the controls needed to chat.",
   badge: "Default",
   icon: "chat",
   modalities: ["text"],

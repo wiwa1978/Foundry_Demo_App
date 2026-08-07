@@ -4,7 +4,8 @@ export const textToImageUseCase: UseCaseModule = {
   id: "text_to_image",
   title: "Text to Image",
   shortTitle: "Text-Image",
-  description: "Turn a detailed text prompt into a high-quality PNG with an MAI image deployment.",
+  description:
+    "Turn a detailed text prompt into a high-quality PNG with an MAI image deployment.",
   badge: "Foundry image",
   icon: "image",
   modalities: ["image"],

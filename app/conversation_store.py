@@ -1,21 +1,24 @@
+import base64
+import binascii
 import json
 import uuid
-import base64
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, TypedDict
 
-from app.persistence import get_repositories, initialize_persistence
+from app.errors import InvalidRequestError, NotFoundError
+from app.persistence import get_repositories
 from app.persistence_models import (
     Conversation,
     ConversationMessage,
     GuardrailVariant,
     MessageRole,
-    conversation_from_record,
-    message_from_record,
-    scoped_document_id,
 )
+from app.repository_contracts import ConversationPageKey
 from app.security import UserScope
+
+CURSOR_VERSION = 1
+
 
 @dataclass(frozen=True)
 class ConversationPage:
@@ -23,8 +26,35 @@ class ConversationPage:
     next_cursor: str | None
 
 
-def initialize_conversation_database() -> None:
-    initialize_persistence()
+class MetricsDay(TypedDict):
+    date: str
+    label: str
+    requests: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_cost: float
+    total_duration_ms: int
+    duration_count: int
+    avg_duration_ms: int
+
+
+class MetricsSummary(TypedDict):
+    requests: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_cost: float
+    avg_prompt_tokens: int
+    avg_completion_tokens: int
+    avg_total_tokens: int
+    avg_duration_ms: int
+
+
+class UsageMetrics(TypedDict):
+    days: list[MetricsDay]
+    models: list[str]
+    summary: MetricsSummary
 
 
 def list_conversations(scope: UserScope, use_case: str = "text_chat") -> list[Conversation]:
@@ -39,18 +69,19 @@ def list_conversation_page(
     cursor: str | None = None,
 ) -> ConversationPage:
     if limit < 1 or limit > 100:
-        raise ValueError("Conversation page size must be between 1 and 100.")
-    offset = _decode_cursor(cursor)
+        raise InvalidRequestError("Conversation page size must be between 1 and 100.")
+    after = _decode_cursor(cursor)
     conversations = get_repositories().conversations.list_conversations(
         scope,
         use_case,
         limit + 1,
-        offset,
+        after,
     )
     has_more = len(conversations) > limit
+    page_items = conversations[:limit]
     return ConversationPage(
-        conversations=conversations[:limit],
-        next_cursor=_encode_cursor(offset + limit) if has_more else None,
+        conversations=page_items,
+        next_cursor=_encode_cursor(page_items[-1]) if has_more else None,
     )
 
 
@@ -81,9 +112,9 @@ def get_or_create_conversation(
     if conversation_id:
         conversation = get_conversation(scope, conversation_id)
         if conversation is None:
-            raise ValueError("Conversation not found.")
+            raise NotFoundError("Conversation not found.")
         if conversation.use_case != use_case:
-            raise ValueError("Conversation belongs to a different use case.")
+            raise NotFoundError("Conversation belongs to a different use case.")
         return conversation
     return create_conversation(scope, title_seed, use_case)
 
@@ -110,11 +141,11 @@ def get_usage_metrics(
     model: str | None = None,
     input_token_cost_per_1k: float = 0,
     output_token_cost_per_1k: float = 0,
-) -> dict[str, Any]:
+) -> UsageMetrics:
     today = datetime.now(UTC).date()
     start_date = today - timedelta(days=days - 1)
     bucket_dates = [start_date + timedelta(days=offset) for offset in range(days)]
-    buckets = {
+    buckets: dict[str, MetricsDay] = {
         item.isoformat(): {
             "date": item.isoformat(),
             "label": item.strftime("%m/%d"),
@@ -295,46 +326,48 @@ def _normalize_title(title: str | None) -> str:
     return normalized if len(normalized) <= 60 else f"{normalized[:57]}..."
 
 
-def _document_to_conversation(document: dict[str, Any]) -> Conversation:
-    return conversation_from_record(document)
-
-
-def _document_to_message(document: dict[str, Any]) -> ConversationMessage:
-    return message_from_record(document)
-
-
-def _sqlite_row_to_message(row: Any) -> ConversationMessage:
-    document = dict(row)
-    document["usage"] = json.loads(document.pop("usage_json")) if document["usage_json"] else None
-    document["guardrail_results"] = (
-        json.loads(document.pop("guardrail_results_json"))
-        if document["guardrail_results_json"]
-        else None
-    )
-    return _document_to_message(document)
-
-
 def _usage_value(usage: dict[str, Any], key: str) -> int:
     value = usage.get(key)
     return int(value) if isinstance(value, int | float) else 0
 
+def _encode_cursor(conversation: Conversation) -> str:
+    payload = json.dumps(
+        {
+            "v": CURSOR_VERSION,
+            "updated_at": conversation.updated_at,
+            "id": conversation.id,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
 
-def _scoped_document_id(scope: UserScope, document_id: str) -> str:
-    return scoped_document_id(scope, document_id)
 
-
-def _encode_cursor(offset: int) -> str:
-    return base64.urlsafe_b64encode(str(offset).encode("ascii")).decode("ascii").rstrip("=")
-
-
-def _decode_cursor(cursor: str | None) -> int:
+def _decode_cursor(cursor: str | None) -> ConversationPageKey | None:
     if not cursor:
-        return 0
+        return None
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
-        offset = int(base64.urlsafe_b64decode(padded).decode("ascii"))
-    except (ValueError, UnicodeDecodeError) as exc:
-        raise ValueError("Invalid conversation cursor.") from exc
-    if offset < 0:
-        raise ValueError("Invalid conversation cursor.")
-    return offset
+        decoded = base64.b64decode(padded, altchars=b"-_", validate=True).decode("utf-8")
+        payload = json.loads(decoded)
+        if not isinstance(payload, dict) or set(payload) != {"v", "updated_at", "id"}:
+            raise ValueError
+        version = payload["v"]
+        updated_at = payload["updated_at"]
+        conversation_id = payload["id"]
+        if (
+            version != CURSOR_VERSION
+            or not isinstance(updated_at, str)
+            or not isinstance(conversation_id, str)
+            or not updated_at
+            or not conversation_id
+            or len(updated_at) > 64
+            or len(conversation_id) > 128
+        ):
+            raise ValueError
+        parsed_timestamp = datetime.fromisoformat(updated_at)
+        if parsed_timestamp.tzinfo is None:
+            raise ValueError
+    except (binascii.Error, json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+        raise InvalidRequestError("Invalid conversation cursor.") from exc
+    return ConversationPageKey(updated_at=updated_at, id=conversation_id)

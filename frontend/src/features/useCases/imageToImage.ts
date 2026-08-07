@@ -4,7 +4,8 @@ export const imageToImageUseCase: UseCaseModule = {
   id: "image_to_image",
   title: "Image to Image",
   shortTitle: "Image-Image",
-  description: "Transform an uploaded image with a prompt while preserving the parts that matter.",
+  description:
+    "Transform an uploaded image with a prompt while preserving the parts that matter.",
   badge: "Foundry image",
   icon: "image",
   modalities: ["image"],

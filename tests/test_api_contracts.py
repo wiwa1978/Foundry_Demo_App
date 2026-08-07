@@ -3,8 +3,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.conversation_store import Conversation
-from app.main import app
-
+from app.main import app, create_app
 
 client = TestClient(app)
 
@@ -30,9 +29,8 @@ def test_auth_me_returns_public_unauthenticated_contract(monkeypatch):
     }
 
 
-@patch("app.main.list_conversation_page")
-@patch("app.main._is_entra_auth_enabled", return_value=False)
-def test_conversation_list_contract(_mock_auth_enabled, mock_list_page, monkeypatch):
+@patch("app.features.conversations.router.list_conversation_page")
+def test_conversation_list_contract(mock_list_page, monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     from app.conversation_store import ConversationPage
 
@@ -73,9 +71,71 @@ def test_conversation_list_contract(_mock_auth_enabled, mock_list_page, monkeypa
     assert call["cursor"] is None
 
 
-@patch("app.main._is_entra_auth_enabled", return_value=False)
-def test_unknown_api_route_uses_fastapi_error_contract(_mock_auth_enabled):
+def test_unknown_api_route_uses_fastapi_error_contract(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     response = client.get("/api/not-a-route")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "API route not found."}
+    assert response.json() == {
+        "detail": "API route not found.",
+        "code": "not_found",
+    }
+
+
+def test_invalid_request_error_has_stable_code_and_request_id(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    response = client.get(
+        "/api/model-settings",
+        params={"model": " "},
+        headers={"x-request-id": "contract-request-400"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "Model deployment name cannot be blank.",
+        "code": "invalid_request",
+    }
+    assert response.headers["x-request-id"] == "contract-request-400"
+
+
+@patch("app.features.conversations.router.get_conversation", return_value=None)
+def test_not_found_error_has_stable_code(_mock_get_conversation, monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    response = client.get("/api/conversations/missing")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": "Conversation not found.",
+        "code": "not_found",
+    }
+
+
+def test_every_json_operation_has_an_explicit_openapi_response_schema():
+    schema = create_app().openapi()
+    operations = [
+        (path, method, operation)
+        for path, path_item in schema["paths"].items()
+        for method, operation in path_item.items()
+        if method in {"get", "post", "put", "patch", "delete"}
+    ]
+    excluded = {
+        ("/", "get"),
+        ("/favicon.svg", "get"),
+        ("/{full_path}", "get"),
+        ("/api/auth/login", "get"),
+        ("/api/auth/callback", "get"),
+        ("/api/auth/logout", "get"),
+        ("/api/chat/stream", "post"),
+        ("/api/documents/ask/stream", "post"),
+    }
+    eligible = [
+        (path, method, operation)
+        for path, method, operation in operations
+        if (path, method) not in excluded
+    ]
+
+    assert len(operations) == 35
+    assert len(eligible) == 27
+    for path, method, operation in eligible:
+        response = operation["responses"]["200"]
+        assert response["content"]["application/json"]["schema"], (method, path)

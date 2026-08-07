@@ -4,7 +4,8 @@ export const realtimeVoiceUseCase: UseCaseModule = {
   id: "realtime_voice",
   title: "Realtime Speech in / Speech out",
   shortTitle: "Realtime",
-  description: "Stream microphone audio to a realtime deployment and play the audio response.",
+  description:
+    "Stream microphone audio to a realtime deployment and play the audio response.",
   badge: "WebRTC",
   icon: "voiceWave",
   modalities: ["audio"],

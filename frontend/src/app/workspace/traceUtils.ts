@@ -1,30 +1,28 @@
 import type { ApiTraceEntry } from "@/app/workspace/contracts";
 
 const sensitiveTraceKeys = new Set([
+  "access_token",
+  "api-key",
+  "api_key",
+  "apikey",
   "audio",
   "audio_base64",
+  "authorization",
   "b64_json",
+  "client_secret",
   "content",
   "delta",
   "input",
   "instructions",
   "messages",
+  "password",
   "prompt",
+  "refresh_token",
+  "secret",
   "system_prompt",
   "text",
   "token",
 ]);
-
-export function parseRequestBody(body: BodyInit | null | undefined) {
-  if (typeof body !== "string") {
-    return undefined;
-  }
-  try {
-    return JSON.parse(body) as unknown;
-  } catch {
-    return body;
-  }
-}
 
 export function redactTracePayload(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -34,7 +32,9 @@ export function redactTracePayload(value: unknown): unknown {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
-        sensitiveTraceKeys.has(key.toLowerCase()) ? "[redacted]" : redactTracePayload(item),
+        sensitiveTraceKeys.has(key.toLowerCase())
+          ? "[redacted]"
+          : redactTracePayload(item),
       ]),
     );
   }
@@ -42,29 +42,6 @@ export function redactTracePayload(value: unknown): unknown {
     return `[redacted ${value.length} characters]`;
   }
   return value;
-}
-
-export async function readTraceResponse(
-  response: Response,
-  responseKind?: "json" | "text" | "stream",
-) {
-  if (responseKind === "stream") {
-    return "text/event-stream";
-  }
-
-  const clone = response.clone();
-  const contentType = clone.headers.get("content-type") ?? "";
-  if (responseKind === "json" || contentType.includes("application/json")) {
-    try {
-      return (await clone.json()) as unknown;
-    } catch {
-      return `${response.status} ${response.statusText}`;
-    }
-  }
-  if (responseKind === "text" || contentType.startsWith("text/")) {
-    return clone.text();
-  }
-  return `${response.status} ${response.statusText}`;
 }
 
 export function formatTraceTimestamp(timestamp: string) {

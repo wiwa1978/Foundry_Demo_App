@@ -25,7 +25,8 @@ export function formatGuardrailLabel(message: {
   guardrail_variant?: GuardrailVariant | null;
   guardrail_policy_name?: string | null;
 }) {
-  const slot = message.guardrail_variant === "policy_2" ? "Guardrail 2" : "Guardrail 1";
+  const slot =
+    message.guardrail_variant === "policy_2" ? "Guardrail 2" : "Guardrail 1";
   if (message.guardrail_variant === "baseline") {
     return "Deployment default";
   }
@@ -54,8 +55,12 @@ export function findGuardrailPolicy(
   deploymentPolicyName?: string | null,
 ) {
   const resolvedName =
-    policyName === deploymentDefaultGuardrail ? deploymentPolicyName : policyName;
-  return policies.find((policy) => policy.name.toLowerCase() === resolvedName?.toLowerCase());
+    policyName === deploymentDefaultGuardrail
+      ? deploymentPolicyName
+      : policyName;
+  return policies.find(
+    (policy) => policy.name.toLowerCase() === resolvedName?.toLowerCase(),
+  );
 }
 
 export function formatGuardrailFilterName(name: string) {
@@ -74,14 +79,17 @@ export function formatGuardrailFilterName(name: string) {
 export function guardrailSection(name: string) {
   if (name === "Jailbreak") return "Jailbreak";
   if (name.startsWith("Indirect Attack")) return "Indirect prompt injections";
-  if (["Hate", "Sexual", "Selfharm", "Violence"].includes(name)) return "Content harms";
+  if (["Hate", "Sexual", "Selfharm", "Violence"].includes(name))
+    return "Content harms";
   if (name.startsWith("Protected Material")) return "Protected materials";
   if (name === "PII") return "Sensitive data leakage";
   if (name === "Task Adherence") return "Task drift";
   return "Other controls";
 }
 
-export function guardrailFilterGroupValue(filters: GuardrailPolicy["content_filters"]) {
+export function guardrailFilterGroupValue(
+  filters: GuardrailPolicy["content_filters"],
+) {
   const enabled = filters.filter((filter) => filter.enabled);
   if (!enabled.length) {
     return "off";
@@ -95,7 +103,9 @@ export function guardrailFilterGroupValue(filters: GuardrailPolicy["content_filt
     .join(";");
 }
 
-export function formatGuardrailFilterGroupState(filters: GuardrailPolicy["content_filters"]) {
+export function formatGuardrailFilterGroupState(
+  filters: GuardrailPolicy["content_filters"],
+) {
   const enabled = filters.filter((filter) => filter.enabled);
   if (!enabled.length) {
     return "Off";
@@ -114,18 +124,30 @@ export function formatGuardrailFilterGroupState(filters: GuardrailPolicy["conten
   return blockingLevels[thresholds[0]!] ?? `${thresholds[0]}+ severity`;
 }
 
-export function formatGuardrailSources(filters: GuardrailPolicy["content_filters"]) {
-  const sources = Array.from(new Set(filters.map((filter) => filter.source.toLowerCase())));
+export function formatGuardrailSources(
+  filters: GuardrailPolicy["content_filters"],
+) {
+  const sources = Array.from(
+    new Set(filters.map((filter) => filter.source.toLowerCase())),
+  );
   const hasPrompt = sources.includes("prompt");
   const hasCompletion = sources.includes("completion");
   if (hasPrompt && hasCompletion) {
     return "User input, Output";
   }
-  return hasPrompt ? "User input" : hasCompletion ? "Output" : sources.join(", ");
+  return hasPrompt
+    ? "User input"
+    : hasCompletion
+      ? "Output"
+      : sources.join(", ");
 }
 
 export function formatUsage(usage?: Usage) {
-  if (!usage || usage.total_tokens === null || usage.total_tokens === undefined) {
+  if (
+    !usage ||
+    usage.total_tokens === null ||
+    usage.total_tokens === undefined
+  ) {
     return "";
   }
 

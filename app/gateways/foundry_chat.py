@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from typing import Any, Protocol
 
-from app.foundry_client import build_foundry_request_trace, complete_chat, stream_chat
+from app.providers.chat import build_foundry_request_trace, complete_chat, stream_chat
 
 
 class FoundryChatGateway(Protocol):

@@ -5,7 +5,6 @@ from typing import Any, Literal
 
 from app.security import UserScope
 
-
 MessageRole = Literal["user", "assistant"]
 GuardrailVariant = Literal["baseline", "guarded", "policy_1", "policy_2"]
 CONVERSATION_TYPE = "conversation"

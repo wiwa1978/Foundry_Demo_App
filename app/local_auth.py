@@ -9,7 +9,6 @@ import msal
 
 from app.config import env_text
 
-
 AUTH_FLOW_COOKIE = "foundry_auth_flow"
 AUTH_SESSION_COOKIE = "foundry_auth_session"
 

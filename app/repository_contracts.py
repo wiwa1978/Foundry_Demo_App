@@ -13,6 +13,12 @@ class UsageRecord:
     created_at: str
 
 
+@dataclass(frozen=True)
+class ConversationPageKey:
+    updated_at: str
+    id: str
+
+
 @runtime_checkable
 class ConversationRepository(Protocol):
     def list_conversations(
@@ -20,7 +26,7 @@ class ConversationRepository(Protocol):
         scope: UserScope,
         use_case: str,
         limit: int,
-        offset: int,
+        after: ConversationPageKey | None,
     ) -> list[Conversation]: ...
 
     def create_conversation(self, scope: UserScope, conversation: Conversation) -> None: ...

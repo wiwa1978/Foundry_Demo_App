@@ -12,6 +12,7 @@ from app.conversation_store import (
     message_to_dict,
 )
 from app.document_store import chunk_to_dict, document_to_dict
+from app.errors import ApplicationError, ExternalServiceError
 from app.gateways.documents import AzureDocumentGateway, DocumentGateway
 from app.model_settings import ModelSettings, get_model_settings
 from app.persistence_models import Conversation, ConversationMessage
@@ -24,7 +25,6 @@ from app.services.chat import (
     guardrail_error_details,
     public_provider_error,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,11 @@ class DocumentQaService:
         self.gateway = gateway or AzureDocumentGateway()
 
     def list_documents(self, scope: UserScope) -> list[dict[str, Any]]:
-        return [document_to_dict(item) for item in self.gateway.list_documents(scope)]
+        try:
+            documents = self.gateway.list_documents(scope)
+        except Exception as exc:
+            raise ExternalServiceError("Document listing") from exc
+        return [document_to_dict(item) for item in documents]
 
     def add_document(
         self,
@@ -55,10 +59,18 @@ class DocumentQaService:
         content_type: str | None,
         data: bytes,
     ) -> dict[str, Any]:
-        return self.gateway.add(scope, filename, content_type, data)
+        try:
+            return self.gateway.add(scope, filename, content_type, data)
+        except ApplicationError:
+            raise
+        except Exception as exc:
+            raise ExternalServiceError("Document upload") from exc
 
     def delete_document(self, scope: UserScope, document_id: str) -> bool:
-        return self.gateway.delete(scope, document_id)
+        try:
+            return self.gateway.delete(scope, document_id)
+        except Exception as exc:
+            raise ExternalServiceError("Document deletion") from exc
 
     def prepare(
         self,
@@ -71,7 +83,12 @@ class DocumentQaService:
             request.prompt,
             request.use_case,
         )
-        retrieval = self.gateway.retrieve(scope, request.prompt)
+        try:
+            retrieval = self.gateway.retrieve(scope, request.prompt)
+        except ApplicationError:
+            raise
+        except Exception as exc:
+            raise ExternalServiceError("Document question") from exc
         grounded_prompt = self.gateway.grounded_prompt(request.prompt, retrieval["chunks"])
         model_settings = get_model_settings(request.model)
         variants = chat_service.guardrail_variants(model_settings, request.guardrail_comparison)

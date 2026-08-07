@@ -49,13 +49,19 @@ export function encodePcmWav(samples: Float32Array, sampleRate: number) {
   view.setUint32(40, samples.length * 2, true);
   for (let index = 0; index < samples.length; index += 1) {
     const sample = Math.max(-1, Math.min(1, samples[index]));
-    view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    view.setInt16(
+      44 + index * 2,
+      sample < 0 ? sample * 0x8000 : sample * 0x7fff,
+      true,
+    );
   }
   return new Blob([buffer], { type: "audio/wav" });
 }
 
 export function downloadText(text: string, filename: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  const url = URL.createObjectURL(
+    new Blob([text], { type: "text/plain;charset=utf-8" }),
+  );
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
@@ -63,7 +69,9 @@ export function downloadText(text: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function summarizeTraditionalVoiceResult(result: TraditionalVoiceResult) {
+export function summarizeTraditionalVoiceResult(
+  result: TraditionalVoiceResult,
+) {
   return {
     model: result.model,
     transcription: {

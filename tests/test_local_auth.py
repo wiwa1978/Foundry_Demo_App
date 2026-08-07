@@ -6,7 +6,9 @@ def test_signed_session_cookie_round_trip(monkeypatch):
 
     cookie = encode_cookie({"authenticated": True, "user_id": "user-1"}, lifetime_seconds=60)
 
-    assert decode_cookie(cookie)["user_id"] == "user-1"
+    decoded = decode_cookie(cookie)
+    assert decoded is not None
+    assert decoded["user_id"] == "user-1"
 
 
 def test_tampered_session_cookie_is_rejected(monkeypatch):

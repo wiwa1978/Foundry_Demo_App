@@ -4,7 +4,9 @@ import { createRealtimeSession, liveInterpreterUrl, voiceLiveUrl } from "./api";
 
 describe("Voice API", () => {
   it("creates a realtime session through the canonical endpoint", async () => {
-    const fetchClient = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    const fetchClient = vi
+      .fn()
+      .mockResolvedValue(new Response("{}", { status: 200 }));
     await createRealtimeSession(fetchClient, {
       model: "realtime",
       instructions: "Be concise",

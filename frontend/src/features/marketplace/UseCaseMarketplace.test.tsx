@@ -39,8 +39,12 @@ describe("UseCaseMarketplace", () => {
 
     await user.click(screen.getByRole("checkbox", { name: /image/i }));
 
-    expect(screen.getByRole("button", { name: /text to image/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /text chat/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /text to image/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /text chat/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("closes with Escape and exposes dialog semantics", async () => {
@@ -54,7 +58,9 @@ describe("UseCaseMarketplace", () => {
         onClose={onClose}
       />,
     );
-    expect(screen.getByRole("dialog", { name: "Choose a use case" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Choose a use case" }),
+    ).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledOnce();
   });

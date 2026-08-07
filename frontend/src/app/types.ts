@@ -12,8 +12,19 @@ export type UseCaseId =
   | "image_to_image"
   | "image_comparison";
 
-export type UseCaseIconName = "chat" | "comparison" | "browserVoice" | "documents" | "image" | "voiceWave";
-export type UseCaseWorkspace = "chat" | "comparison" | "image" | "imageEdit" | "imageComparison" | "traditionalVoice" | "realtimeVoice" | "voiceLive" | "liveTranslation" | "transcribe";
+export type UseCaseIconName =
+  "chat" | "comparison" | "browserVoice" | "documents" | "image" | "voiceWave";
+export type UseCaseWorkspace =
+  | "chat"
+  | "comparison"
+  | "image"
+  | "imageEdit"
+  | "imageComparison"
+  | "traditionalVoice"
+  | "realtimeVoice"
+  | "voiceLive"
+  | "liveTranslation"
+  | "transcribe";
 export type UseCaseModality = "text" | "image" | "audio" | "video";
 
 export type UseCaseModule = {

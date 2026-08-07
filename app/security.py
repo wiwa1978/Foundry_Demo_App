@@ -29,6 +29,46 @@ class UserScope:
 
 LOCAL_DEMO_SCOPE = UserScope(tenant_id="local-demo", user_id="local-demo")
 
+ADMIN_PRINCIPALS_ENV = "ADMIN_PRINCIPALS"
+
+
+class AuthorizationError(Exception):
+    """Raised when an authenticated caller lacks privileges for an operation."""
+
+
+def admin_principals() -> frozenset[str]:
+    """Configured administrator object IDs or email addresses."""
+    return frozenset(value.casefold() for value in env_csv(ADMIN_PRINCIPALS_ENV) if value)
+
+
+def is_privileged_user(user: dict[str, Any] | None) -> bool:
+    """Return True when ``user`` matches a configured administrator principal."""
+    allowed = admin_principals()
+    if not allowed or user is None:
+        return False
+    user_id = str(user.get("user_id") or "").strip().casefold()
+    email = _normalized_email(user.get("email"))
+    return bool((user_id and user_id in allowed) or (email and email in allowed))
+
+
+def require_privileged_user(connection: HTTPConnection) -> UserScope:
+    """Authorize a privileged (global-mutation) operation.
+
+    Local demo mode has no identity provider, so it stays open for development. Whenever
+    authentication is enabled the caller must be listed in ``ADMIN_PRINCIPALS``; an empty
+    allowlist denies every caller rather than silently granting everyone access.
+    """
+    if auth_mode() is AuthMode.DISABLED:
+        return LOCAL_DEMO_SCOPE
+    user = authenticated_user(connection)
+    if user is None:
+        raise ValueError("Authenticated user is required.")
+    if not is_privileged_user(user):
+        raise AuthorizationError(
+            "This operation requires an administrator listed in ADMIN_PRINCIPALS."
+        )
+    return user_scope(connection)
+
 
 def auth_mode() -> AuthMode:
     configured = (env_text("APP_AUTH_MODE", "") or "").lower()
@@ -74,7 +114,8 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
     )
     if not user_id:
         return None
-    user_name = str(principal.get("userDetails") or "").strip() or _claim_value(
+    user_details = str(principal.get("userDetails") or "").strip()
+    user_name = user_details or _claim_value(
         claim_lookup,
         "name",
         "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
@@ -94,13 +135,12 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
         "identity_provider": principal.get("identityProvider")
         or principal.get("auth_typ")
         or connection.headers.get("x-ms-client-principal-idp"),
-        "email": _claim_value(
+        "email": _normalized_email(_claim_value(
             claim_lookup,
             "preferred_username",
             "email",
             "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
-        )
-        or user_name,
+        ) or user_details),
         "tenant_id": tenant_id,
     }
 
@@ -116,7 +156,7 @@ def _container_apps_header_user(connection: HTTPConnection) -> dict[str, Any] | 
         "name": user_name,
         "user_id": user_id,
         "identity_provider": connection.headers.get("x-ms-client-principal-idp"),
-        "email": user_name,
+        "email": _normalized_email(user_name),
         "tenant_id": tenant_id,
     }
 
@@ -163,4 +203,12 @@ def _claim_value(claims: dict[str, str], *names: str) -> str | None:
         value = claims.get(name)
         if value:
             return value
+    return None
+
+
+def _normalized_email(value: Any) -> str | None:
+    email = str(value or "").strip().casefold()
+    local, separator, domain = email.partition("@")
+    if separator and local and domain and "@" not in domain and not any(char.isspace() for char in email):
+        return email
     return None

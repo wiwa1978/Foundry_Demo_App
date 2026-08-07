@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import { AlertCircle, CheckCircle2, RotateCcw, Tags, X } from "lucide-react";
+import type { ReactNode } from "react";
 
 import {
   defaultDeploymentDraft,
@@ -66,7 +66,8 @@ export function AdminDeploymentModal({
             <div>
               <CardTitle>Foundry deployment admin</CardTitle>
               <CardDescription>
-                Create Azure AI Foundry model deployments without opening the portal.
+                Create Azure AI Foundry model deployments without opening the
+                portal.
               </CardDescription>
             </div>
             <button
@@ -98,7 +99,8 @@ export function AdminDeploymentModal({
                 {config ? (
                   config.is_configured ? (
                     <p className="break-all text-xs text-slate-500 dark:text-slate-400">
-                      {config.subscription_id} / {config.resource_group} / {config.account_name}
+                      {config.subscription_id} / {config.resource_group} /{" "}
+                      {config.account_name}
                     </p>
                   ) : (
                     <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -128,27 +130,35 @@ export function AdminDeploymentModal({
               <Input
                 value={draft.deployment_name}
                 placeholder="gpt-5.5"
-                onChange={(event) => onChange({ deployment_name: event.target.value })}
+                onChange={(event) =>
+                  onChange({ deployment_name: event.target.value })
+                }
               />
             </Field>
             <Field label="Base model name">
               <Input
                 value={draft.model_name}
                 placeholder="gpt-4o"
-                onChange={(event) => onChange({ model_name: event.target.value })}
+                onChange={(event) =>
+                  onChange({ model_name: event.target.value })
+                }
               />
             </Field>
             <Field label="Model version">
               <Input
                 value={draft.model_version}
                 placeholder="2024-11-20"
-                onChange={(event) => onChange({ model_version: event.target.value })}
+                onChange={(event) =>
+                  onChange({ model_version: event.target.value })
+                }
               />
             </Field>
             <Field label="Model format">
               <select
                 value={draft.model_format}
-                onChange={(event) => onChange({ model_format: event.target.value })}
+                onChange={(event) =>
+                  onChange({ model_format: event.target.value })
+                }
                 className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
               >
                 <option value="OpenAI">OpenAI</option>
@@ -172,17 +182,25 @@ export function AdminDeploymentModal({
                 type="number"
                 min={1}
                 value={draft.sku_capacity}
-                onChange={(event) => onChange({ sku_capacity: Number(event.target.value) })}
+                onChange={(event) =>
+                  onChange({ sku_capacity: Number(event.target.value) })
+                }
               />
             </Field>
             <Field label="Version upgrade option">
               <select
                 value={draft.version_upgrade_option}
-                onChange={(event) => onChange({ version_upgrade_option: event.target.value })}
+                onChange={(event) =>
+                  onChange({ version_upgrade_option: event.target.value })
+                }
                 className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
               >
-                <option value="OnceNewDefaultVersionAvailable">Once new default version is available</option>
-                <option value="OnceCurrentVersionExpired">Once current version expires</option>
+                <option value="OnceNewDefaultVersionAvailable">
+                  Once new default version is available
+                </option>
+                <option value="OnceCurrentVersionExpired">
+                  Once current version expires
+                </option>
                 <option value="NoAutoUpgrade">No auto upgrade</option>
               </select>
             </Field>
@@ -190,7 +208,9 @@ export function AdminDeploymentModal({
               <Input
                 value={draft.rai_policy_name}
                 placeholder="Optional"
-                onChange={(event) => onChange({ rai_policy_name: event.target.value })}
+                onChange={(event) =>
+                  onChange({ rai_policy_name: event.target.value })
+                }
               />
             </Field>
           </section>
@@ -200,7 +220,10 @@ export function AdminDeploymentModal({
               <select
                 value={draft.api_surface}
                 onChange={(event) =>
-                  onChange({ api_surface: event.target.value as ModelSettings["api_surface"] })
+                  onChange({
+                    api_surface: event.target
+                      .value as ModelSettings["api_surface"],
+                  })
                 }
                 className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
               >
@@ -209,7 +232,9 @@ export function AdminDeploymentModal({
               </select>
             </Field>
             <div className="grid gap-2">
-              <Label className="text-slate-700 dark:text-slate-200">Model capabilities</Label>
+              <Label className="text-slate-700 dark:text-slate-200">
+                Model capabilities
+              </Label>
               <div className="flex flex-wrap gap-2">
                 {modelModalitiesList.map((modality) => (
                   <button
@@ -235,18 +260,24 @@ export function AdminDeploymentModal({
             <input
               type="checkbox"
               checked={draft.wait_for_completion}
-              onChange={(event) => onChange({ wait_for_completion: event.target.checked })}
+              onChange={(event) =>
+                onChange({ wait_for_completion: event.target.checked })
+              }
               className="mt-1"
             />
             <span>
-              Wait for Azure to finish provisioning before returning. Leave this off for long-running
-              deployments.
+              Wait for Azure to finish provisioning before returning. Leave this
+              off for long-running deployments.
             </span>
           </label>
         </CardContent>
 
         <CardFooter className="flex flex-col gap-3 border-t bg-slate-50 sm:flex-row sm:justify-between dark:border-[#55555a] dark:bg-[#29292c]">
-          <Button type="button" variant="outline" onClick={() => onChange(defaultDeploymentDraft)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onChange(defaultDeploymentDraft)}
+          >
             <RotateCcw className="h-4 w-4" />
             Reset form
           </Button>

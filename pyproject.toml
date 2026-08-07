@@ -7,10 +7,17 @@ target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F"]
+# E/F: pycodestyle + pyflakes. I: import ordering. B: bugbear correctness traps.
+# S: bandit security rules. ERA: commented-out code. ARG: unused arguments.
+# RUF100: unused noqa. UP: modern syntax.
+select = ["E4", "E7", "E9", "F", "I", "B", "S", "ERA", "ARG", "RUF100", "UP"]
+# B008 is the documented FastAPI idiom for File()/Form()/Query()/Depends() defaults.
+ignore = ["B008"]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/*.py" = ["E402"]
+# Tests legitimately use asserts, hardcoded dummy secrets, and unused fixture/stub arguments.
+"tests/*.py" = ["S101", "S105", "S106", "ARG001", "ARG002", "ARG005"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -20,12 +27,3 @@ follow_imports = "skip"
 warn_redundant_casts = true
 warn_unused_ignores = true
 exclude = ["frontend", "infra"]
-
-[[tool.mypy.overrides]]
-module = [
-    "app.conversation_store",
-    "app.foundry_admin",
-    "app.foundry_client",
-    "app.main",
-]
-ignore_errors = true

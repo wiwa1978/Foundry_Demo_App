@@ -172,6 +172,9 @@ param entraAuthenticationClientSecret string = ''
 @description('Tenant ID for the Entra app registration used by Container Apps authentication.')
 param entraAuthenticationTenantId string = ''
 
+@description('Comma-separated administrator object IDs or email addresses. Use Entra object IDs in production. Empty denies all privileged operations when authentication is enabled.')
+param adminPrincipals string = ''
+
 @description('Minimum number of Container App replicas.')
 param containerAppMinReplicas int = 1
 
@@ -299,6 +302,7 @@ module containerApp 'modules/container-app.bicep' = {
     entraAuthenticationClientId: entraAuthenticationClientId
     entraAuthenticationClientSecret: entraAuthenticationClientSecret
     entraAuthenticationTenantId: entraAuthenticationTenantId
+    adminPrincipals: adminPrincipals
     minReplicas: containerAppMinReplicas
     maxReplicas: containerAppMaxReplicas
   }

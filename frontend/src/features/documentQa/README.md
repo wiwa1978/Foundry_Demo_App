@@ -6,7 +6,8 @@ This folder is the customer-facing entry point for the Document Q&A use case.
 
 - [`api.ts`](./api.ts): document list/upload/delete and grounded SSE request contracts.
 - [`types.ts`](./types.ts): document and embedding trace contracts.
-- [`App.tsx`](../../App.tsx): shared chat/document workspace rendering and event state.
+- [`../textChat/useChatStream.ts`](../textChat/useChatStream.ts): shared chat/document stream state machine.
+- [`app/AppWorkspace.tsx`](../../app/AppWorkspace.tsx): document workspace rendering and retrieval trace adapter.
 
 ## Backend
 

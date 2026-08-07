@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { CheckCircle2, Copy, Network, X } from "lucide-react";
+import { useState } from "react";
 
 import type { ApiTraceEntry, ApiTraceFilter } from "@/app/workspace/contracts";
 import {
@@ -46,12 +46,21 @@ export function ApiTraceDrawer({
             <Badge variant="outline">{visibleEntries.length}</Badge>
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Frontend-to-API calls plus the exact Foundry payloads sent and received.
+            Frontend-to-API calls plus the exact Foundry payloads sent and
+            received.
           </p>
           <div className="mt-3 inline-flex rounded-md border bg-slate-100 p-1 dark:border-[#606066] dark:bg-[#29292c]">
             {[
-              { value: "messages" as const, label: "Messages only", count: messageEntries.length },
-              { value: "all" as const, label: "All calls", count: entries.length },
+              {
+                value: "messages" as const,
+                label: "Messages only",
+                count: messageEntries.length,
+              },
+              {
+                value: "all" as const,
+                label: "All calls",
+                count: entries.length,
+              },
             ].map((option) => (
               <button
                 key={option.value}
@@ -70,7 +79,13 @@ export function ApiTraceDrawer({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onClear} disabled={!entries.length}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onClear}
+            disabled={!entries.length}
+          >
             Clear
           </Button>
           <button
@@ -95,7 +110,9 @@ export function ApiTraceDrawer({
           <div className="flex h-full items-center justify-center text-center">
             <div className="max-w-sm">
               <Network className="mx-auto mb-3 h-8 w-8 text-slate-300 dark:text-[#77777d]" />
-              <h3 className="text-sm font-semibold">No API calls captured yet</h3>
+              <h3 className="text-sm font-semibold">
+                No API calls captured yet
+              </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 {filter === "messages"
                   ? "Send a chat prompt or run a comparison to capture message payloads."
@@ -109,7 +126,13 @@ export function ApiTraceDrawer({
   );
 }
 
-function ApiTraceCard({ entry, index }: { entry: ApiTraceEntry; index: number }) {
+function ApiTraceCard({
+  entry,
+  index,
+}: {
+  entry: ApiTraceEntry;
+  index: number;
+}) {
   const statusTone =
     entry.error || (entry.status && entry.status >= 400)
       ? "text-red-600 dark:text-red-300"
@@ -120,7 +143,11 @@ function ApiTraceCard({ entry, index }: { entry: ApiTraceEntry; index: number })
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={entry.direction === "api_foundry" ? "default" : "secondary"}>
+            <Badge
+              variant={
+                entry.direction === "api_foundry" ? "default" : "secondary"
+              }
+            >
               {formatTraceDirection(entry.direction)}
             </Badge>
             <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -133,16 +160,24 @@ function ApiTraceCard({ entry, index }: { entry: ApiTraceEntry; index: number })
           </p>
         </div>
         <div className="text-right text-xs">
-          {entry.status ? <div className={statusTone}>HTTP {entry.status}</div> : null}
+          {entry.status ? (
+            <div className={statusTone}>HTTP {entry.status}</div>
+          ) : null}
           {entry.durationMs !== undefined ? (
-            <div className="mt-1 text-slate-500 dark:text-slate-400">{entry.durationMs} ms</div>
+            <div className="mt-1 text-slate-500 dark:text-slate-400">
+              {entry.durationMs} ms
+            </div>
           ) : null}
           {entry.error ? <div className={statusTone}>{entry.error}</div> : null}
         </div>
       </div>
 
-      {entry.request !== undefined ? <JsonBlock title="Request payload" value={entry.request} /> : null}
-      {entry.response !== undefined ? <JsonBlock title="Response" value={entry.response} /> : null}
+      {entry.request !== undefined ? (
+        <JsonBlock title="Request payload" value={entry.request} />
+      ) : null}
+      {entry.response !== undefined ? (
+        <JsonBlock title="Response" value={entry.response} />
+      ) : null}
     </section>
   );
 }
@@ -170,7 +205,11 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
           aria-label={`Copy ${title.toLowerCase()}`}
           title={`Copy ${title.toLowerCase()}`}
         >
-          {copied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? (
+            <CheckCircle2 className="h-3.5 w-3.5" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
           {copied ? "Copied" : "Copy"}
         </button>
       </div>

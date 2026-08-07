@@ -1,8 +1,15 @@
+import {
+  Bot,
+  ChevronsUpDown,
+  GitCompareArrows,
+  Mic,
+  MicOff,
+  Settings,
+} from "lucide-react";
 import type { FormEvent } from "react";
-import { Bot, ChevronsUpDown, GitCompareArrows, Mic, MicOff, Settings } from "lucide-react";
 
-import { UseCaseComposer } from "@/app/workspace/WorkspacePrimitives";
 import { formatModelName } from "@/app/workspace/formatters";
+import { UseCaseComposer } from "@/app/workspace/WorkspacePrimitives";
 import { Button } from "@/components/ui/button";
 import {
   ComparisonModelResponse,
@@ -50,8 +57,8 @@ export function ComparisonWorkspace({
           <GitCompareArrows className="mx-auto mb-4 h-10 w-10 text-slate-300 dark:text-[#77777d]" />
           <h3 className="text-lg font-semibold">Select models to compare</h3>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-            Turn on one or more model endpoints in the comparison list to start side-by-side
-            testing.
+            Turn on one or more model endpoints in the comparison list to start
+            side-by-side testing.
           </p>
         </div>
       </div>
@@ -89,8 +96,8 @@ export function ComparisonWorkspace({
         </div>
       </div>
       <p className="border-t bg-white px-4 py-2 text-center text-xs text-slate-500 dark:border-[#55555a] dark:bg-[#29292c] dark:text-slate-400">
-        Text typed in any comparison prompt is mirrored to every pane. Sending dispatches the
-        same prompt to all selected models.
+        Text typed in any comparison prompt is mirrored to every pane. Sending
+        dispatches the same prompt to all selected models.
       </p>
     </div>
   );
@@ -174,7 +181,9 @@ function ComparisonModelPane({
         {turns.length ? (
           <div className="grid gap-4">
             {turns.map((turn) => {
-              const responses = turn.responses.filter((item) => item.model === model);
+              const responses = turn.responses.filter(
+                (item) => item.model === model,
+              );
               return (
                 <section key={turn.user.id} className="grid gap-2">
                   <div className="chat-user-bubble ml-auto max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-6 shadow-sm">
@@ -183,7 +192,10 @@ function ComparisonModelPane({
                   {responses.length ? (
                     <div className="grid gap-2">
                       {responses.map((response) => (
-                        <ComparisonModelResponse key={response.id} message={response} />
+                        <ComparisonModelResponse
+                          key={response.id}
+                          message={response}
+                        />
                       ))}
                     </div>
                   ) : (
@@ -199,7 +211,9 @@ function ComparisonModelPane({
           <div className="flex h-full items-center justify-center text-center">
             <div className="max-w-xs">
               <Bot className="mx-auto mb-3 h-8 w-8 text-slate-300 dark:text-[#77777d]" />
-              <h3 className="text-sm font-semibold">Ready for {formatModelName(model)}</h3>
+              <h3 className="text-sm font-semibold">
+                Ready for {formatModelName(model)}
+              </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Type in any pane below. Every input stays synchronized.
               </p>
@@ -217,7 +231,9 @@ function ComparisonModelPane({
         disclaimer="AI-generated content may be incorrect"
         onChange={onPromptChange}
         onSubmit={onSubmit}
-        leftControls={<span className="text-xs font-medium">{formatModelName(model)}</span>}
+        leftControls={
+          <span className="text-xs font-medium">{formatModelName(model)}</span>
+        }
         rightControls={
           <Button
             type="button"
@@ -232,7 +248,11 @@ function ComparisonModelPane({
             }
             className="h-8 w-8 rounded-full"
           >
-            {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            {isListening ? (
+              <MicOff className="h-4 w-4" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
           </Button>
         }
       />

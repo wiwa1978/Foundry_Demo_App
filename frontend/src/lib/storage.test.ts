@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { readStorage, writeStorage } from "./storage";
 
-
 describe("safe storage", () => {
   it("returns a fallback when browser storage is unavailable", () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {

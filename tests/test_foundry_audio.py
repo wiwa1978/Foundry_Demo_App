@@ -1,21 +1,23 @@
-import unittest
 import base64
+import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.foundry_client import FoundrySettings, _azure_openai_endpoint, synthesize_speech
+from app.providers.clients import azure_openai_endpoint
+from app.providers.settings import FoundrySettings
+from app.providers.speech import synthesize_speech
 
 
 class FoundryAudioTests(unittest.TestCase):
     def test_audio_endpoint_uses_azure_openai_resource_host(self) -> None:
-        endpoint = _azure_openai_endpoint(
+        endpoint = azure_openai_endpoint(
             "https://demo.services.ai.azure.com/api/projects/example"
         )
 
         self.assertEqual(endpoint, "https://demo.openai.azure.com")
 
-    @patch("app.foundry_client._create_audio_client")
-    @patch("app.foundry_client.load_settings")
+    @patch("app.providers.speech.create_audio_client")
+    @patch("app.providers.speech.load_settings")
     def test_gpt_audio_synthesis_uses_chat_completions(
         self, load_settings: MagicMock, create_client: MagicMock
     ) -> None:
@@ -45,8 +47,8 @@ class FoundryAudioTests(unittest.TestCase):
         self.assertEqual(request["messages"][1], {"role": "user", "content": "Hello"})
         self.assertEqual(result["spoken_transcript"], "Hello")
 
-    @patch("app.foundry_client._create_audio_client")
-    @patch("app.foundry_client.load_settings")
+    @patch("app.providers.speech.create_audio_client")
+    @patch("app.providers.speech.load_settings")
     def test_dedicated_tts_synthesis_uses_audio_speech(
         self, load_settings: MagicMock, create_client: MagicMock
     ) -> None:

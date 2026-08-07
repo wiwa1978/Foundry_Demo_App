@@ -95,6 +95,9 @@ param entraAuthenticationClientSecret string = ''
 @description('Tenant ID for the Entra app registration used by Container Apps authentication.')
 param entraAuthenticationTenantId string = ''
 
+@description('Comma-separated administrator object IDs or email addresses.')
+param adminPrincipals string = ''
+
 @description('Minimum number of Container App replicas.')
 param minReplicas int = 1
 
@@ -329,6 +332,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'APP_AUTH_TENANT_ID'
               value: entraAuthenticationTenantId
+            }
+            {
+              name: 'ADMIN_PRINCIPALS'
+              value: adminPrincipals
             }
             {
               name: 'FOUNDRY_PROJECT_ENDPOINT'

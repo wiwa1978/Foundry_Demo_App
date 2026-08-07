@@ -113,14 +113,14 @@ expires after eight hours.
 
 | Variable | Description |
 | --- | --- |
-| `PERSISTENCE_BACKEND` | Persistence provider: `sqlite` (default, recommended locally) or `cosmos` (used by Azure deployments). |
-| `SQLITE_DATABASE_PATH` | Optional SQLite file path. Defaults to `data/foundry_chat.sqlite3`. |
+| `PERSISTENCE_BACKEND` | Persistence provider: `sqlite` (default, recommended locally) or `cosmos` (used by Azure deployments). This MVP resets app tables/container data instead of migrating incompatible schemas. |
+| `SQLITE_DATABASE_PATH` | Optional SQLite file path. Defaults to `data/foundry_chat.sqlite3`. Schema version mismatches deliberately reset the app tables during startup. |
 | `FOUNDRY_PROJECT_ENDPOINT` | Microsoft Foundry project endpoint, usually `https://<resource>.services.ai.azure.com/api/projects/<project-name>`. The app derives the OpenAI-compatible `/openai/v1` model endpoint from this value for inference. `AZURE_AI_PROJECT_ENDPOINT` and `AZURE_AIPROJECT_ENDPOINT` are also accepted. |
 | `FOUNDRY_OPENAI_ENDPOINT` | Optional compatibility fallback if you want to provide the direct endpoint explicitly, usually `https://<resource>.services.ai.azure.com/openai/v1`. `AZURE_OPENAI_ENDPOINT` is also accepted. |
 | `FOUNDRY_MODELS` | Optional comma-separated deployment names used to seed the configured model registry. New deployments and local endpoints are stored in the database, so this does not need to be updated after setup. |
 | `AZURE_COSMOS_ENDPOINT` | Required when `PERSISTENCE_BACKEND=cosmos`. Cosmos DB for NoSQL account endpoint. The app authenticates with `DefaultAzureCredential` unless `AZURE_COSMOS_KEY` is set. |
 | `AZURE_COSMOS_DATABASE_NAME` | Required when using Cosmos. Shared Cosmos DB database name. |
-| `AZURE_COSMOS_CONTAINER_NAME` | App-specific container name. Defaults to `foundry-chat-app`; use a different container for each app sharing the database. The container partition key must be `/partition_key`. |
+| `AZURE_COSMOS_CONTAINER_NAME` | App-specific base container name. Defaults to `foundry-chat-app`; the app currently uses the versioned `-v3` container. The container partition key must be `/partition_key`. |
 | `AZURE_COSMOS_CREATE_CONTAINER` | Optional. Set to `true` only when the current identity/key may create containers. Normally infrastructure provisions the container. |
 | `AZURE_COSMOS_KEY` | Optional account key for local development or the Cosmos emulator. Omit in Azure and use managed identity. |
 | `AZURE_STORAGE_ACCOUNT_URL` | Optional Blob Storage account URL for original **Document Q&A** uploads, such as `https://<account>.blob.core.windows.net`. `FOUNDRY_STORAGE_ACCOUNT_URL` is also accepted. |
@@ -142,6 +142,7 @@ expires after eight hours.
 | `AZURE_VOICELIVE_VOICE` | Azure Speech voice used by Voice Live. Defaults to `en-US-Ava:DragonHDLatestNeural`. |
 | `APP_AUTH_MODE` | Authentication mode: `disabled` for local demos only, `local` for the signed-cookie development flow, or `container_apps` for trusted Azure Container Apps identity headers. Azure infrastructure uses `container_apps`. |
 | `APP_AUTH_TENANT_ID` | Entra tenant ID used to scope compact identity headers supplied by Azure Container Apps authentication. Set automatically by the included infrastructure. |
+| `ADMIN_PRINCIPALS` | Comma-separated administrator Entra object IDs or normalized email addresses (case-insensitive) permitted to change global model settings, register models, and create Foundry deployments. Display names are never matched. **Use immutable Entra object IDs in production; email matching is intended mainly for local ergonomics. Required when `APP_AUTH_MODE` is `local` or `container_apps`: an empty list denies every caller.** Ignored when `APP_AUTH_MODE=disabled`. |
 | `ALLOWED_ORIGINS` | Optional comma-separated WebSocket origin allowlist. WebSockets require the request origin to match the host when omitted. |
 | `MODEL_CALL_CONCURRENCY` | Maximum concurrent Foundry model operations per application process. Defaults to `8`. |
 | `LOG_LEVEL` | Application log threshold: `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. Defaults to `INFO`. |
@@ -216,6 +217,8 @@ See `infra\README.md` for the Entra app registration helper and GitHub variable/
 ## Document Q&A RAG
 
 The **Document Q&A** use case uses Blob Storage for originals, Azure AI Search for retrieval, and Foundry for model calls:
+
+Each request accepts at most 10 files, with a 12 MB limit per file and a 50 MB aggregate limit.
 
 1. Uploaded PDF, DOCX, TXT, Markdown, CSV, JSON, HTML, XML, or log files are stored in the configured Blob container under `documents/<document-id>/<filename>`.
 2. The backend reads the uploaded file, extracts text, and splits it into chunks.
@@ -323,9 +326,9 @@ tenant and user; each user's conversations and messages share an owner partition
 settings use a dedicated logical partition. Document Blob paths and Search filters use the same tenant
 and user scope.
 
-This development version uses owner-scoped persistence schema v2. Existing ownerless SQLite tables,
-the previous Cosmos container, and the previous Search index are intentionally not migrated; demo
-data may be discarded. Runtime resources use the configured Cosmos/Search names with a `-v2` suffix.
+This MVP uses owner-scoped SQLite schema version `3` and Cosmos container suffix `-v3`; Search remains
+at suffix `-v2`. Incompatible SQLite app tables are transactionally reset and Cosmos moves to the new
+versioned container. Existing demo data is intentionally not migrated and may be discarded.
 
 ## Deployment admin
 

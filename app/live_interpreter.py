@@ -4,8 +4,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from app.azure_credential import get_azure_credential
-from app.foundry_client import FoundrySettings
-
+from app.providers.settings import FoundrySettings
 
 TARGET_LANGUAGE_PATTERN = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z]{2,8})?$")
 SUPPORTED_TARGET_LANGUAGES = {

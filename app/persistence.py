@@ -1,6 +1,6 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Callable
 
 from app.config import env_text
 from app.repository_contracts import ConversationRepository, ModelSettingsRepository

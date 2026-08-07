@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 
-
 const focusableSelector = [
   "a[href]",
   "button:not([disabled])",
@@ -10,7 +9,6 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-
 export function useModalDialog<T extends HTMLElement>(onClose: () => void) {
   const dialogRef = useRef<T>(null);
   const onCloseRef = useRef(onClose);
@@ -19,7 +17,8 @@ export function useModalDialog<T extends HTMLElement>(onClose: () => void) {
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
     const dialog = dialogRef.current;
-    const firstFocusable = dialog?.querySelector<HTMLElement>(focusableSelector);
+    const firstFocusable =
+      dialog?.querySelector<HTMLElement>(focusableSelector);
     (firstFocusable ?? dialog)?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -29,7 +28,9 @@ export function useModalDialog<T extends HTMLElement>(onClose: () => void) {
         return;
       }
       if (event.key !== "Tab" || !dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(focusableSelector),
+      );
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];

@@ -1,4 +1,5 @@
 import path from "node:path";
+
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
@@ -8,6 +9,26 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     css: true,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: [
+        "src/**/*.test.{ts,tsx}",
+        "src/components/ui/**",
+        "src/test/**",
+        "src/**/types.ts",
+        "src/app/workspace/contracts.ts",
+        "src/**/*worklet*",
+        "src/vite-env.d.ts",
+      ],
+      thresholds: {
+        statements: 19,
+        branches: 84,
+        functions: 66,
+        lines: 19,
+      },
+    },
   },
   resolve: {
     alias: {

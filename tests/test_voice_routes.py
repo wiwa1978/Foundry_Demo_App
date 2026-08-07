@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -7,15 +7,24 @@ from app.main import create_app
 
 def test_realtime_session_contract(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
-    session = {"token": "secret", "model": "realtime", "voice": "alloy"}
+    session = {
+        "token": "secret",
+        "webrtc_url": "https://example.test/realtime",
+        "model": "realtime",
+        "voice": "alloy",
+    }
     with patch("app.features.voice.router.create_realtime_client_secret", return_value=session):
         response = TestClient(create_app()).post(
             "/api/realtime/session",
             json={"model": "realtime", "instructions": "Be concise", "voice": "alloy"},
         )
     assert response.status_code == 200
-    assert response.json()["guardrail_comparison_available"] is False
-    assert response.json()["model"] == "realtime"
+    assert response.json() == {
+        **session,
+        "guardrail_comparison_available": False,
+        "configured_guardrail_policy_name": None,
+        "guardrail_status": "Realtime uses the deployment-assigned policy.",
+    }
 
 
 def test_transcription_upload_limit(monkeypatch):
@@ -40,5 +49,57 @@ def test_transcription_provider_error_is_sanitized(monkeypatch):
                 files={"audio": ("audio.wav", b"RIFF", "audio/wav")},
             )
     assert response.status_code == 502
-    assert response.json() == {"detail": "Audio transcription failed. Try again later."}
+    assert response.json() == {
+        "detail": "Audio transcription failed. Try again later.",
+        "code": "external_service_error",
+    }
     assert "provider secret" not in response.text
+
+
+def test_traditional_voice_route_delegates_to_service(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    process = AsyncMock(
+        return_value={
+            "model": "chat",
+            "transcription": {
+                "model": "transcribe",
+                "text": "hello",
+                "duration_ms": 5,
+            },
+            "results": [],
+            "conversation": {
+                "id": "conversation-1",
+                "title": "hello",
+                "use_case": "traditional_voice",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+            },
+            "user_message": {
+                "id": "message-1",
+                "conversation_id": "conversation-1",
+                "role": "user",
+                "content": "hello",
+                "model": None,
+                "api_surface": None,
+                "duration_ms": None,
+                "error": None,
+                "usage": None,
+                "guardrail_variant": None,
+                "guardrail_policy_name": None,
+                "guardrail_results": None,
+                "created_at": "2026-01-01T00:00:00+00:00",
+            },
+        }
+    )
+    with patch("app.features.voice.router.traditional_voice_service.process", process):
+        response = TestClient(create_app()).post(
+            "/api/voice/traditional",
+            data={"model": "chat", "reasoning_effort": "low"},
+            files={"audio": ("recording.webm", b"audio", "audio/webm")},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["transcription"]["text"] == "hello"
+    assert process.await_args is not None
+    assert process.await_args.kwargs["audio"] == b"audio"
+    assert process.await_args.kwargs["reasoning_effort"] == "low"

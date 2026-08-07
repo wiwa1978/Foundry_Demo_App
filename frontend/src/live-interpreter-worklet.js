@@ -21,9 +21,11 @@ class LiveInterpreterProcessor extends AudioWorkletProcessor {
     this.position -= input.length;
 
     if (this.pending.length >= 640) {
-      const pcm = new Int16Array(this.pending.splice(0, 640).map((sample) =>
-        sample < 0 ? sample * 0x8000 : sample * 0x7fff,
-      ));
+      const pcm = new Int16Array(
+        this.pending
+          .splice(0, 640)
+          .map((sample) => (sample < 0 ? sample * 0x8000 : sample * 0x7fff)),
+      );
       this.port.postMessage(pcm.buffer, [pcm.buffer]);
     }
     return true;

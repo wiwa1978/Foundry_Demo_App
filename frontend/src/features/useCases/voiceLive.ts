@@ -4,7 +4,8 @@ export const voiceLiveUseCase: UseCaseModule = {
   id: "voice_live",
   title: "Voice Live travel concierge",
   shortTitle: "Voice Live",
-  description: "Plan a trip naturally with multilingual turn detection, noise suppression, barge-in, and an Azure HD voice.",
+  description:
+    "Plan a trip naturally with multilingual turn detection, noise suppression, barge-in, and an Azure HD voice.",
   badge: "Azure Speech",
   icon: "voiceWave",
   modalities: ["audio"],

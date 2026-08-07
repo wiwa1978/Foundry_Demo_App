@@ -10,7 +10,7 @@ This folder maps the voice use cases shown in the marketplace to executable code
 
 ## Realtime transports
 
-- Realtime WebRTC session setup starts in [`App.tsx`](../../App.tsx) and obtains an ephemeral token through the voice router.
+- Realtime WebRTC session setup starts in [`app/AppWorkspace.tsx`](../../app/AppWorkspace.tsx) and obtains an ephemeral token through the voice router.
 - Voice Live WebSocket proxy: [`voice_live_proxy`](../../../../app/main.py)
 - Live Interpreter WebSocket session: [`live_interpreter`](../../../../app/main.py)
 - Speech SDK session wrapper: [`live_interpreter.py`](../../../../app/live_interpreter.py)

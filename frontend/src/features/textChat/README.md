@@ -4,11 +4,11 @@ This folder is the customer-facing entry point for the Text Chat use case.
 
 ## Request flow
 
-1. [`useTextChatRequest.ts`](./useTextChatRequest.ts) owns cancellation when a new request or conversation starts.
+1. [`useChatStream.ts`](./useChatStream.ts) owns cancellation and applies the shared chat stream state machine.
 2. [`api.ts`](./api.ts) sends the typed request to `POST /api/chat/stream`.
 3. [`sse.ts`](./sse.ts) parses incremental Server-Sent Events.
 4. [`types.ts`](./types.ts) documents the browser/API contract.
-5. [`App.tsx`](../../App.tsx) currently owns shared workspace rendering and applies each event to UI state.
+5. [`app/AppWorkspace.tsx`](../../app/AppWorkspace.tsx) supplies workspace state and concise text/document adapters.
 
 ## Backend flow
 

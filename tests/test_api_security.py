@@ -6,11 +6,11 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.main import MAX_PROMPT_LENGTH, app
+from app.main import app
 from app.persistence import reset_repositories
+from app.schemas import MAX_PROMPT_LENGTH
 from app.security import auth_mode
 from app.sqlite_store import initialize_sqlite_store
-
 
 client = TestClient(app)
 
@@ -106,7 +106,7 @@ def test_container_apps_mode_requires_encoded_principal(monkeypatch):
     from app.conversation_store import ConversationPage
 
     with patch(
-        "app.main.list_conversation_page",
+        "app.features.conversations.router.list_conversation_page",
         return_value=ConversationPage(conversations=[], next_cursor=None),
     ):
         accepted = client.get(

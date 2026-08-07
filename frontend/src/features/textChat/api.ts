@@ -1,15 +1,10 @@
+import { readPublicApiError } from "@/api/errors";
+import type { FetchClient } from "@/api/types";
+
 import { readServerSentEvents } from "./sse";
 import type { ChatStreamEvent, TextChatRequest } from "./types";
 
-export type FetchClient = (
-  url: string,
-  init?: RequestInit,
-  options?: {
-    label?: string;
-    request?: unknown;
-    responseKind?: "json" | "text" | "stream";
-  },
-) => Promise<Response>;
+export const textChatStreamEndpoint = "/api/chat/stream";
 
 export async function streamTextChat({
   request,
@@ -23,7 +18,7 @@ export async function streamTextChat({
   onEvent: (event: ChatStreamEvent) => void;
 }) {
   const response = await fetchClient(
-    "/api/chat/stream",
+    textChatStreamEndpoint,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -33,8 +28,7 @@ export async function streamTextChat({
     { label: "Stream chat", request, responseKind: "stream" },
   );
   if (!response.ok) {
-    const error = (await response.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(error.detail ?? "Chat request failed.");
+    throw new Error(await readPublicApiError(response, "Chat request failed."));
   }
   return {
     response,

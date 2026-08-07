@@ -4,7 +4,8 @@ export const liveTranslationUseCase: UseCaseModule = {
   id: "live_translation",
   title: "Live translation",
   shortTitle: "Live translation",
-  description: "Translate a multilingual conversation to one target language in real time while preserving each speaker's voice and speaking style.",
+  description:
+    "Translate a multilingual conversation to one target language in real time while preserving each speaker's voice and speaking style.",
   badge: "Azure Speech",
   icon: "voiceWave",
   modalities: ["audio"],

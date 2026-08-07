@@ -1,14 +1,17 @@
 from typing import Annotated
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.persistence_models import MODEL_MODALITIES
-
 
 MAX_PROMPT_LENGTH = 20_000
 MAX_INSTRUCTIONS_LENGTH = 20_000
 MAX_MODEL_NAME_LENGTH = 200
 REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
+
+
+class InternalRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 def normalize_reasoning_effort(value: str | None) -> str | None:
@@ -39,7 +42,7 @@ def _normalize_modalities(value: list[str]) -> list[str]:
     return modalities
 
 
-class ChatRequest(BaseModel):
+class ChatRequest(InternalRequestModel):
     model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
     conversation_id: str | None = None
@@ -65,7 +68,7 @@ class DocumentQuestionRequest(ChatRequest):
     use_case: str = "document_qa"
 
 
-class CompareRequest(BaseModel):
+class CompareRequest(InternalRequestModel):
     models: list[str] = Field(min_length=1, max_length=4)
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
     conversation_id: str | None = None
@@ -94,7 +97,7 @@ class CompareRequest(BaseModel):
         return normalize_reasoning_effort(value)
 
 
-class ImageGenerationRequest(BaseModel):
+class ImageGenerationRequest(InternalRequestModel):
     model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
     width: Annotated[int, Field(ge=768)] = 1024
@@ -115,7 +118,7 @@ class ImageGenerationRequest(BaseModel):
         return self
 
 
-class ModelSettingsRequest(BaseModel):
+class ModelSettingsRequest(InternalRequestModel):
     model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
     api_surface: str = "responses"
     modalities: list[str] = Field(default_factory=lambda: ["text"])
@@ -153,7 +156,7 @@ class ModelSettingsRequest(BaseModel):
         return [policy_name.strip() for policy_name in value if policy_name.strip()]
 
 
-class ModelRegistrationRequest(BaseModel):
+class ModelRegistrationRequest(InternalRequestModel):
     model: str = Field(min_length=1, max_length=MAX_MODEL_NAME_LENGTH)
 
     @field_validator("model")
@@ -165,7 +168,7 @@ class ModelRegistrationRequest(BaseModel):
         return value
 
 
-class RealtimeSessionRequest(BaseModel):
+class RealtimeSessionRequest(InternalRequestModel):
     model: str | None = Field(default=None, max_length=MAX_MODEL_NAME_LENGTH)
     instructions: str = Field(
         default="You are a helpful Foundry voice assistant. Keep responses concise.",
@@ -182,7 +185,7 @@ class RealtimeSessionRequest(BaseModel):
         return value or None
 
 
-class AdminDeploymentRequest(BaseModel):
+class AdminDeploymentRequest(InternalRequestModel):
     deployment_name: str = Field(min_length=1)
     model_name: str = Field(min_length=1)
     model_version: str = Field(min_length=1)

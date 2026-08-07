@@ -1,8 +1,9 @@
-from dataclasses import asdict, dataclass
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal, TypedDict
 
 from app.azure_credential import get_azure_credential
 from app.config import first_env
+from app.errors import InvalidRequestError
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,73 @@ class DeploymentRequest:
     wait_for_completion: bool = False
 
 
+class AdminConfigDocument(TypedDict):
+    subscription_id: str | None
+    resource_group: str | None
+    account_name: str | None
+    is_configured: bool
+    missing: list[str]
+
+
+class GuardrailContentFilter(TypedDict):
+    name: str
+    source: str
+    enabled: bool
+    blocking: bool
+    severity_threshold: str | None
+
+
+class GuardrailPolicy(TypedDict):
+    id: str | None
+    name: str
+    type: str
+    mode: str
+    base_policy_name: str | None
+    content_filters: list[GuardrailContentFilter]
+    is_selectable: bool
+
+
+class DeploymentSummary(TypedDict):
+    name: str
+    model_name: str | None
+    model_version: str | None
+    provisioning_state: str
+
+
+class DeploymentGuardrailPolicy(TypedDict):
+    deployment_name: str
+    policy_name: str | None
+
+
+class DeploymentResult(TypedDict, total=False):
+    status: Literal["accepted", "completed"]
+    provisioning_state: str | None
+    id: str | None
+    name: str | None
+
+
+class _DeploymentSku(TypedDict):
+    name: str
+    capacity: int
+
+
+class _DeploymentModel(TypedDict):
+    format: str
+    name: str
+    version: str
+
+
+class _DeploymentProperties(TypedDict, total=False):
+    model: _DeploymentModel
+    versionUpgradeOption: str
+    raiPolicyName: str
+
+
+class _DeploymentResource(TypedDict):
+    sku: _DeploymentSku
+    properties: _DeploymentProperties
+
+
 def load_admin_config() -> FoundryAdminConfig:
     return FoundryAdminConfig(
         subscription_id=first_env("FOUNDRY_SUBSCRIPTION_ID", "AZURE_SUBSCRIPTION_ID"),
@@ -52,11 +120,17 @@ def load_admin_config() -> FoundryAdminConfig:
     )
 
 
-def admin_config_to_dict(config: FoundryAdminConfig) -> dict[str, Any]:
-    return {**asdict(config), "is_configured": config.is_configured, "missing": config.missing}
+def admin_config_to_dict(config: FoundryAdminConfig) -> AdminConfigDocument:
+    return {
+        "subscription_id": config.subscription_id,
+        "resource_group": config.resource_group,
+        "account_name": config.account_name,
+        "is_configured": config.is_configured,
+        "missing": config.missing,
+    }
 
 
-def list_guardrail_policies() -> list[dict[str, Any]]:
+def list_guardrail_policies() -> list[GuardrailPolicy]:
     config = load_admin_config()
     if not config.is_configured:
         raise RuntimeError(
@@ -75,7 +149,7 @@ def list_guardrail_policies() -> list[dict[str, Any]]:
     )
 
 
-def list_foundry_deployments() -> list[dict[str, Any]]:
+def list_foundry_deployments() -> list[DeploymentSummary]:
     config = load_admin_config()
     if not config.is_configured:
         raise RuntimeError(
@@ -106,7 +180,7 @@ def guardrail_policy_exists(policy_name: str) -> bool:
     )
 
 
-def get_deployment_guardrail_policy(deployment_name: str) -> dict[str, Any]:
+def get_deployment_guardrail_policy(deployment_name: str) -> DeploymentGuardrailPolicy:
     config = load_admin_config()
     if not config.is_configured:
         raise RuntimeError(
@@ -116,7 +190,7 @@ def get_deployment_guardrail_policy(deployment_name: str) -> dict[str, Any]:
 
     normalized_name = deployment_name.strip()
     if not normalized_name:
-        raise ValueError("Model deployment name cannot be blank.")
+        raise InvalidRequestError("Model deployment name cannot be blank.")
 
     deployment = _create_management_client(config).deployments.get(
         resource_group_name=config.resource_group,
@@ -130,7 +204,7 @@ def get_deployment_guardrail_policy(deployment_name: str) -> dict[str, Any]:
     }
 
 
-def create_foundry_deployment(request: DeploymentRequest) -> dict[str, Any]:
+def create_foundry_deployment(request: DeploymentRequest) -> DeploymentResult:
     config = load_admin_config()
     if not config.is_configured:
         raise RuntimeError(
@@ -139,22 +213,23 @@ def create_foundry_deployment(request: DeploymentRequest) -> dict[str, Any]:
         )
 
     client = _create_management_client(config)
-    deployment_resource = {
+    deployment_properties: _DeploymentProperties = {
+        "model": {
+            "format": request.model_format,
+            "name": request.model_name,
+            "version": request.model_version,
+        },
+        "versionUpgradeOption": request.version_upgrade_option,
+    }
+    deployment_resource: _DeploymentResource = {
         "sku": {
             "name": request.sku_name,
             "capacity": request.sku_capacity,
         },
-        "properties": {
-            "model": {
-                "format": request.model_format,
-                "name": request.model_name,
-                "version": request.model_version,
-            },
-            "versionUpgradeOption": request.version_upgrade_option,
-        },
+        "properties": deployment_properties,
     }
     if request.rai_policy_name:
-        deployment_resource["properties"]["raiPolicyName"] = request.rai_policy_name
+        deployment_properties["raiPolicyName"] = request.rai_policy_name
 
     poller = client.deployments.begin_create_or_update(
         config.resource_group,
@@ -180,24 +255,26 @@ def _create_management_client(config: FoundryAdminConfig) -> Any:
     )
 
 
-def _guardrail_policy_to_dict(policy: Any) -> dict[str, Any]:
+def _guardrail_policy_to_dict(policy: Any) -> GuardrailPolicy:
     properties = getattr(policy, "properties", None)
     policy_type = str(getattr(properties, "type", "") or "")
     name = str(getattr(policy, "name", "") or "")
     content_filters = getattr(properties, "content_filters", None) or []
     return {
-        "id": getattr(policy, "id", None),
+        "id": _optional_text(getattr(policy, "id", None)),
         "name": name,
         "type": policy_type,
         "mode": str(getattr(properties, "mode", "") or ""),
-        "base_policy_name": getattr(properties, "base_policy_name", None),
+        "base_policy_name": _optional_text(getattr(properties, "base_policy_name", None)),
         "content_filters": [
             {
                 "name": str(getattr(content_filter, "name", "") or ""),
                 "source": str(getattr(content_filter, "source", "") or ""),
                 "enabled": bool(getattr(content_filter, "enabled", False)),
                 "blocking": bool(getattr(content_filter, "blocking", False)),
-                "severity_threshold": getattr(content_filter, "severity_threshold", None),
+                "severity_threshold": _optional_text(
+                    getattr(content_filter, "severity_threshold", None)
+                ),
             }
             for content_filter in content_filters
         ],
@@ -207,20 +284,20 @@ def _guardrail_policy_to_dict(policy: Any) -> dict[str, Any]:
     }
 
 
-def _deployment_summary(deployment: Any) -> dict[str, Any]:
+def _deployment_summary(deployment: Any) -> DeploymentSummary:
     properties = getattr(deployment, "properties", None)
     model = getattr(properties, "model", None)
     return {
         "name": str(getattr(deployment, "name", "") or ""),
-        "model_name": getattr(model, "name", None),
-        "model_version": getattr(model, "version", None),
+        "model_name": _optional_text(getattr(model, "name", None)),
+        "model_version": _optional_text(getattr(model, "version", None)),
         "provisioning_state": str(
             getattr(properties, "provisioning_state", "") or ""
         ),
     }
 
 
-def _deployment_to_dict(deployment: Any, completed: bool) -> dict[str, Any]:
+def _deployment_to_dict(deployment: Any, completed: bool) -> DeploymentResult:
     if not completed:
         return {
             "status": "accepted",
@@ -230,7 +307,11 @@ def _deployment_to_dict(deployment: Any, completed: bool) -> dict[str, Any]:
     properties = getattr(deployment, "properties", None)
     return {
         "status": "completed",
-        "id": getattr(deployment, "id", None),
-        "name": getattr(deployment, "name", None),
-        "provisioning_state": getattr(properties, "provisioning_state", None),
+        "id": _optional_text(getattr(deployment, "id", None)),
+        "name": _optional_text(getattr(deployment, "name", None)),
+        "provisioning_state": _optional_text(getattr(properties, "provisioning_state", None)),
     }
+
+
+def _optional_text(value: object) -> str | None:
+    return str(value) if value is not None else None

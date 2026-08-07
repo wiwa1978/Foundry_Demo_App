@@ -16,6 +16,7 @@ param(
     [string]$EntraAuthenticationClientId,
     [string]$EntraAuthenticationClientSecret,
     [string]$EntraAuthenticationTenantId,
+    [string]$AdminPrincipals,
     [switch]$AssignCurrentUserRoles
 )
 
@@ -102,6 +103,7 @@ if ($EnableEntraAuthentication) { $parameterOverrides += "enableEntraAuthenticat
 if ($EntraAuthenticationClientId) { $parameterOverrides += "entraAuthenticationClientId=$EntraAuthenticationClientId" }
 if ($EntraAuthenticationClientSecret) { $parameterOverrides += "entraAuthenticationClientSecret=$EntraAuthenticationClientSecret" }
 if ($EntraAuthenticationTenantId) { $parameterOverrides += "entraAuthenticationTenantId=$EntraAuthenticationTenantId" }
+if ($AdminPrincipals) { $parameterOverrides += "adminPrincipals=$AdminPrincipals" }
 
 if ($parameterOverrides.Count -gt 0) {
     $deploymentArguments += @("--parameters")

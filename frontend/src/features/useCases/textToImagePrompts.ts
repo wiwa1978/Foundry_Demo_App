@@ -10,7 +10,8 @@ Behind them: rolling green hills, dry-stone walls, scattered trees, grazing shee
 Style: natural light, slightly faded film colors, documentary snapshot aesthetic.
 Mood: peaceful, leisurely roadside break.
 Framing: horizontal, balanced, candid composition.`,
-    description: "Faded documentary film photography in the British countryside.",
+    description:
+      "Faded documentary film photography in the British countryside.",
   },
   {
     id: "chipchips-packaging",
@@ -53,12 +54,14 @@ Style: modern premium snack branding, minimalist editorial food photography, ear
 A thin clothesline stretches horizontally across the image from left to right, cutting through the center of the frame, in front of the window. Hanging from the line are lightweight towels in soft pastel colors - pale pink, faded turquoise blue, muted yellow, cream, and white. The towels are clipped with small clothespins and appear gently still in the bright midday heat. Crisp, dark shadows from each hanging fabric fall downward against the vivid wall, creating dramatic contrast and emphasizing the intense overhead sunlight.
 The lighting is harsh Mediterranean-style afternoon sunlight, producing deep high-contrast shadows and saturated warm tones. At the bottom of the image, a large abstract shadow from an unseen nearby building occupies the lower third, forming a dark maroon silhouette with soft edges and adding strong visual weight to the otherwise open composition.
 The overall aesthetic is cinematic, painterly, and architectural, reminiscent of modernist street photography or Italian coastal photography. The image feels quiet, observational, and timeless, focusing on color relationships, texture, solitude, and everyday domestic life. The dominant palette consists of cherry red, vermilion, dusty pink, emerald green, pale sky blue, soft yellow, and deep black shadows. The scene conveys strong visual minimalism through scale contrast: a tiny human presence against an immense monochromatic wall.`,
-    description: "Architectural Mediterranean street photography with bold scale.",
+    description:
+      "Architectural Mediterranean street photography with bold scale.",
   },
   {
     id: "playground-shadows",
     title: "Playground shadows",
     prompt: `A perfectly top-down aerial photograph of a playground with a dusty, muted pink rubberized surface, shot in bright direct sunlight. Children are scattered organically across the frame - running, walking, kicking balls, one riding a scooter - but the dominant visual element is their shadows: long, dramatically dark silhouettes stretching diagonally across the pink ground, often larger and more striking than the figures themselves. Some moving figures appear motion-blurred while their shadows stay sharp. Scuff marks, worn patches, and thin seam lines texture the surface, while small pops of color from clothing and striped sports balls punctuate the monochromatic palette. The composition feels simultaneously candid and graphically abstract - playful yet surreal, energetic but visually quiet.`,
-    description: "Top-down graphic abstraction driven by figures and long shadows.",
+    description:
+      "Top-down graphic abstraction driven by figures and long shadows.",
   },
 ];

@@ -46,5 +46,7 @@ param cosmosResourceGroupName = '<shared-cosmos-resource-group>'
 param cosmosAccountName = '<shared-cosmos-account-name>'
 param cosmosDatabaseName = '<shared-cosmos-database-name>'
 param cosmosContainerName = 'foundry-chat-app'
+// Prefer immutable Microsoft Entra object IDs. Empty denies privileged operations.
+param adminPrincipals = ''
 param containerAppMinReplicas = 1
 param containerAppMaxReplicas = 1
