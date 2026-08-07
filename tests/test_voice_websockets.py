@@ -5,6 +5,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.persistence import reset_repositories
 
 
 class FakeUpstream:
@@ -81,26 +82,34 @@ def test_voice_live_websocket_relays_messages(monkeypatch):
     assert upstream.sent == ['{"type":"input_audio"}']
 
 
-def test_live_interpreter_websocket_starts_writes_audio_and_closes(monkeypatch):
+def test_live_interpreter_websocket_starts_writes_audio_and_closes(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    monkeypatch.setenv("PERSISTENCE_BACKEND", "sqlite")
+    monkeypatch.setenv("SQLITE_DATABASE_PATH", str(tmp_path / "websocket.sqlite3"))
+    reset_repositories()
     session = FakeInterpreterSession()
-    with patch(
-        "app.features.voice.websockets.LiveInterpreterSession",
-        return_value=session,
-    ):
-        with TestClient(create_app()).websocket_connect(
-            "/api/live-interpreter",
-            headers={"origin": "http://testserver"},
-        ) as websocket:
-            websocket.send_json({"type": "start", "target_language": "fr"})
-            assert websocket.receive_json() == {
-                "type": "ready",
-                "input_format": "pcm_s16le_16000_mono",
-                "output_format": "pcm_s16le_16000_mono",
-            }
-            websocket.send_bytes(b"pcm")
-            assert session.audio_received.wait(timeout=1)
-            websocket.send_json({"type": "stop"})
+    try:
+        with patch(
+            "app.features.voice.websockets.LiveInterpreterSession",
+            return_value=session,
+        ):
+            # Entering TestClient runs the application lifespan and initializes persistence.
+            with TestClient(create_app()) as client:
+                with client.websocket_connect(
+                    "/api/live-interpreter",
+                    headers={"origin": "http://testserver"},
+                ) as websocket:
+                    websocket.send_json({"type": "start", "target_language": "fr"})
+                    assert websocket.receive_json() == {
+                        "type": "ready",
+                        "input_format": "pcm_s16le_16000_mono",
+                        "output_format": "pcm_s16le_16000_mono",
+                    }
+                    websocket.send_bytes(b"pcm")
+                    assert session.audio_received.wait(timeout=1)
+                    websocket.send_json({"type": "stop"})
+    finally:
+        reset_repositories()
 
     assert session.writes == [b"pcm"]
     assert session.closed.wait(timeout=1)
