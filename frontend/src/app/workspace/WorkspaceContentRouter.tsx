@@ -123,6 +123,7 @@ export type WorkspaceImagesViewModel = {
   editModels: string[];
   selected: string[];
   prompt: string;
+  submittedPrompt: string;
   size: string;
   result: ImageGenerationResult | null;
   generating: boolean;
@@ -373,6 +374,7 @@ export function WorkspaceContentRouter({
         model={images.model}
         models={images.models}
         prompt={images.prompt}
+        submittedPrompt={images.submittedPrompt}
         size={images.size}
         result={images.result}
         generating={images.generating}

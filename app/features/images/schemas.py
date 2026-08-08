@@ -8,3 +8,11 @@ class ImageResponse(BaseModel):
     width: int
     height: int
     duration_ms: int
+
+
+class ImageSampleResponse(BaseModel):
+    id: str
+    name: str
+    attribution: str
+    source_url: str
+    image_url: str

@@ -22,10 +22,13 @@ import { Button } from "@/components/ui/button";
 import { imageToImagePrompts } from "@/features/useCases/imageToImagePrompts";
 import { textToImagePrompts } from "@/features/useCases/textToImagePrompts";
 
+import type { ImageSample } from "./api";
+
 type TextToImageWorkspaceProps = {
   model: string;
   models: string[];
   prompt: string;
+  submittedPrompt: string;
   size: string;
   result: ImageGenerationResult | null;
   generating: boolean;
@@ -40,6 +43,7 @@ export function TextToImageWorkspace({
   model,
   models,
   prompt,
+  submittedPrompt,
   size,
   result,
   generating,
@@ -63,17 +67,22 @@ export function TextToImageWorkspace({
         value={prompt}
         onSelect={onPromptChange}
       />
-      <div className="flex flex-1 overflow-auto p-5">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-center">
-          <div className="flex min-h-[360px] w-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 dark:border-[#55555a] dark:bg-[#303033]/70 sm:min-h-[520px]">
+      <div className="flex-1 overflow-auto p-5">
+        <div className="mx-auto w-full max-w-5xl">
+          <div className="min-h-[360px] w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 dark:border-[#55555a] dark:bg-[#303033]/70 sm:min-h-[520px]">
+            {submittedPrompt ? (
+              <div className="mx-auto mb-4 max-w-3xl rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-200">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Submitted prompt
+                </div>
+                <p className="whitespace-pre-wrap break-words">
+                  {submittedPrompt}
+                </p>
+              </div>
+            ) : null}
+
             {imageUrl && result ? (
               <div className="w-full">
-                <div className="mx-auto mb-4 max-w-3xl rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-200">
-                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                    Submitted prompt
-                  </div>
-                  <p className="whitespace-pre-wrap">{result.prompt}</p>
-                </div>
                 <img
                   src={imageUrl}
                   alt={result.prompt || "AI-generated image"}
@@ -94,16 +103,26 @@ export function TextToImageWorkspace({
                 </div>
               </div>
             ) : (
-              <div className="max-w-xs text-center text-slate-400">
-                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-violet-100 text-violet-500 dark:bg-violet-500/15 dark:text-violet-200">
-                  <Image className="h-9 w-9" />
+              <div className="flex min-h-[300px] items-center justify-center sm:min-h-[440px]">
+                <div className="max-w-xs text-center text-slate-400">
+                  <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-violet-100 text-violet-500 dark:bg-violet-500/15 dark:text-violet-200">
+                    {generating ? (
+                      <Sparkles className="h-9 w-9 animate-pulse" />
+                    ) : (
+                      <Image className="h-9 w-9" />
+                    )}
+                  </div>
+                  <h3 className="mt-5 text-lg font-semibold text-slate-700 dark:text-slate-200">
+                    {generating
+                      ? "Brewing your picture..."
+                      : "Imagine it. Describe it."}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6">
+                    {generating
+                      ? "Hang on a moment while the model brings your prompt to life."
+                      : "Enter a prompt below to generate a high-quality PNG."}
+                  </p>
                 </div>
-                <h3 className="mt-5 text-lg font-semibold text-slate-700 dark:text-slate-200">
-                  Imagine it. Describe it.
-                </h3>
-                <p className="mt-2 text-sm leading-6">
-                  Enter a prompt below to generate a high-quality PNG.
-                </p>
               </div>
             )}
           </div>
@@ -183,6 +202,8 @@ export function ImageToImageWorkspace({
 }: ImageToImageWorkspaceProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
+  const [samples, setSamples] = useState<ImageSample[]>([]);
+  const [samplesLoading, setSamplesLoading] = useState(true);
   const resultUrl = result
     ? `data:${result.mime_type};base64,${result.image_base64}`
     : "";
@@ -196,6 +217,30 @@ export function ImageToImageWorkspace({
     setSourceUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [source]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/images/samples", { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((data: ImageSample[]) => setSamples(data))
+      .catch(() => undefined)
+      .finally(() => setSamplesLoading(false));
+    return () => controller.abort();
+  }, []);
+
+  async function selectSample(sample: ImageSample) {
+    setSamplesLoading(true);
+    try {
+      const response = await fetch(sample.image_url);
+      if (!response.ok) throw new Error("Could not load image sample.");
+      const blob = await response.blob();
+      onSourceChange(new File([blob], sample.id, { type: blob.type }));
+    } catch {
+      toast.error("Could not load image sample.");
+    } finally {
+      setSamplesLoading(false);
+    }
+  }
 
   function chooseSource(file: File | undefined) {
     if (!file) {
@@ -222,6 +267,48 @@ export function ImageToImageWorkspace({
         value={prompt}
         onSelect={onPromptChange}
       />
+      {samples.length || samplesLoading ? (
+        <section className="border-b bg-white px-5 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Start with a stock image
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {samplesLoading && !samples.length ? (
+                <div className="flex h-20 items-center gap-2 text-sm text-slate-400">
+                  <LoaderCircle className="h-4 w-4 animate-spin" /> Loading
+                  images...
+                </div>
+              ) : null}
+              {samples.map((sample) => (
+                <button
+                  key={sample.id}
+                  type="button"
+                  disabled={samplesLoading}
+                  onClick={() => void selectSample(sample)}
+                  className="group relative h-24 w-36 flex-none overflow-hidden rounded-xl border bg-slate-100 text-left disabled:opacity-60 dark:border-[#606066] dark:bg-[#303033]"
+                  title={`${sample.name}${sample.attribution ? ` - ${sample.attribution}` : ""}`}
+                >
+                  <img
+                    src={sample.image_url}
+                    alt={sample.name}
+                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                  />
+                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-1.5 pt-5 text-xs font-medium text-white">
+                    {sample.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {samples.some((sample) => sample.attribution) ? (
+              <p className="mt-2 text-[11px] text-slate-400">
+                Photos from Unsplash. Creator attribution is available on each
+                image tooltip.
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
       <div className="flex-1 overflow-auto p-5">
         <div className="mx-auto grid min-h-full max-w-6xl gap-4 md:grid-cols-2">
           <div className="flex min-h-[360px] flex-col rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 dark:border-[#606066] dark:bg-[#29292c]/70">
@@ -521,9 +608,9 @@ function ImageComparisonPane({
         </Button>
       </header>
 
-      <div className="flex flex-1 overflow-auto bg-slate-50 p-4 dark:bg-[#303033]">
+      <div className="flex-1 overflow-auto bg-slate-50 p-4 dark:bg-[#303033]">
         {imageUrl && result ? (
-          <div className="m-auto w-full">
+          <div className="w-full">
             <div className="mb-3 rounded-xl border bg-white px-3 py-2 text-sm leading-5 text-slate-700 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-200">
               <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                 Submitted prompt
@@ -550,20 +637,22 @@ function ImageComparisonPane({
             </div>
           </div>
         ) : (
-          <div className="m-auto max-w-xs text-center text-slate-400">
-            {generating ? (
-              <LoaderCircle className="mx-auto h-9 w-9 animate-spin" />
-            ) : (
-              <Image className="mx-auto h-9 w-9 text-slate-300 dark:text-[#77777d]" />
-            )}
-            <h3 className="mt-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
-              {generating
-                ? `Generating with ${formatModelName(model)}...`
-                : `Ready for ${formatModelName(model)}`}
-            </h3>
-            <p className="mt-1 text-xs">
-              Use either prompt below. Both inputs stay synchronized.
-            </p>
+          <div className="flex h-full items-center justify-center">
+            <div className="max-w-xs text-center text-slate-400">
+              {generating ? (
+                <LoaderCircle className="mx-auto h-9 w-9 animate-spin" />
+              ) : (
+                <Image className="mx-auto h-9 w-9 text-slate-300 dark:text-[#77777d]" />
+              )}
+              <h3 className="mt-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                {generating
+                  ? `Generating with ${formatModelName(model)}...`
+                  : `Ready for ${formatModelName(model)}`}
+              </h3>
+              <p className="mt-1 text-xs">
+                Use either prompt below. Both inputs stay synchronized.
+              </p>
+            </div>
           </div>
         )}
       </div>

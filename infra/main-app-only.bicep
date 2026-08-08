@@ -72,6 +72,9 @@ param foundryProjectEndpoint string
 @description('Optional Foundry OpenAI-compatible endpoint override.')
 param foundryOpenAiEndpoint string = ''
 
+@description('Optional Foundry FLUX provider endpoint override.')
+param foundryFluxEndpoint string = ''
+
 @description('Comma-separated Foundry model deployment names.')
 param foundryModels string
 
@@ -229,6 +232,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'FOUNDRY_ACCOUNT_NAME',         value: foundryAccountName }
             { name: 'FOUNDRY_PROJECT_ENDPOINT',     value: foundryProjectEndpoint }
             { name: 'FOUNDRY_OPENAI_ENDPOINT',      value: foundryOpenAiEndpoint }
+            { name: 'FOUNDRY_FLUX_ENDPOINT',        value: foundryFluxEndpoint }
             { name: 'FOUNDRY_MODELS',               value: foundryModels }
             { name: 'FOUNDRY_REALTIME_ENDPOINT',    value: empty(foundryRealtimeEndpoint) ? foundryProjectEndpoint : foundryRealtimeEndpoint }
             { name: 'FOUNDRY_REALTIME_MODEL',       value: foundryRealtimeModel }

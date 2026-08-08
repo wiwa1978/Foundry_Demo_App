@@ -5,7 +5,10 @@ import type { UseCaseWorkspace } from "@/app/types";
 import { maxImageComparisonModelCount } from "@/app/workspace/constants";
 import type { ImageGenerationResult } from "@/app/workspace/contracts";
 
-import { editImage, generateImage } from "./api";
+import {
+  editImage,
+  generateImage,
+} from "./api";
 
 type ImageResponse = Omit<ImageGenerationResult, "prompt">;
 
@@ -49,6 +52,7 @@ export function useImageWorkspace({
   );
   const [model, setModelState] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [submittedPrompt, setSubmittedPrompt] = useState("");
   const [size, setSize] = useState("1024x1024");
   const [result, setResult] = useState<ImageGenerationResult | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -176,6 +180,9 @@ export function useImageWorkspace({
     const [width, height] = size.split("x").map(Number);
     const request = { model, prompt: submittedPrompt, width, height };
     const { controller, generation } = beginRequest();
+    setSubmittedPrompt(request.prompt);
+    setResult(null);
+    setPrompt("");
     setGenerating(true);
     setError("");
     try {
@@ -213,6 +220,7 @@ export function useImageWorkspace({
       image: editSource,
     };
     const { controller, generation } = beginRequest();
+    setPrompt("");
     setEditGenerating(true);
     setEditError("");
     try {
@@ -249,6 +257,7 @@ export function useImageWorkspace({
     const selectedSnapshot = [...selected];
     const [width, height] = size.split("x").map(Number);
     const { controller, generation } = beginRequest();
+    setPrompt("");
     setComparisonGenerating(true);
     setComparisonErrors({});
     const outcomes = await Promise.all(
@@ -361,6 +370,7 @@ export function useImageWorkspace({
     models: imageModels,
     editModels,
     prompt,
+    submittedPrompt,
     size,
     result,
     generating,
