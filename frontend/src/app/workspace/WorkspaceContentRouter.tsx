@@ -44,6 +44,7 @@ import {
 } from "@/features/images/ImageWorkspaces";
 import { ChatMessageHistory } from "@/features/textChat/ChatMessages";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
+import { TranscriptionComparisonWorkspace } from "@/features/voice/TranscriptionComparisonWorkspace";
 import type { TraditionalVoiceRequest } from "@/features/voice/useTraditionalVoiceSession";
 import {
   LiveTranslationHero,
@@ -198,6 +199,16 @@ export type WorkspaceTranscriptionViewModel = {
   onFileSelected: (file: File | undefined) => void;
 };
 
+export type WorkspaceTranscriptionComparisonViewModel = Omit<
+  WorkspaceTranscriptionViewModel,
+  "model" | "result"
+> & {
+  models: string[];
+  results: Record<string, TranscriptionResult[]>;
+  modelErrors: Record<string, string>;
+  pendingModels: Set<string>;
+};
+
 export type WorkspaceRealtimeSessionViewModel = {
   configured: boolean;
   model: string;
@@ -272,6 +283,7 @@ export type WorkspaceContentRouterProps = {
   comparison: WorkspaceComparisonViewModel;
   traditionalVoice: WorkspaceTraditionalVoiceViewModel;
   transcription: WorkspaceTranscriptionViewModel;
+  transcriptionComparison: WorkspaceTranscriptionComparisonViewModel;
   realtime: WorkspaceRealtimeViewModel;
   guardrails: WorkspaceGuardrailsViewModel;
   chat: WorkspaceChatViewModel;
@@ -286,6 +298,7 @@ export function WorkspaceContentRouter({
   comparison,
   traditionalVoice,
   transcription,
+  transcriptionComparison,
   realtime,
   guardrails,
   chat,
@@ -448,6 +461,10 @@ export function WorkspaceContentRouter({
 
   if (route.workspace === "transcribe") {
     return <TranscriptionWorkspace {...transcription} />;
+  }
+
+  if (route.workspace === "transcriptionComparison") {
+    return <TranscriptionComparisonWorkspace {...transcriptionComparison} />;
   }
 
   if (route.workspace === "realtimeVoice") {

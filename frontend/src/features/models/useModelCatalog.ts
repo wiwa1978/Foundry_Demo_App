@@ -39,6 +39,7 @@ type CatalogState = {
   selectedModels: Set<string>;
   transcriptionModels: string[];
   transcriptionModel: string;
+  selectedTranscriptionModels: Set<string>;
   traditionalTranscriptionModels: string[];
   traditionalTranscriptionModel: string;
   ttsModels: string[];
@@ -54,6 +55,7 @@ const initialState: CatalogState = {
   selectedModels: new Set(),
   transcriptionModels: [],
   transcriptionModel: "",
+  selectedTranscriptionModels: new Set(),
   traditionalTranscriptionModels: [],
   traditionalTranscriptionModel: "",
   ttsModels: [],
@@ -151,6 +153,20 @@ function reconcileCatalog(
   )
     ? current.selectedModels
     : new Set(selectedModelList);
+  const retainedTranscriptionSelection = transcriptionModels
+    .filter((model) => current.selectedTranscriptionModels.has(model))
+    .slice(0, maxComparisonModelCount);
+  const selectedTranscriptionModelList = (
+    retainedTranscriptionSelection.length
+      ? retainedTranscriptionSelection
+      : transcriptionModels.slice(0, defaultComparisonModelCount)
+  ).slice(0, maxComparisonModelCount);
+  const selectedTranscriptionModels = sameSelection(
+    current.selectedTranscriptionModels,
+    selectedTranscriptionModelList,
+  )
+    ? current.selectedTranscriptionModels
+    : new Set(selectedTranscriptionModelList);
 
   return {
     models,
@@ -163,6 +179,7 @@ function reconcileCatalog(
     transcriptionModel: transcriptionModels.includes(current.transcriptionModel)
       ? current.transcriptionModel
       : (transcriptionModels[0] ?? ""),
+    selectedTranscriptionModels,
     traditionalTranscriptionModels,
     traditionalTranscriptionModel: traditionalTranscriptionModels.includes(
       current.traditionalTranscriptionModel,
@@ -498,6 +515,20 @@ export function useModelCatalog({
     [],
   );
 
+  const toggleTranscriptionModel = useCallback((model: string) => {
+    setState((current) => {
+      const selectedTranscriptionModels = new Set(
+        current.selectedTranscriptionModels,
+      );
+      if (selectedTranscriptionModels.has(model)) {
+        selectedTranscriptionModels.delete(model);
+      } else if (selectedTranscriptionModels.size < maxComparisonModelCount) {
+        selectedTranscriptionModels.add(model);
+      }
+      return { ...current, selectedTranscriptionModels };
+    });
+  }, []);
+
   const textModels = useMemo(
     () =>
       state.models.filter(
@@ -514,6 +545,13 @@ export function useModelCatalog({
         .slice(0, maxComparisonModelCount),
     [state.selectedModels, textModels],
   );
+  const selectedTranscriptions = useMemo(
+    () =>
+      state.transcriptionModels
+        .filter((model) => state.selectedTranscriptionModels.has(model))
+        .slice(0, maxComparisonModelCount),
+    [state.selectedTranscriptionModels, state.transcriptionModels],
+  );
 
   return {
     models: state.models,
@@ -524,6 +562,8 @@ export function useModelCatalog({
     textModels,
     transcriptionModels: state.transcriptionModels,
     transcriptionModel: state.transcriptionModel,
+    selectedTranscriptionModels: state.selectedTranscriptionModels,
+    selectedTranscriptions,
     traditionalTranscriptionModels: state.traditionalTranscriptionModels,
     traditionalTranscriptionModel: state.traditionalTranscriptionModel,
     ttsModels: state.ttsModels,
@@ -541,6 +581,7 @@ export function useModelCatalog({
     upsertModel,
     activateModel,
     toggleModel,
+    toggleTranscriptionModel,
     replaceComparisonModel,
   };
 }

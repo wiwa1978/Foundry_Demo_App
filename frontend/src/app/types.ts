@@ -5,6 +5,7 @@ export type UseCaseId =
   | "browser_voice"
   | "traditional_voice"
   | "transcribe"
+  | "transcription_comparison"
   | "realtime_voice"
   | "voice_live"
   | "live_translation"
@@ -24,7 +25,8 @@ export type UseCaseWorkspace =
   | "realtimeVoice"
   | "voiceLive"
   | "liveTranslation"
-  | "transcribe";
+  | "transcribe"
+  | "transcriptionComparison";
 export type UseCaseModality = "text" | "image" | "audio" | "video";
 
 export type UseCaseModule = {
@@ -45,6 +47,7 @@ export type UseCaseModule = {
   showBrowserVoiceControls?: boolean;
   showComparisonControls?: boolean;
   showImageComparisonControls?: boolean;
+  showTranscriptionComparisonControls?: boolean;
   showDocumentControls?: boolean;
   showChatComposer?: boolean;
   enableComposerDictation?: boolean;
