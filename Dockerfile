@@ -18,6 +18,9 @@ RUN useradd --create-home appuser
 
 COPY requirements.lock ./
 RUN pip install \
+    --no-cache-dir \
+    "https://files.pythonhosted.org/packages/af/72/ce3067ac31e214a66388159f8462ddb8c13dd00170f24d555a1f1ae8ee91/pypdf-6.15.0-py3-none-any.whl#sha256=14e001d6504822cb1ca9c7ed9a69bccb320f59b320730f55af804361abe4d5ee"
+RUN pip install \
     --index-url https://packagefeedproxy.microsoft.io/pypi/simple/ \
     --no-cache-dir \
     --require-hashes \
