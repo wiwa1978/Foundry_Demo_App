@@ -5,14 +5,14 @@ export const liveTranslationUseCase: UseCaseModule = {
   title: "Live translation",
   shortTitle: "Live translation",
   description:
-    "Translate a multilingual conversation to one target language in real time while preserving each speaker's voice and speaking style.",
+    "Translate speech to text and spoken audio in real time with a standard neural voice or approved Personal Voice.",
   badge: "Azure Speech",
   icon: "voiceWave",
   modalities: ["audio"],
   implementation: [
     "The browser resamples microphone input to raw 16 kHz mono PCM and streams it to an authenticated FastAPI WebSocket.",
-    "Azure Speech Live Interpreter uses open-range language detection, so speakers can switch languages without restarting the session.",
-    "The Speech v2 translation endpoint streams final target-language text and Personal Voice audio back to the browser.",
+    "Standard mode follows the documented Python Speech SDK flow with an explicit source locale and target-language neural voice.",
+    "Personal Voice mode uses Live Interpreter open-range detection when the mapped resource has restricted-feature approval.",
   ],
   codeSnippet: {
     title: "Speech SDK: configure Live Interpreter",

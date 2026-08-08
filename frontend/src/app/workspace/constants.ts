@@ -23,6 +23,20 @@ export const liveTranslationLanguages = [
   ["ar", "Arabic"],
 ] as const;
 
+export const liveTranslationSourceLanguages = [
+  ["en-US", "English (US)"],
+  ["fr-FR", "French"],
+  ["de-DE", "German"],
+  ["es-ES", "Spanish"],
+  ["it-IT", "Italian"],
+  ["nl-NL", "Dutch"],
+  ["pt-BR", "Portuguese (Brazil)"],
+  ["ja-JP", "Japanese"],
+  ["ko-KR", "Korean"],
+  ["zh-CN", "Chinese (Mandarin)"],
+  ["ar-SA", "Arabic"],
+] as const;
+
 export const defaultSettings: Omit<ModelSettings, "model"> = {
   api_surface: "responses",
   modalities: ["text"],

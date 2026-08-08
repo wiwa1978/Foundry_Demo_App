@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import type { RefObject } from "react";
 
+import type { UseCaseResourceSettings } from "@/api/types";
 import type { UseCaseId, UseCaseWorkspace } from "@/app/types";
 import { AppSettingsPage } from "@/app/workspace/AppSettingsPage";
 import { reasoningEffortOptions } from "@/app/workspace/constants";
@@ -44,6 +45,7 @@ import {
 } from "@/features/images/ImageWorkspaces";
 import { ChatMessageHistory } from "@/features/textChat/ChatMessages";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
+import type { LiveTranslationMode } from "@/features/voice/types";
 import type { TraditionalVoiceRequest } from "@/features/voice/useTraditionalVoiceSession";
 import {
   LiveTranslationHero,
@@ -87,9 +89,14 @@ export type WorkspaceAppSettingsViewModel = {
   message: StatusMessage | null;
   colorPalette: ColorPalette;
   canManageModels: boolean;
+  liveTranslationSettings: UseCaseResourceSettings;
+  liveTranslationSettingsLoading: boolean;
+  liveTranslationSettingsSaving: boolean;
+  liveTranslationSettingsMessage: string;
   onNewModelChange: (value: string) => void;
   onAddModel: () => void;
   onOpenAdmin: () => void;
+  onSaveLiveTranslationSettings: (binding: string) => Promise<void>;
   onSaveCapabilities: (
     model: string,
     modalities: ModelModality[],
@@ -224,8 +231,12 @@ export type WorkspaceLiveTranslationViewModel = {
   configured: boolean;
   status: RealtimeStatus;
   error: string;
+  mode: LiveTranslationMode;
+  sourceLanguage: string;
   targetLanguage: string;
   transcript: RealtimeTranscriptEntry[];
+  onModeChange: (mode: LiveTranslationMode) => void;
+  onSourceLanguageChange: (language: string) => void;
   onTargetLanguageChange: (language: string) => void;
   onStart: () => void;
   onStop: () => void;

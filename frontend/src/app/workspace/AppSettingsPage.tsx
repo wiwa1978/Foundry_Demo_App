@@ -1,5 +1,5 @@
 import { Plus, Rocket, Tags } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { colorPalettes, modelModalitiesList } from "@/app/workspace/constants";
 import type {
@@ -7,6 +7,7 @@ import type {
   ModelModality,
   StatusMessage,
 } from "@/app/workspace/contracts";
+import type { UseCaseResourceSettings } from "@/api/types";
 import { formatModelName } from "@/app/workspace/formatters";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 type AppSettingsPageProps = {
@@ -28,9 +30,14 @@ type AppSettingsPageProps = {
   message: StatusMessage | null;
   colorPalette: ColorPalette;
   canManageModels: boolean;
+  liveTranslationSettings: UseCaseResourceSettings;
+  liveTranslationSettingsLoading: boolean;
+  liveTranslationSettingsSaving: boolean;
+  liveTranslationSettingsMessage: string;
   onNewModelChange: (value: string) => void;
   onAddModel: () => void;
   onOpenAdmin: () => void;
+  onSaveLiveTranslationSettings: (binding: string) => Promise<void>;
   onSaveCapabilities: (
     model: string,
     modalities: ModelModality[],
@@ -45,9 +52,14 @@ export function AppSettingsPage({
   message,
   colorPalette,
   canManageModels,
+  liveTranslationSettings,
+  liveTranslationSettingsLoading,
+  liveTranslationSettingsSaving,
+  liveTranslationSettingsMessage,
   onNewModelChange,
   onAddModel,
   onOpenAdmin,
+  onSaveLiveTranslationSettings,
   onSaveCapabilities,
   onColorPaletteChange,
 }: AppSettingsPageProps) {
@@ -57,6 +69,11 @@ export function AppSettingsPage({
   const [capabilitySaving, setCapabilitySaving] = useState("");
   const [capabilityMessage, setCapabilityMessage] =
     useState<StatusMessage | null>(null);
+  const [liveBinding, setLiveBinding] = useState(liveTranslationSettings.binding);
+
+  useEffect(() => {
+    setLiveBinding(liveTranslationSettings.binding);
+  }, [liveTranslationSettings.binding]);
 
   function capabilitiesFor(model: string) {
     return capabilityDrafts[model] ?? modelModalities[model] ?? ["text"];
@@ -158,6 +175,31 @@ export function AppSettingsPage({
             </div>
           </CardContent>
         </Card>
+
+        {canManageModels ? (
+          <Card className="rounded-2xl border-slate-200 bg-white shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
+            <CardHeader>
+              <CardTitle>Live Interpreter resource</CardTitle>
+              <CardDescription>
+                Map Live translation to a named Foundry binding discovered from environment variables. The database stores only the binding name.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <div>
+                <label htmlFor="live-interpreter-binding" className="text-sm font-medium">Foundry binding</label>
+                <Select value={liveBinding} onValueChange={setLiveBinding}>
+                  <SelectTrigger id="live-interpreter-binding" className="mt-2"><SelectValue placeholder="Select a binding" /></SelectTrigger>
+                  <SelectContent>{liveTranslationSettings.available_bindings.map((binding) => <SelectItem key={binding} value={binding}>{binding}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <Button type="button" disabled={liveTranslationSettingsLoading || liveTranslationSettingsSaving || !liveBinding} onClick={() => void onSaveLiveTranslationSettings(liveBinding)}>
+                {liveTranslationSettingsSaving ? "Saving..." : "Save binding"}
+              </Button>
+              {liveTranslationSettingsMessage ? <p className="text-sm text-slate-500 dark:text-slate-300 sm:col-span-2">{liveTranslationSettingsMessage}</p> : null}
+              {!liveTranslationSettings.available_bindings.length ? <p className="text-xs text-amber-700 dark:text-amber-300 sm:col-span-2">Add at least one FOUNDRY_PROJECT_ENDPOINT_&lt;BINDING&gt; environment variable.</p> : null}
+            </CardContent>
+          </Card>
+        ) : null}
 
         {canManageModels ? (
           <Card className="rounded-2xl border-slate-200 bg-white shadow-sm dark:border-[#606066] dark:bg-[#39393d]">

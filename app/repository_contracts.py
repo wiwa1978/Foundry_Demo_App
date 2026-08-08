@@ -1,7 +1,12 @@
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-from app.persistence_models import Conversation, ConversationMessage, ModelSettings
+from app.persistence_models import (
+    Conversation,
+    ConversationMessage,
+    ModelSettings,
+    UseCaseBinding,
+)
 from app.security import UserScope
 
 
@@ -64,3 +69,10 @@ class ModelSettingsRepository(Protocol):
     def add_settings_if_absent(self, settings: ModelSettings) -> None: ...
 
     def save_settings(self, settings: ModelSettings) -> None: ...
+
+
+@runtime_checkable
+class UseCaseResourceSettingsRepository(Protocol):
+    def get_binding(self, use_case: str) -> UseCaseBinding | None: ...
+
+    def save_binding(self, binding: UseCaseBinding) -> None: ...

@@ -1,6 +1,8 @@
 import unittest
+from unittest import mock
 
 from app.live_interpreter import TARGET_LANGUAGE_PATTERN, build_live_interpreter_endpoint
+from app.use_case_settings import resolve_foundry_binding
 
 
 class LiveInterpreterEndpointTests(unittest.TestCase):
@@ -31,6 +33,27 @@ class LiveInterpreterEndpointTests(unittest.TestCase):
     def test_target_language_format_accepts_translation_codes(self) -> None:
         self.assertIsNotNone(TARGET_LANGUAGE_PATTERN.fullmatch("zh-Hans"))
         self.assertIsNone(TARGET_LANGUAGE_PATTERN.fullmatch("../../fr"))
+
+    def test_resolves_dynamic_foundry_binding(self) -> None:
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "REGION2": "eastus",
+                "FOUNDRY_PROJECT_ENDPOINT_REGION2": (
+                    "https://speech-east.services.ai.azure.com/api/projects/demo"
+                ),
+                "FOUNDRY_MODELS_REGION2": "gpt-5.5, gpt-4o-mini",
+            },
+        ):
+            binding = resolve_foundry_binding("region2")
+
+        self.assertEqual(binding.name, "REGION2")
+        self.assertEqual(binding.region, "eastus")
+        self.assertEqual(binding.models, ("gpt-5.5", "gpt-4o-mini"))
+        self.assertEqual(
+            binding.speech_endpoint,
+            "https://speech-east.cognitiveservices.azure.com",
+        )
 
 
 if __name__ == "__main__":

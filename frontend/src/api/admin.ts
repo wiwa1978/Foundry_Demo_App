@@ -4,10 +4,12 @@ import type {
   AdminDeploymentDraft,
   FetchClient,
   ModelModality,
+  UseCaseResourceSettings,
 } from "@/api/types";
 
 const adminConfigEndpoint = "/api/admin/deployments/config";
 const deploymentsEndpoint = "/api/admin/deployments";
+const liveTranslationSettingsEndpoint = "/api/admin/use-case-settings/live_translation";
 
 export type CreateDeploymentResponse = {
   detail?: string;
@@ -55,5 +57,45 @@ export async function createAdminDeployment(
   return {
     response,
     data: (await response.json()) as CreateDeploymentResponse,
+  };
+}
+
+export async function loadLiveTranslationSettings(
+  fetchClient: FetchClient,
+  signal?: AbortSignal,
+) {
+  const response = await fetchClient(
+    liveTranslationSettingsEndpoint,
+    { signal },
+    { label: "Load Live Interpreter resource", responseKind: "json" },
+  );
+  return {
+    response,
+    data: await readJsonResponse<UseCaseResourceSettings & { detail?: string }>(
+      response,
+      { use_case: "live_translation", binding: "", available_bindings: [] },
+    ),
+  };
+}
+
+export async function saveLiveTranslationSettings(
+  fetchClient: FetchClient,
+  settings: Pick<UseCaseResourceSettings, "binding">,
+) {
+  const response = await fetchClient(
+    liveTranslationSettingsEndpoint,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+    },
+    { label: "Save Live Interpreter resource", request: settings, responseKind: "json" },
+  );
+  return {
+    response,
+    data: await readJsonResponse<UseCaseResourceSettings & { detail?: string }>(
+      response,
+      { use_case: "live_translation", binding: "", available_bindings: [] },
+    ),
   };
 }

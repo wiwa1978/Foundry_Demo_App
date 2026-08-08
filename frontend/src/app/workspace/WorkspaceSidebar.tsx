@@ -14,10 +14,13 @@ import type { RefObject } from "react";
 
 import type { UseCaseWorkspace } from "@/app/types";
 import {
+  liveTranslationLanguages,
+  liveTranslationSourceLanguages,
   maxComparisonModelCount,
   maxImageComparisonModelCount,
   traditionalTtsVoices,
 } from "@/app/workspace/constants";
+import type { LiveTranslationMode } from "@/features/voice/types";
 import type {
   ConfigResponse,
   StatusMessage,
@@ -137,6 +140,16 @@ export type WorkspaceSidebarVoiceViewModel = {
   onTtsVoiceChange: (voice: string) => void;
 };
 
+export type WorkspaceSidebarLiveTranslationViewModel = {
+  mode: LiveTranslationMode;
+  sourceLanguage: string;
+  targetLanguage: string;
+  active: boolean;
+  onModeChange: (mode: LiveTranslationMode) => void;
+  onSourceLanguageChange: (language: string) => void;
+  onTargetLanguageChange: (language: string) => void;
+};
+
 export type WorkspaceSidebarProps = {
   workspace: WorkspaceSidebarWorkspaceViewModel;
   models: WorkspaceSidebarModelsViewModel;
@@ -146,6 +159,7 @@ export type WorkspaceSidebarProps = {
   images: WorkspaceSidebarImagesViewModel;
   guardrails: WorkspaceSidebarGuardrailsViewModel;
   voice: WorkspaceSidebarVoiceViewModel;
+  liveTranslation: WorkspaceSidebarLiveTranslationViewModel;
 };
 
 type ModelComparisonSelectorProps = {
@@ -213,6 +227,7 @@ export function WorkspaceSidebar({
   images,
   guardrails,
   voice,
+  liveTranslation,
 }: WorkspaceSidebarProps) {
   const imageWorkspace =
     workspace.workspace === "image" ||
@@ -663,6 +678,32 @@ export function WorkspaceSidebar({
                 onToggle={comparison.onToggleModel}
                 onOpenSettings={models.onOpenSettings}
               />
+            </SidebarSection>
+          </div>
+        ) : null}
+
+        {workspace.workspace === "liveTranslation" ? (
+          <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
+            <SidebarSection title="Translation voice">
+              <div className="grid gap-3">
+                <Label>Voice mode
+                  <select className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm" value={liveTranslation.mode} disabled={liveTranslation.active} onChange={(event) => liveTranslation.onModeChange(event.target.value as LiveTranslationMode)}>
+                    <option value="standard">Standard neural voice</option>
+                    <option value="personal">Personal Voice</option>
+                  </select>
+                </Label>
+                {liveTranslation.mode === "standard" ? <Label>Speak in
+                  <select className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm" value={liveTranslation.sourceLanguage} disabled={liveTranslation.active} onChange={(event) => liveTranslation.onSourceLanguageChange(event.target.value)}>
+                    {liveTranslationSourceLanguages.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+                  </select>
+                </Label> : null}
+                <Label>Translate to
+                  <select className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm" value={liveTranslation.targetLanguage} disabled={liveTranslation.active} onChange={(event) => liveTranslation.onTargetLanguageChange(event.target.value)}>
+                    {liveTranslationLanguages.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+                  </select>
+                </Label>
+                {liveTranslation.mode === "personal" ? <p className="text-xs text-amber-700 dark:text-amber-300">Requires Live Interpreter and Personal Voice approval.</p> : null}
+              </div>
             </SidebarSection>
           </div>
         ) : null}

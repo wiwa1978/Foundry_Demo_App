@@ -33,6 +33,7 @@ import { WorkspaceHeader } from "@/app/workspace/WorkspaceHeader";
 import { WorkspaceSidebar } from "@/app/workspace/WorkspaceSidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { useAdminDeployment } from "@/features/admin/useAdminDeployment";
+import { useLiveTranslationSettings } from "@/features/admin/useLiveTranslationSettings";
 import { compareModels, comparisonEndpoint } from "@/features/comparison/api";
 import { documentAnswerStreamEndpoint } from "@/features/documentQa/api";
 import { useDocumentLibrary } from "@/features/documentQa/useDocumentLibrary";
@@ -142,6 +143,10 @@ export default function AppWorkspace() {
   const adminDeployment = useAdminDeployment({
     fetchClient: apiTrace.tracedFetch,
     onDeploymentCreated,
+  });
+  const liveTranslationSettings = useLiveTranslationSettings({
+    fetchClient: apiTrace.tracedFetch,
+    enabled: canUseProtectedApis,
   });
   const modelSettingsController = useModelSettingsController({
     fetchClient: apiTrace.tracedFetch,
@@ -560,9 +565,14 @@ export default function AppWorkspace() {
         message: modelEndpointMessage,
         colorPalette: appearance.colorPalette,
         canManageModels: canUseProtectedApis,
+        liveTranslationSettings: liveTranslationSettings.settings,
+        liveTranslationSettingsLoading: liveTranslationSettings.loading,
+        liveTranslationSettingsSaving: liveTranslationSettings.saving,
+        liveTranslationSettingsMessage: liveTranslationSettings.message,
         onNewModelChange: setNewModel,
         onAddModel: () => void addModel(),
         onOpenAdmin: () => void adminDeployment.open(),
+        onSaveLiveTranslationSettings: liveTranslationSettings.save,
         onSaveCapabilities: modelSettingsController.saveModelCapabilities,
         onColorPaletteChange: appearance.setColorPalette,
       },
@@ -674,8 +684,12 @@ export default function AppWorkspace() {
         configured: config?.is_live_interpreter_configured ?? false,
         status: liveTranslation.status,
         error: liveTranslation.error,
+        mode: liveTranslation.mode,
+        sourceLanguage: liveTranslation.sourceLanguage,
         targetLanguage: liveTranslation.targetLanguage,
         transcript: liveTranslation.transcript,
+        onModeChange: liveTranslation.setMode,
+        onSourceLanguageChange: liveTranslation.setSourceLanguage,
         onTargetLanguageChange: liveTranslation.setTargetLanguage,
         onStart: () => void liveTranslation.start(),
         onStop: liveTranslation.stop,
@@ -852,6 +866,15 @@ export default function AppWorkspace() {
                 setTraditionalTranscriptionModel,
               onTtsModelChange: setTtsModel,
               onTtsVoiceChange: setTtsVoice,
+            }}
+            liveTranslation={{
+              mode: liveTranslation.mode,
+              sourceLanguage: liveTranslation.sourceLanguage,
+              targetLanguage: liveTranslation.targetLanguage,
+              active: liveTranslation.status !== "idle",
+              onModeChange: liveTranslation.setMode,
+              onSourceLanguageChange: liveTranslation.setSourceLanguage,
+              onTargetLanguageChange: liveTranslation.setTargetLanguage,
             }}
           />
         ) : null}

@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.features.models.schemas import ModelSettingsResponse
 
@@ -23,3 +23,21 @@ class DeploymentResponse(BaseModel):
 class AdminDeploymentResponse(BaseModel):
     deployment: DeploymentResponse
     settings: ModelSettingsResponse
+
+
+class UseCaseResourceSettingsRequest(BaseModel):
+    binding: str
+
+    @field_validator("binding")
+    @classmethod
+    def require_value(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Value cannot be blank.")
+        return value
+
+
+class UseCaseResourceSettingsResponse(BaseModel):
+    use_case: str
+    binding: str
+    available_bindings: list[str]

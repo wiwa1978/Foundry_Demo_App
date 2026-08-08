@@ -127,6 +127,12 @@ export type AdminConfig = {
   missing: string[];
 };
 
+export type UseCaseResourceSettings = {
+  use_case: "live_translation";
+  binding: string;
+  available_bindings: string[];
+};
+
 export type AdminDeploymentDraft = {
   deployment_name: string;
   model_name: string;

@@ -43,7 +43,9 @@ class FoundrySettings:
 
     @property
     def is_live_interpreter_configured(self) -> bool:
-        return bool(self.speech_endpoint)
+        from app.use_case_settings import LIVE_TRANSLATION_USE_CASE, resolve_use_case_binding
+
+        return resolve_use_case_binding(LIVE_TRANSLATION_USE_CASE) is not None
 
     @property
     def auth_mode(self) -> str:
