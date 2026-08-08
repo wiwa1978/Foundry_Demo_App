@@ -117,6 +117,7 @@ expires after eight hours.
 | `SQLITE_DATABASE_PATH` | Optional SQLite file path. Defaults to `data/foundry_chat.sqlite3`. Schema version mismatches deliberately reset the app tables during startup. |
 | `FOUNDRY_PROJECT_ENDPOINT` | Microsoft Foundry project endpoint, usually `https://<resource>.services.ai.azure.com/api/projects/<project-name>`. The app derives the OpenAI-compatible `/openai/v1` model endpoint from this value for inference. `AZURE_AI_PROJECT_ENDPOINT` and `AZURE_AIPROJECT_ENDPOINT` are also accepted. |
 | `FOUNDRY_OPENAI_ENDPOINT` | Optional compatibility fallback if you want to provide the direct endpoint explicitly, usually `https://<resource>.services.ai.azure.com/openai/v1`. `AZURE_OPENAI_ENDPOINT` is also accepted. |
+| `FOUNDRY_FLUX_ENDPOINT` | Optional FLUX provider endpoint override, usually `https://<resource>.services.ai.azure.com`. Defaults to the resource origin derived from `FOUNDRY_PROJECT_ENDPOINT`. |
 | `FOUNDRY_MODELS` | Optional comma-separated deployment names used to seed the configured model registry. New deployments and local endpoints are stored in the database, so this does not need to be updated after setup. |
 | `AZURE_COSMOS_ENDPOINT` | Required when `PERSISTENCE_BACKEND=cosmos`. Cosmos DB for NoSQL account endpoint. The app authenticates with `DefaultAzureCredential` unless `AZURE_COSMOS_KEY` is set. |
 | `AZURE_COSMOS_DATABASE_NAME` | Required when using Cosmos. Shared Cosmos DB database name. |

@@ -364,6 +364,7 @@ function routerProps(
       editModels: ["image-a"],
       selected: ["image-a", "image-b"],
       prompt: "an image",
+      submittedPrompt: "",
       size: "1024x1024",
       result: null,
       generating: false,
