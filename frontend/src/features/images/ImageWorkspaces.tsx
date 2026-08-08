@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { imageToImagePrompts } from "@/features/useCases/imageToImagePrompts";
 import { textToImagePrompts } from "@/features/useCases/textToImagePrompts";
 
+import type { ImageSample } from "./api";
+
 type TextToImageWorkspaceProps = {
   model: string;
   models: string[];
@@ -183,6 +185,8 @@ export function ImageToImageWorkspace({
 }: ImageToImageWorkspaceProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
+  const [samples, setSamples] = useState<ImageSample[]>([]);
+  const [samplesLoading, setSamplesLoading] = useState(true);
   const resultUrl = result
     ? `data:${result.mime_type};base64,${result.image_base64}`
     : "";
@@ -196,6 +200,30 @@ export function ImageToImageWorkspace({
     setSourceUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [source]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/images/samples", { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((data: ImageSample[]) => setSamples(data))
+      .catch(() => undefined)
+      .finally(() => setSamplesLoading(false));
+    return () => controller.abort();
+  }, []);
+
+  async function selectSample(sample: ImageSample) {
+    setSamplesLoading(true);
+    try {
+      const response = await fetch(sample.image_url);
+      if (!response.ok) throw new Error("Could not load image sample.");
+      const blob = await response.blob();
+      onSourceChange(new File([blob], sample.id, { type: blob.type }));
+    } catch {
+      toast.error("Could not load image sample.");
+    } finally {
+      setSamplesLoading(false);
+    }
+  }
 
   function chooseSource(file: File | undefined) {
     if (!file) {
@@ -222,6 +250,48 @@ export function ImageToImageWorkspace({
         value={prompt}
         onSelect={onPromptChange}
       />
+      {samples.length || samplesLoading ? (
+        <section className="border-b bg-white px-5 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Start with a stock image
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {samplesLoading && !samples.length ? (
+                <div className="flex h-20 items-center gap-2 text-sm text-slate-400">
+                  <LoaderCircle className="h-4 w-4 animate-spin" /> Loading
+                  images...
+                </div>
+              ) : null}
+              {samples.map((sample) => (
+                <button
+                  key={sample.id}
+                  type="button"
+                  disabled={samplesLoading}
+                  onClick={() => void selectSample(sample)}
+                  className="group relative h-24 w-36 flex-none overflow-hidden rounded-xl border bg-slate-100 text-left disabled:opacity-60 dark:border-[#606066] dark:bg-[#303033]"
+                  title={`${sample.name}${sample.attribution ? ` - ${sample.attribution}` : ""}`}
+                >
+                  <img
+                    src={sample.image_url}
+                    alt={sample.name}
+                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                  />
+                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-1.5 pt-5 text-xs font-medium text-white">
+                    {sample.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {samples.some((sample) => sample.attribution) ? (
+              <p className="mt-2 text-[11px] text-slate-400">
+                Photos from Unsplash. Creator attribution is available on each
+                image tooltip.
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
       <div className="flex-1 overflow-auto p-5">
         <div className="mx-auto grid min-h-full max-w-6xl gap-4 md:grid-cols-2">
           <div className="flex min-h-[360px] flex-col rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 dark:border-[#606066] dark:bg-[#29292c]/70">
