@@ -11,6 +11,7 @@ from app.live_interpreter import LiveInterpreterSession
 from app.providers.realtime import create_voice_live_connection_info
 from app.providers.settings import load_settings
 from app.security import AuthMode, auth_mode, authenticated_user, websocket_origin_allowed
+from app.use_case_settings import LIVE_TRANSLATION_USE_CASE, resolve_use_case_binding
 
 router = APIRouter(tags=["Voice"])
 logger = logging.getLogger(__name__)
@@ -101,8 +102,14 @@ async def live_interpreter(websocket: WebSocket) -> None:
         start_message = await websocket.receive_json()
         if start_message.get("type") != "start":
             raise ValueError("The first message must start a Live Interpreter session.")
+        binding = resolve_use_case_binding(LIVE_TRANSLATION_USE_CASE)
+        if binding is None:
+            raise RuntimeError("Map Live translation to a configured Foundry binding first.")
         session = LiveInterpreterSession(
             settings=load_settings(),
+            binding=binding,
+            mode=str(start_message.get("mode", "standard")),
+            source_language=str(start_message.get("source_language", "")),
             target_language=str(start_message.get("target_language", "")),
             loop=asyncio.get_running_loop(),
         )

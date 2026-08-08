@@ -15,15 +15,19 @@ from app.persistence_models import (
     MESSAGE_TYPE,
     MODEL_SETTINGS_PARTITION,
     MODEL_SETTINGS_TYPE,
+    USE_CASE_SETTINGS_PARTITION,
+    USE_CASE_SETTINGS_TYPE,
     Conversation,
     ConversationMessage,
     ModelSettings,
+    UseCaseBinding,
     conversation_from_record,
     message_from_record,
     model_document_id,
     scoped_document_id,
     settings_document,
     settings_from_record,
+    use_case_settings_document,
 )
 from app.repository_contracts import ConversationPageKey, UsageRecord
 from app.security import UserScope
@@ -384,3 +388,23 @@ class CosmosModelSettingsRepository:
 
     def save_settings(self, settings: ModelSettings) -> None:
         get_container().upsert_item(settings_document(settings))
+
+
+class CosmosUseCaseResourceSettingsRepository:
+    def get_binding(self, use_case: str) -> UseCaseBinding | None:
+        try:
+            document = get_container().read_item(
+                item=use_case,
+                partition_key=USE_CASE_SETTINGS_PARTITION,
+            )
+        except CosmosResourceNotFoundError:
+            return None
+        if document.get("document_type") != USE_CASE_SETTINGS_TYPE:
+            return None
+        return UseCaseBinding(
+            use_case=document["use_case"],
+            binding=document["binding"],
+        )
+
+    def save_binding(self, binding: UseCaseBinding) -> None:
+        get_container().upsert_item(use_case_settings_document(binding))

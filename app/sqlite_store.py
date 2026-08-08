@@ -10,6 +10,7 @@ from app.persistence_models import (
     Conversation,
     ConversationMessage,
     ModelSettings,
+    UseCaseBinding,
     conversation_from_record,
     message_from_record,
     settings_from_record,
@@ -27,6 +28,8 @@ _DROP_APP_TABLE_STATEMENTS = (
     "DROP TABLE IF EXISTS conversation_messages",
     "DROP TABLE IF EXISTS conversations",
     "DROP TABLE IF EXISTS model_settings",
+    "DROP TABLE IF EXISTS use_case_resource_settings",
+    "DROP TABLE IF EXISTS use_case_bindings",
 )
 _SCHEMA_STATEMENTS = (
     """
@@ -79,6 +82,13 @@ _SCHEMA_STATEMENTS = (
         max_tokens INTEGER NOT NULL,
         repetition_penalty REAL NOT NULL,
         guardrail_policy_names_json TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS use_case_bindings (
+        use_case TEXT PRIMARY KEY,
+        binding TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )
     """,
@@ -349,6 +359,35 @@ class SQLiteModelSettingsRepository:
                 _settings_values(settings),
             )
 
+
+class SQLiteUseCaseResourceSettingsRepository:
+    def get_binding(self, use_case: str) -> UseCaseBinding | None:
+        with connect() as connection:
+            row = connection.execute(
+                "SELECT use_case, binding FROM use_case_bindings "
+                "WHERE use_case = ?",
+                (use_case,),
+            ).fetchone()
+        return UseCaseBinding(**dict(row)) if row else None
+
+    def save_binding(self, binding: UseCaseBinding) -> None:
+        from datetime import UTC, datetime
+
+        with connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO use_case_bindings (use_case, binding, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(use_case) DO UPDATE SET
+                    binding = excluded.binding,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    binding.use_case,
+                    binding.binding,
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
 
 def _settings_values(
     settings: ModelSettings,

@@ -87,6 +87,14 @@ def test_live_interpreter_websocket_starts_writes_audio_and_closes(monkeypatch, 
     monkeypatch.setenv("PERSISTENCE_BACKEND", "sqlite")
     monkeypatch.setenv("SQLITE_DATABASE_PATH", str(tmp_path / "websocket.sqlite3"))
     reset_repositories()
+    monkeypatch.setenv(
+        "FOUNDRY_PROJECT_ENDPOINT_REGION2",
+        "https://speech-east.services.ai.azure.com/api/projects/demo",
+    )
+    from app.persistence import initialize_persistence
+    from app.use_case_settings import save_use_case_binding
+    initialize_persistence()
+    save_use_case_binding("live_translation", "REGION2")
     session = FakeInterpreterSession()
     try:
         with patch(
@@ -99,7 +107,14 @@ def test_live_interpreter_websocket_starts_writes_audio_and_closes(monkeypatch, 
                     "/api/live-interpreter",
                     headers={"origin": "http://testserver"},
                 ) as websocket:
-                    websocket.send_json({"type": "start", "target_language": "fr"})
+                    websocket.send_json(
+                        {
+                            "type": "start",
+                            "mode": "standard",
+                            "source_language": "en-US",
+                            "target_language": "fr",
+                        }
+                    )
                     assert websocket.receive_json() == {
                         "type": "ready",
                         "input_format": "pcm_s16le_16000_mono",

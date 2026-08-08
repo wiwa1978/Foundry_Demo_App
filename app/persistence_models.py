@@ -11,6 +11,8 @@ CONVERSATION_TYPE = "conversation"
 MESSAGE_TYPE = "conversation_message"
 MODEL_SETTINGS_PARTITION = "model-settings"
 MODEL_SETTINGS_TYPE = "model_settings"
+USE_CASE_SETTINGS_PARTITION = "use-case-bindings"
+USE_CASE_SETTINGS_TYPE = "use_case_binding"
 DEPLOYMENT_DEFAULT_GUARDRAIL = "deployment_default"
 API_SURFACES = {"responses", "chat_completions"}
 MODEL_MODALITIES = {"text", "image", "voice"}
@@ -53,6 +55,12 @@ class ModelSettings:
     max_tokens: int = 1024
     repetition_penalty: float = 1.0
     guardrail_policy_names: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class UseCaseBinding:
+    use_case: str
+    binding: str
 
 
 def conversation_from_record(record: dict[str, Any]) -> Conversation:
@@ -124,6 +132,17 @@ def settings_document(settings: ModelSettings) -> dict[str, Any]:
         "max_tokens": settings.max_tokens,
         "repetition_penalty": settings.repetition_penalty,
         "guardrail_policy_names": list(settings.guardrail_policy_names),
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def use_case_settings_document(settings: UseCaseBinding) -> dict[str, Any]:
+    return {
+        "id": settings.use_case,
+        "partition_key": USE_CASE_SETTINGS_PARTITION,
+        "document_type": USE_CASE_SETTINGS_TYPE,
+        "use_case": settings.use_case,
+        "binding": settings.binding,
         "updated_at": datetime.now(UTC).isoformat(),
     }
 

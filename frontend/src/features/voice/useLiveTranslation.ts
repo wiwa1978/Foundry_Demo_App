@@ -5,6 +5,7 @@ import type {
   LiveInterpreterServerEvent,
   RealtimeStatus,
   RealtimeTranscriptEntry,
+  LiveTranslationMode,
 } from "@/features/voice/types";
 
 type LiveTranslationResources = {
@@ -23,6 +24,8 @@ export function useLiveTranslation() {
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [error, setError] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("en");
+  const [sourceLanguage, setSourceLanguage] = useState("en-US");
+  const [mode, setMode] = useState<LiveTranslationMode>("standard");
   const [transcript, setTranscript] = useState<RealtimeTranscriptEntry[]>([]);
   const mountedRef = useRef(true);
   const statusRef = useRef<RealtimeStatus>("idle");
@@ -181,7 +184,7 @@ export function useLiveTranslation() {
       !window.WebSocket
     ) {
       setError(
-        "This browser does not support the audio APIs required for Live Interpreter.",
+        "This browser does not support the audio APIs required for live translation.",
       );
       return;
     }
@@ -304,7 +307,12 @@ export function useLiveTranslation() {
         });
       });
       socket.send(
-        JSON.stringify({ type: "start", target_language: targetLanguage }),
+        JSON.stringify({
+          type: "start",
+          mode,
+          source_language: sourceLanguage,
+          target_language: targetLanguage,
+        }),
       );
       await ready;
       if (!isCurrent(generation) || !resources.worklet || !resources.source) {
@@ -352,7 +360,11 @@ export function useLiveTranslation() {
 
   return {
     error,
+    mode,
+    setMode,
+    setSourceLanguage,
     setTargetLanguage,
+    sourceLanguage,
     start,
     status,
     stop,

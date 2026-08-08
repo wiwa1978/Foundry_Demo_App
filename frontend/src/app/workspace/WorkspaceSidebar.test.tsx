@@ -139,6 +139,15 @@ function sidebarProps(
       onTtsModelChange: vi.fn(),
       onTtsVoiceChange: vi.fn(),
     },
+    liveTranslation: {
+      mode: "standard",
+      sourceLanguage: "en-US",
+      targetLanguage: "fr",
+      active: false,
+      onModeChange: vi.fn(),
+      onSourceLanguageChange: vi.fn(),
+      onTargetLanguageChange: vi.fn(),
+    },
     ...overrides,
   };
 }

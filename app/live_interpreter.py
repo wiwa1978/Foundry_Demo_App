@@ -5,10 +5,24 @@ from urllib.parse import urlparse
 
 from app.azure_credential import get_azure_credential
 from app.providers.settings import FoundrySettings
+from app.use_case_settings import FoundryBinding
 
 TARGET_LANGUAGE_PATTERN = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z]{2,8})?$")
 SUPPORTED_TARGET_LANGUAGES = {
     "ar", "de", "en", "es", "fr", "it", "ja", "ko", "nl", "pt", "zh-Hans"
+}
+STANDARD_NEURAL_VOICES = {
+    "ar": "ar-SA-ZariyahNeural",
+    "de": "de-DE-KatjaNeural",
+    "en": "en-US-AvaNeural",
+    "es": "es-ES-ElviraNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "it": "it-IT-ElsaNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "ko": "ko-KR-SunHiNeural",
+    "nl": "nl-NL-ColetteNeural",
+    "pt": "pt-BR-FranciscaNeural",
+    "zh-Hans": "zh-CN-XiaoxiaoNeural",
 }
 
 
@@ -25,6 +39,9 @@ class LiveInterpreterSession:
         self,
         *,
         settings: FoundrySettings,
+        binding: FoundryBinding,
+        mode: str,
+        source_language: str,
         target_language: str,
         loop: asyncio.AbstractEventLoop,
     ) -> None:
@@ -34,12 +51,18 @@ class LiveInterpreterSession:
             or target_language not in SUPPORTED_TARGET_LANGUAGES
         ):
             raise ValueError("Select a supported target language.")
-        if not settings.speech_endpoint:
-            raise RuntimeError("Live Interpreter is not configured. Set AZURE_SPEECH_ENDPOINT.")
-
         import azure.cognitiveservices.speech as speechsdk
 
-        endpoint = build_live_interpreter_endpoint(settings.speech_endpoint)
+        mode = mode.strip().lower()
+        if mode not in {"standard", "personal"}:
+            raise ValueError("Translation voice mode must be standard or personal.")
+        if mode == "standard" and not source_language.strip():
+            raise ValueError("Select a source language for standard translation.")
+        endpoint = (
+            build_live_interpreter_endpoint(binding.speech_endpoint)
+            if mode == "personal"
+            else binding.speech_endpoint
+        )
         if settings.speech_key:
             translation_config = speechsdk.translation.SpeechTranslationConfig(
                 endpoint=endpoint,
@@ -51,7 +74,13 @@ class LiveInterpreterSession:
                 token_credential=get_azure_credential(),
             )
         translation_config.add_target_language(target_language)
-        translation_config.voice_name = "personal-voice"
+        translation_config.voice_name = (
+            "personal-voice"
+            if mode == "personal"
+            else STANDARD_NEURAL_VOICES[target_language]
+        )
+        if mode == "standard":
+            translation_config.speech_recognition_language = source_language.strip()
         translation_config.set_speech_synthesis_output_format(
             speechsdk.SpeechSynthesisOutputFormat.Raw16Khz16BitMonoPcm
         )
@@ -63,15 +92,19 @@ class LiveInterpreterSession:
         )
         self._stream = speechsdk.audio.PushAudioInputStream(stream_format=stream_format)
         audio_config = speechsdk.audio.AudioConfig(stream=self._stream)
-        auto_detect = speechsdk.languageconfig.AutoDetectSourceLanguageConfig()
-        self._recognizer = speechsdk.translation.TranslationRecognizer(
-            translation_config=translation_config,
-            auto_detect_source_language_config=auto_detect,
-            audio_config=audio_config,
-        )
+        recognizer_options = {
+            "translation_config": translation_config,
+            "audio_config": audio_config,
+        }
+        if mode == "personal":
+            recognizer_options["auto_detect_source_language_config"] = (
+                speechsdk.languageconfig.AutoDetectSourceLanguageConfig()
+            )
+        self._recognizer = speechsdk.translation.TranslationRecognizer(**recognizer_options)
         self._speechsdk = speechsdk
         self._loop = loop
         self._target_language = target_language
+        self._mode = mode
         self.events: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(maxsize=256)
         self._closed = False
 
@@ -100,10 +133,12 @@ class LiveInterpreterSession:
         translation = result.translations.get(self._target_language, "").strip()
         if not translation:
             return
-        detected_language = result.properties.get_property(
-            self._speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult,
-            "",
-        )
+        detected_language = None
+        if self._mode == "personal":
+            detected_language = result.properties.get_property(
+                self._speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult,
+                "",
+            )
         self._emit(
             "json",
             {

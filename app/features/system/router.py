@@ -8,6 +8,7 @@ from app.features.system.schemas import ConfigResponse, HealthResponse, Readines
 from app.persistence import check_persistence
 from app.providers.settings import load_settings
 from app.security import AuthMode, auth_mode
+from app.use_case_settings import LIVE_TRANSLATION_USE_CASE, resolve_use_case_binding
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -45,7 +46,10 @@ def get_config() -> dict:
         "is_voice_live_configured": settings.is_voice_live_configured,
         "voice_live_model": settings.voice_live_model,
         "voice_live_voice": settings.voice_live_voice,
-        "is_live_interpreter_configured": settings.is_live_interpreter_configured,
+        "is_live_interpreter_configured": resolve_use_case_binding(
+            LIVE_TRANSLATION_USE_CASE
+        )
+        is not None,
     }
 
 

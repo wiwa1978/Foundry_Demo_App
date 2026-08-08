@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
-import { liveTranslationLanguages } from "@/app/workspace/constants";
+import { liveTranslationLanguages, liveTranslationSourceLanguages } from "@/app/workspace/constants";
 import type {
   TraditionalVoiceResult,
   TraditionalVoiceStatus,
@@ -32,6 +32,7 @@ import { SoundWaveIcon } from "@/features/shared/SoundWaveIcon";
 import { ChatBubble } from "@/features/textChat/ChatMessages";
 import { downloadText } from "@/features/voice/audioUtils";
 import type {
+  LiveTranslationMode,
   RealtimeStatus,
   RealtimeTranscriptEntry,
 } from "@/features/voice/types";
@@ -744,8 +745,12 @@ export function LiveTranslationHero({
   configured,
   status,
   error,
+  mode,
+  sourceLanguage,
   targetLanguage,
   transcript,
+  onModeChange,
+  onSourceLanguageChange,
   onTargetLanguageChange,
   onStart,
   onStop,
@@ -753,8 +758,12 @@ export function LiveTranslationHero({
   configured: boolean;
   status: RealtimeStatus;
   error: string;
+  mode: LiveTranslationMode;
+  sourceLanguage: string;
   targetLanguage: string;
   transcript: RealtimeTranscriptEntry[];
+  onModeChange: (mode: LiveTranslationMode) => void;
+  onSourceLanguageChange: (language: string) => void;
   onTargetLanguageChange: (language: string) => void;
   onStart: () => void;
   onStop: () => void;
@@ -764,19 +773,36 @@ export function LiveTranslationHero({
     <div className="w-full overflow-hidden rounded-3xl border border-cyan-200 bg-gradient-to-br from-white via-cyan-50/70 to-emerald-50 p-6 text-center shadow-sm dark:border-cyan-500/30 dark:from-[#39393d] dark:via-cyan-950/20 dark:to-emerald-950/20">
       <DictationHero active={isActive} />
       <div className="flex flex-wrap justify-center gap-2">
-        <Badge>Speech Live Interpreter</Badge>
-        <Badge variant="outline">Automatic language ID</Badge>
-        <Badge variant="outline">Personal Voice</Badge>
+        <Badge>Speech translation</Badge>
+        <Badge variant="outline">{mode === "standard" ? "Standard neural voice" : "Personal Voice"}</Badge>
       </div>
       <h3 className="mt-4 text-2xl font-semibold tracking-tight">
         One room, many languages
       </h3>
       <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-        Speak naturally and switch languages at any time. Everyone is translated
-        into the selected language with low-latency audio that preserves each
-        speaker&apos;s style and tone.
+        {mode === "standard"
+          ? "Translate a selected source language into text and a standard Azure neural voice in real time."
+          : "Automatically detect changing source languages and preserve the speaker's style and tone with Live Interpreter."}
       </p>
-      <div className="mx-auto mt-5 max-w-xs text-left">
+      <div className="mx-auto mt-5 grid max-w-xl gap-4 text-left sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <Label htmlFor="live-translation-mode">Voice mode</Label>
+          <Select value={mode} onValueChange={(value) => onModeChange(value as LiveTranslationMode)} disabled={isActive}>
+            <SelectTrigger id="live-translation-mode" className="mt-2 bg-white/80 dark:bg-[#29292c]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="standard">Standard neural voice</SelectItem>
+              <SelectItem value="personal">Personal Voice (Live Interpreter)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {mode === "standard" ? <div>
+          <Label htmlFor="live-translation-source">Speak in</Label>
+          <Select value={sourceLanguage} onValueChange={onSourceLanguageChange} disabled={isActive}>
+            <SelectTrigger id="live-translation-source" className="mt-2 bg-white/80 dark:bg-[#29292c]"><SelectValue /></SelectTrigger>
+            <SelectContent>{liveTranslationSourceLanguages.map(([code, name]) => <SelectItem key={code} value={code}>{name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div> : null}
+        <div className={mode === "personal" ? "sm:col-span-2" : ""}>
         <Label htmlFor="live-translation-target">Translate everyone to</Label>
         <Select
           value={targetLanguage}
@@ -797,6 +823,7 @@ export function LiveTranslationHero({
             ))}
           </SelectContent>
         </Select>
+        </div>
       </div>
       <div className="mt-5 flex justify-center">
         <Button
@@ -820,8 +847,7 @@ export function LiveTranslationHero({
       </div>
       {!configured ? (
         <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
-          Set AZURE_SPEECH_ENDPOINT and obtain Personal Voice access for a
-          supported Live Interpreter region.
+          Map this use case to a configured Foundry binding.
         </p>
       ) : null}
       {error ? (
@@ -842,8 +868,7 @@ export function LiveTranslationHero({
         </div>
       ) : null}
       <p className="mt-5 text-xs text-slate-500 dark:text-slate-400">
-        Use headphones to prevent translated audio from being captured by the
-        microphone.
+        {mode === "personal" ? "Personal Voice requires Microsoft approval for the mapped resource. " : ""}Use headphones to prevent translated audio from being captured by the microphone.
       </p>
     </div>
   );

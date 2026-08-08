@@ -23,6 +23,7 @@ from app.persistence import initialize_persistence, reset_repositories
 from app.persistence_models import Conversation, ConversationMessage
 from app.security import UserScope
 from app.sqlite_store import SCHEMA_VERSION, SQLiteConversationRepository
+from app.use_case_settings import get_use_case_binding, save_use_case_binding
 
 USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
 OTHER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-2")
@@ -84,6 +85,21 @@ class SqliteRepositoryTests(unittest.TestCase):
         self.assertEqual(loaded.modalities, ("text", "voice"))
         self.assertEqual(loaded.guardrail_policy_names, ("deployment_default", "strict"))
         self.assertEqual(list_models(), ["gpt-test"])
+
+    def test_live_translation_binding_round_trip(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "FOUNDRY_PROJECT_ENDPOINT_REGION2": (
+                    "https://speech-east.services.ai.azure.com/api/projects/demo"
+                )
+            },
+        ):
+            saved = save_use_case_binding("live_translation", "region2")
+
+        loaded = get_use_case_binding("live_translation")
+        self.assertEqual(saved.binding, "REGION2")
+        self.assertEqual(loaded, saved)
 
     def test_conversations_are_filtered_by_use_case(self) -> None:
         legacy_chat = create_conversation(USER_SCOPE, "Chat")

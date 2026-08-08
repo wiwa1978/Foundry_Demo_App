@@ -61,8 +61,12 @@ describe("useLiveTranslation", () => {
       "Welkom",
     ]);
     const startMessage = JSON.parse(String(firstSocket.sent[0])) as {
+      mode: string;
+      source_language: string;
       target_language: string;
     };
+    expect(startMessage.mode).toBe("standard");
+    expect(startMessage.source_language).toBe("en-US");
     expect(startMessage.target_language).toBe("nl");
     const firstContext = MockAudioContext.instances[0];
     expect(firstContext.bufferSources[0].start).toHaveBeenCalledWith(1);
@@ -126,7 +130,7 @@ describe("useLiveTranslation", () => {
     vi.stubGlobal("navigator", { mediaDevices: {} });
     await act(async () => result.current.start());
     expect(result.current.error).toBe(
-      "This browser does not support the audio APIs required for Live Interpreter.",
+      "This browser does not support the audio APIs required for live translation.",
     );
   });
 

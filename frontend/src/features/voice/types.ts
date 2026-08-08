@@ -1,4 +1,5 @@
 export type RealtimeStatus = "idle" | "connecting" | "live";
+export type LiveTranslationMode = "standard" | "personal";
 
 export type TraditionalVoiceStatus =
   "idle" | "recording" | "processing" | "complete";
