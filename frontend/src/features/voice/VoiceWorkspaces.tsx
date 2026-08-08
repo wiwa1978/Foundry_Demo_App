@@ -534,6 +534,285 @@ export function TranscriptionWorkspace({
   );
 }
 
+export function TranscriptionComparisonWorkspace({
+  configured,
+  models,
+  status,
+  error,
+  results,
+  modelErrors,
+  pendingModels,
+  language,
+  sourceName,
+  audioUrl,
+  fileInputRef,
+  onLanguageChange,
+  onStart,
+  onStop,
+  onFileSelected,
+}: {
+  configured: boolean;
+  models: string[];
+  status: TraditionalVoiceStatus;
+  error: string;
+  results: Record<string, TranscriptionResult[]>;
+  modelErrors: Record<string, string>;
+  pendingModels: Set<string>;
+  language: string;
+  sourceName: string;
+  audioUrl: string;
+  fileInputRef: RefObject<HTMLInputElement>;
+  onLanguageChange: (value: string) => void;
+  onStart: () => void;
+  onStop: () => void;
+  onFileSelected: (file: File | undefined) => void;
+}) {
+  const isRecording = status === "recording";
+  const isProcessing = status === "processing";
+  const captionResult = Object.values(results)[0]?.at(-1);
+
+  if (!models.length) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6 text-center">
+        <div className="max-w-md">
+          <SoundWaveIcon className="mx-auto mb-4 h-10 gap-1 text-slate-300 dark:text-[#77777d]" />
+          <h3 className="text-lg font-semibold">
+            Select transcription models to compare
+          </h3>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            Turn on two or more transcription deployments in the comparison
+            list.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-slate-100/70 dark:bg-[#303033]">
+      <div className="flex-1 overflow-x-auto p-4">
+        <div
+          className="grid h-full min-w-[44rem] gap-4"
+          style={{
+            gridTemplateColumns: `repeat(${models.length}, minmax(20rem, 1fr))`,
+          }}
+        >
+          {models.map((model) => {
+            const modelResults = results[model] ?? [];
+            const latestResult = modelResults.at(-1);
+            const modelError = modelErrors[model];
+            const isModelPending = pendingModels.has(model);
+            return (
+              <article
+                key={model}
+                className="flex min-h-0 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm dark:border-[#606066] dark:bg-[#39393d]"
+              >
+                <header className="flex h-16 items-center justify-between gap-3 border-b px-4 dark:border-[#55555a]">
+                  <h3 className="truncate text-sm font-semibold" title={model}>
+                    {formatModelName(model)}
+                  </h3>
+                  {latestResult ? (
+                    <Badge variant="outline" className="shrink-0">
+                      {latestResult.duration_ms} ms
+                    </Badge>
+                  ) : null}
+                </header>
+                <div className="flex min-h-0 flex-1 overflow-auto bg-slate-50 p-5 dark:bg-[#303033]">
+                  {modelResults.length ? (
+                    <div className="grid w-full content-start gap-4">
+                      {isModelPending ? (
+                        <div className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-700 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200">
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                          Transcribing {sourceName}...
+                        </div>
+                      ) : null}
+                      {modelResults.map((result, index) => (
+                        <section
+                          key={`${model}-${index}-${result.duration_ms}`}
+                          className="rounded-2xl border bg-white p-4 shadow-sm dark:border-[#606066] dark:bg-[#29292c]"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              Transcription {index + 1}
+                            </span>
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  void navigator.clipboard.writeText(
+                                    result.text,
+                                  )
+                                }
+                              >
+                                <Copy className="h-4 w-4" /> Copy
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  downloadText(
+                                    result.text,
+                                    `${model}-transcript-${index + 1}.txt`,
+                                  )
+                                }
+                              >
+                                <Download className="h-4 w-4" /> Download
+                              </Button>
+                            </div>
+                          </div>
+                          <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
+                            {result.text}
+                          </p>
+                          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                            {result.duration_ms} ms
+                          </p>
+                        </section>
+                      ))}
+                    </div>
+                  ) : modelError ? (
+                    <div className="m-auto max-w-xs text-center">
+                      <SoundWaveIcon className="mx-auto mb-3 h-8 gap-1 text-red-400" />
+                      <h4 className="text-sm font-semibold text-red-700 dark:text-red-300">
+                        Transcription failed
+                      </h4>
+                      <p className="mt-2 text-xs leading-5 text-red-600 dark:text-red-300">
+                        {modelError}
+                      </p>
+                    </div>
+                  ) : isModelPending ? (
+                    <div className="m-auto max-w-xs text-center">
+                      <LoaderCircle className="mx-auto mb-3 h-8 w-8 animate-spin text-violet-500" />
+                      <h4 className="text-sm font-semibold">
+                        Transcribing with {formatModelName(model)}
+                      </h4>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Processing {sourceName}...
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="m-auto max-w-xs text-center">
+                      <SoundWaveIcon className="mx-auto mb-3 h-8 gap-1 text-slate-300 dark:text-[#77777d]" />
+                      <h4 className="text-sm font-semibold">
+                        Ready for {formatModelName(model)}
+                      </h4>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        The same recording will be submitted to every selected
+                        model.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+      {audioUrl ? (
+        <div className="border-t bg-white px-4 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
+          <div className="mx-auto flex max-w-5xl items-center gap-4">
+            <span
+              className="max-w-48 truncate text-xs font-medium"
+              title={sourceName}
+            >
+              {sourceName}
+            </span>
+            <audio
+              className="h-9 min-w-0 flex-1"
+              controls
+              preload="metadata"
+              src={audioUrl}
+            >
+              <track
+                default
+                kind="captions"
+                label="Transcription"
+                src={`data:text/vtt;charset=utf-8,${encodeURIComponent(
+                  captionResult
+                    ? `WEBVTT\n\n00:00:00.000 --> ${formatVttTime(captionResult.duration_ms)}\n${captionResult.text}`
+                    : "WEBVTT\n",
+                )}`}
+                srcLang={captionResult?.language ?? language}
+              />
+            </audio>
+          </div>
+        </div>
+      ) : null}
+      <div className="border-t bg-slate-50 px-4 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
+        <div className="palette-focus mx-auto flex max-w-5xl flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_4px_rgba(15,23,42,0.16)] dark:border-[#606066] dark:bg-[#2f2f33] sm:flex-row sm:items-end">
+          <Label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Recognition language
+            <select
+              value={language}
+              onChange={(event) => onLanguageChange(event.target.value)}
+              disabled={isRecording || isProcessing}
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+            >
+              <option value="en-US">English (United States)</option>
+              <option value="en-GB">English (United Kingdom)</option>
+              <option value="nl-NL">Dutch (Netherlands)</option>
+              <option value="nl-BE">Dutch (Belgium)</option>
+              <option value="fr-BE">French (Belgium)</option>
+              <option value="fr-FR">French (France)</option>
+              <option value="de-DE">German (Germany)</option>
+              <option value="es-ES">Spanish (Spain)</option>
+            </select>
+          </Label>
+          <Button
+            type="button"
+            onClick={isRecording ? onStop : onStart}
+            disabled={!configured || isProcessing || models.length === 0}
+            variant={isRecording ? "destructive" : "default"}
+          >
+            {isRecording ? (
+              <MicOff className="h-4 w-4" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
+            {isRecording
+              ? "Stop recording"
+              : isProcessing
+                ? "Transcribing..."
+                : "Record audio"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={
+              !configured || isRecording || isProcessing || models.length === 0
+            }
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <UploadCloud className="h-4 w-4" /> Upload audio
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*,.mp3,.wav,.ogg,.webm,.m4a"
+            className="hidden"
+            onChange={(event) => {
+              onFileSelected(event.target.files?.[0]);
+              event.currentTarget.value = "";
+            }}
+          />
+        </div>
+        {error ? (
+          <p className="mt-2 text-center text-xs text-red-600 dark:text-red-300">
+            {error}
+          </p>
+        ) : null}
+        {!configured ? (
+          <p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">
+            Select at least one configured transcription deployment.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function RealtimeVoiceHero({
   configured,
   model,

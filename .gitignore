@@ -16,3 +16,4 @@ infra/main.json
 *.log
 Thumbs.db
 #test123sq
+.audio-comparison-worktree/

@@ -34,7 +34,10 @@ import { WorkspaceSidebar } from "@/app/workspace/WorkspaceSidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { useAdminDeployment } from "@/features/admin/useAdminDeployment";
 import { useLiveTranslationSettings } from "@/features/admin/useLiveTranslationSettings";
-import { compareModels, comparisonEndpoint } from "@/features/comparison/api";
+import {
+  comparisonStreamEndpoint,
+  streamComparison,
+} from "@/features/comparison/api";
 import { documentAnswerStreamEndpoint } from "@/features/documentQa/api";
 import { useDocumentLibrary } from "@/features/documentQa/useDocumentLibrary";
 import { useGuardrailComparison } from "@/features/guardrails/useGuardrailComparison";
@@ -46,9 +49,7 @@ import { useModelSettingsController } from "@/features/models/useModelSettingsCo
 import type {
   ChatMessage,
   Conversation,
-  ModelResult,
   ReasoningEffort,
-  StoredMessage,
   TextChatRequest,
 } from "@/features/textChat/types";
 import { useChatStream } from "@/features/textChat/useChatStream";
@@ -325,6 +326,12 @@ export default function AppWorkspace() {
     ) {
       setActiveModel(imageWorkspace.model);
     }
+    if (nextUseCase.workspace === "comparison") {
+      textModels
+        .filter((model) => !selectedModels.has(model))
+        .slice(0, Math.max(0, 2 - selectedModels.size))
+        .forEach(toggleModel);
+    }
     if (useCase !== activeUseCase) {
       chatStream.cancel();
       useCaseSessionRef.current += 1;
@@ -437,100 +444,106 @@ export default function AppWorkspace() {
 
     const userPrompt = prompt.trim();
     const useCaseSession = useCaseSessionRef.current;
+    const requestedModels = [...selected];
+    const pendingUser = createUserMessage(userPrompt);
+    const pendingResponses = new Map(
+      requestedModels.map((model) => [
+        model,
+        createAssistantMessage({ model, pending: true }),
+      ]),
+    );
     setPrompt("");
     setIsRunning(true);
     setMessages((current) => [
       ...current,
-      createUserMessage(userPrompt),
-      ...selected.map((model) =>
-        createAssistantMessage({ model, pending: true }),
-      ),
+      pendingUser,
+      ...pendingResponses.values(),
     ]);
 
     try {
       const requestBody = {
-        models: selected,
+        models: requestedModels,
         prompt: userPrompt,
         conversation_id: currentConversationId,
         reasoning_effort:
           reasoningEffort === "default" ? null : reasoningEffort,
         use_case: activeUseCase,
       };
-      const response = await compareModels(apiTrace.tracedFetch, requestBody);
-      const data = await response.json();
+      await streamComparison({
+        fetchClient: apiTrace.tracedFetch,
+        request: requestBody,
+        onEvent: (event) => {
+          if (useCaseSession !== useCaseSessionRef.current) return;
+          if (event.type === "start") {
+            setCurrentConversationId(event.conversation.id);
+            upsertConversation(event.conversation);
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === pendingUser.id
+                  ? mapStoredMessage(event.user_message)
+                  : message,
+              ),
+            );
+            return;
+          }
+          if (event.type === "completed") {
+            setCurrentConversationId(event.conversation.id);
+            upsertConversation(event.conversation);
+            return;
+          }
 
-      if (useCaseSession !== useCaseSessionRef.current) {
-        return;
-      }
-
-      if (!response.ok) {
-        apiTrace.appendApiResponseTrace({
-          label: "Compare models response",
-          method: "RECV",
-          url: comparisonEndpoint,
-          status: response.status,
-          response: data,
-        });
-        replacePendingMessages(selected.length + 1, [
-          createUserMessage(userPrompt),
-          createAssistantMessage({
-            model: "Request failed",
-            error: data.detail ?? "Unknown error",
-          }),
-        ]);
-        return;
-      }
-
-      setCurrentConversationId(data.conversation.id);
-      upsertConversation(data.conversation);
-      const flatResults = (data.results ?? []).flatMap(
-        (result: { variants?: ModelResult[] }) => result.variants ?? [result],
-      );
-      for (const result of flatResults) {
-        if (result.foundry_request) {
-          apiTrace.appendFoundryTrace(
-            result.foundry_request,
-            `Foundry request for ${result.model}`,
+          const results =
+            "variants" in event.result
+              ? event.result.variants
+              : [event.result];
+          const assistantMessages = results.map(
+            (result) => result.assistant_message,
           );
-        }
-        if (result.foundry_response) {
-          apiTrace.appendFoundryResponseTrace(
-            result.foundry_response,
-            `Foundry response for ${result.model}`,
+          const pendingResponse = pendingResponses.get(event.model);
+          if (pendingResponse) {
+            setMessages((current) =>
+              current.flatMap((message) =>
+                message.id === pendingResponse.id
+                  ? assistantMessages.map(mapStoredMessage)
+                  : [message],
+              ),
+            );
+          }
+          for (const result of results) {
+            if (result.foundry_request) {
+              apiTrace.appendFoundryTrace(
+                result.foundry_request,
+                `Foundry request for ${result.model}`,
+              );
+            }
+            if (result.foundry_response) {
+              apiTrace.appendFoundryResponseTrace(
+                result.foundry_response,
+                `Foundry response for ${result.model}`,
+              );
+            }
+          }
+          apiTrace.appendApiResponseTrace({
+            label: `Compare model response for ${event.model}`,
+            method: "RECV",
+            url: comparisonStreamEndpoint,
+            status: 200,
+            response: event.result,
+          });
+          speakResponses(
+            assistantMessages.filter(
+              (message) =>
+                message.guardrail_variant !== "guarded" &&
+                message.guardrail_variant !== "policy_2",
+            ),
           );
-        }
-      }
-      apiTrace.appendApiResponseTrace({
-        label: "Compare models response",
-        method: "RECV",
-        url: comparisonEndpoint,
-        status: response.status,
-        response: data,
+        },
       });
-      const assistantMessages = flatResults.map(
-        (result: { assistant_message: StoredMessage }) =>
-          result.assistant_message,
-      );
-      replacePendingMessages(selected.length + 1, [
-        mapStoredMessage(data.user_message),
-        ...assistantMessages.map(mapStoredMessage),
-      ]);
-      speakResponses(
-        assistantMessages.filter(
-          (message: StoredMessage) =>
-            message.guardrail_variant !== "guarded" &&
-            message.guardrail_variant !== "policy_2",
-        ),
-      );
     } finally {
       if (useCaseSession === useCaseSessionRef.current) {
         setIsRunning(false);
       }
     }
-  }
-
-  function replacePendingMessages(count: number, replacements: ChatMessage[]) {
-    setMessages((current) => [...current.slice(0, -count), ...replacements]);
   }
 
   const canSubmit =
@@ -667,7 +680,13 @@ export default function AppWorkspace() {
       onFileSelected: (file) => void transcription.selectFile(file),
     },
     transcriptionComparison: {
-      configured: selectedTranscriptions.length > 0,
+      configured:
+        selectedTranscriptions.length > 0 &&
+        selectedTranscriptions.every((selectedModel) =>
+          selectedModel.toLowerCase().startsWith("mai-transcribe")
+            ? (config?.is_speech_transcription_configured ?? false)
+            : (config?.is_configured ?? false),
+        ),
       models: selectedTranscriptions,
       status: transcriptionComparison.status,
       error: transcriptionComparison.error,
@@ -938,28 +957,31 @@ export default function AppWorkspace() {
                               ? `Comparing ${imageWorkspace.selected.length} image endpoint${imageWorkspace.selected.length === 1 ? "" : "s"}`
                               : activeUseCaseDetails.workspace === "comparison"
                                 ? `Comparing ${selected.length} model endpoint${selected.length === 1 ? "" : "s"}`
-                                : activeUseCase === "document_qa"
-                                  ? `${documentLibrary.documents.length} indexed document${documentLibrary.documents.length === 1 ? "" : "s"} - active model: ${formatModelName(activeModel)}`
-                                  : activeUseCaseDetails.workspace ===
-                                        "traditionalVoice" ||
-                                      activeUseCaseDetails.workspace ===
-                                        "transcribe" ||
-                                      activeUseCaseDetails.workspace ===
-                                        "realtimeVoice" ||
-                                      activeUseCaseDetails.workspace ===
-                                        "voiceLive" ||
-                                      activeUseCaseDetails.workspace ===
-                                        "liveTranslation"
-                                    ? activeUseCaseDetails.description
-                                    : `${
-                                        currentConversationId
-                                          ? (conversations.find(
-                                              (item) =>
-                                                item.id ===
-                                                currentConversationId,
-                                            )?.title ?? "Saved chat")
-                                          : "New unsaved chat"
-                                      } - active model: ${formatModelName(activeModel)}`}
+                                : activeUseCaseDetails.workspace ===
+                                    "transcriptionComparison"
+                                  ? `Comparing ${selectedTranscriptions.length} transcription endpoint${selectedTranscriptions.length === 1 ? "" : "s"}`
+                                  : activeUseCase === "document_qa"
+                                    ? `${documentLibrary.documents.length} indexed document${documentLibrary.documents.length === 1 ? "" : "s"} - active model: ${formatModelName(activeModel)}`
+                                    : activeUseCaseDetails.workspace ===
+                                          "traditionalVoice" ||
+                                        activeUseCaseDetails.workspace ===
+                                          "transcribe" ||
+                                        activeUseCaseDetails.workspace ===
+                                          "realtimeVoice" ||
+                                        activeUseCaseDetails.workspace ===
+                                          "voiceLive" ||
+                                        activeUseCaseDetails.workspace ===
+                                          "liveTranslation"
+                                      ? activeUseCaseDetails.description
+                                      : `${
+                                          currentConversationId
+                                            ? (conversations.find(
+                                                (item) =>
+                                                  item.id ===
+                                                  currentConversationId,
+                                              )?.title ?? "Saved chat")
+                                            : "New unsaved chat"
+                                        } - active model: ${formatModelName(activeModel)}`}
                 </p>
               </div>
               <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">

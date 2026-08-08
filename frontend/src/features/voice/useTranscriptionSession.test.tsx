@@ -119,12 +119,15 @@ describe("useTranscriptionSession", () => {
     );
   });
 
-  it("publishes each model result immediately and keeps prior session output", async () => {
-    let resolveFirst: (value: TranscriptionResult) => void = () => undefined;
-    let resolveSecond: (value: TranscriptionResult) => void = () => undefined;
+  it("converts once and transcribes with multiple models independently", async () => {
+    const second: TranscriptionResult = {
+      ...transcription,
+      model: "transcribe-b",
+      text: "Alternate words",
+    };
     vi.mocked(transcribeRecording)
-      .mockReturnValueOnce(new Promise((resolve) => (resolveFirst = resolve)))
-      .mockReturnValueOnce(new Promise((resolve) => (resolveSecond = resolve)));
+      .mockResolvedValueOnce(transcription)
+      .mockResolvedValueOnce(second);
     const { result } = renderHook(() =>
       useTranscriptionSession({
         fetchClient,
@@ -133,7 +136,44 @@ describe("useTranscriptionSession", () => {
       }),
     );
 
-    let run: ReturnType<typeof result.current.selectFile>;
+    await act(async () =>
+      result.current.selectFile(
+        new File(["audio"], "recording.wav", { type: "audio/wav" }),
+      ),
+    );
+
+    expect(convertAudioToWav).toHaveBeenCalledOnce();
+    expect(transcribeRecording).toHaveBeenCalledTimes(2);
+    expect(result.current.results).toEqual({
+      "transcribe-model": [transcription],
+      "transcribe-b": [second],
+    });
+    expect(result.current.modelErrors).toEqual({});
+  });
+
+  it("publishes each model result immediately and keeps prior session output", async () => {
+    let resolveFirst: (value: TranscriptionResult) => void = () => undefined;
+    let resolveSecond: (value: TranscriptionResult) => void = () => undefined;
+    vi.mocked(transcribeRecording)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+      );
+    const { result } = renderHook(() =>
+      useTranscriptionSession({
+        fetchClient,
+        model: "transcribe-model",
+        models: ["transcribe-model", "transcribe-b"],
+      }),
+    );
+
+    let run: Promise<TranscriptionResult | null> | undefined;
     act(() => {
       run = result.current.selectFile(
         new File(["audio"], "recording.wav", { type: "audio/wav" }),
@@ -141,8 +181,10 @@ describe("useTranscriptionSession", () => {
     });
     await waitFor(() => expect(transcribeRecording).toHaveBeenCalledTimes(2));
     await act(async () => resolveFirst(transcription));
+
     expect(result.current.results["transcribe-model"]).toEqual([transcription]);
     expect(result.current.pendingModels).toEqual(new Set(["transcribe-b"]));
+    expect(result.current.status).toBe("processing");
 
     await act(async () => {
       resolveSecond({ ...transcription, model: "transcribe-b" });
@@ -154,6 +196,7 @@ describe("useTranscriptionSession", () => {
         new File(["next"], "next.wav", { type: "audio/wav" }),
       ),
     );
+
     expect(result.current.results["transcribe-model"]).toHaveLength(2);
     expect(result.current.results["transcribe-b"]).toHaveLength(2);
   });

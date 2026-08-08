@@ -254,6 +254,15 @@ vi.mock("@/features/voice/VoiceWorkspaces", () => ({
       </button>
     </div>
   ),
+  TranscriptionComparisonWorkspace: (props: { onStart: () => void }) => (
+    <button
+      type="button"
+      data-testid="transcription-comparison"
+      onClick={props.onStart}
+    >
+      Start transcription comparison
+    </button>
+  ),
   RealtimeVoiceHero: (props: { onStart: () => void }) => (
     <button type="button" data-testid="realtime" onClick={props.onStart}>
       Start realtime
@@ -276,12 +285,6 @@ vi.mock("@/features/voice/VoiceWorkspaces", () => ({
         French
       </button>
     </div>
-  ),
-}));
-
-vi.mock("@/features/voice/TranscriptionComparisonWorkspace", () => ({
-  TranscriptionComparisonWorkspace: () => (
-    <div data-testid="transcription-comparison" />
   ),
 }));
 

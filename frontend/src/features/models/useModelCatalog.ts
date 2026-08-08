@@ -500,6 +500,20 @@ export function useModelCatalog({
     });
   }, []);
 
+  const toggleTranscriptionModel = useCallback((model: string) => {
+    setState((current) => {
+      const selectedTranscriptionModels = new Set(
+        current.selectedTranscriptionModels,
+      );
+      if (selectedTranscriptionModels.has(model)) {
+        selectedTranscriptionModels.delete(model);
+      } else if (selectedTranscriptionModels.size < maxComparisonModelCount) {
+        selectedTranscriptionModels.add(model);
+      }
+      return { ...current, selectedTranscriptionModels };
+    });
+  }, []);
+
   const replaceComparisonModel = useCallback(
     (currentModel: string, nextModel: string) => {
       if (currentModel === nextModel) {
@@ -514,20 +528,6 @@ export function useModelCatalog({
     },
     [],
   );
-
-  const toggleTranscriptionModel = useCallback((model: string) => {
-    setState((current) => {
-      const selectedTranscriptionModels = new Set(
-        current.selectedTranscriptionModels,
-      );
-      if (selectedTranscriptionModels.has(model)) {
-        selectedTranscriptionModels.delete(model);
-      } else if (selectedTranscriptionModels.size < maxComparisonModelCount) {
-        selectedTranscriptionModels.add(model);
-      }
-      return { ...current, selectedTranscriptionModels };
-    });
-  }, []);
 
   const textModels = useMemo(
     () =>

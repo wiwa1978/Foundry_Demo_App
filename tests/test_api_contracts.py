@@ -126,6 +126,7 @@ def test_every_json_operation_has_an_explicit_openapi_response_schema():
         ("/api/auth/callback", "get"),
         ("/api/auth/logout", "get"),
         ("/api/chat/stream", "post"),
+        ("/api/compare/stream", "post"),
         ("/api/documents/ask/stream", "post"),
         ("/api/images/samples/{sample_id}", "get"),
     }
@@ -135,7 +136,7 @@ def test_every_json_operation_has_an_explicit_openapi_response_schema():
         if (path, method) not in excluded
     ]
 
-    assert len(operations) == 39
+    assert len(operations) == 40
     assert len(eligible) == 30
     for path, method, operation in eligible:
         response = operation["responses"]["200"]

@@ -14,11 +14,11 @@ import { voiceLiveUseCase } from "@/features/useCases/voiceLive";
 
 export const useCaseModules = [
   textChatUseCase,
+  comparisonUseCase,
   documentQaUseCase,
   textToImageUseCase,
-  imageToImageUseCase,
   imageComparisonUseCase,
-  comparisonUseCase,
+  imageToImageUseCase,
   browserVoiceUseCase,
   traditionalVoiceUseCase,
   transcribeUseCase,

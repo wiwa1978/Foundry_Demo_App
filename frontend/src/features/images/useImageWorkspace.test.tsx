@@ -5,10 +5,20 @@ import type { FetchClient, ModelModality } from "@/api/types";
 import type { UseCaseWorkspace } from "@/app/types";
 import type { ImageGenerationResult } from "@/app/workspace/contracts";
 
-import { editImage, generateImage } from "./api";
+import {
+  editImage,
+  generateImage,
+  getImageSample,
+  listImageSamples,
+} from "./api";
 import { useImageWorkspace } from "./useImageWorkspace";
 
-vi.mock("./api", () => ({ generateImage: vi.fn(), editImage: vi.fn() }));
+vi.mock("./api", () => ({
+  generateImage: vi.fn(),
+  editImage: vi.fn(),
+  getImageSample: vi.fn(),
+  listImageSamples: vi.fn(),
+}));
 
 const fetchClient = vi.fn<FetchClient>();
 const models = ["image-a", "image-b", "image-c", "gpt-image-edit"];
@@ -47,7 +57,13 @@ function setup(initialWorkspace: UseCaseWorkspace = "image") {
 }
 
 describe("useImageWorkspace", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listImageSamples).mockResolvedValue([]);
+    vi.mocked(getImageSample).mockResolvedValue(
+      new File(["sample"], "sample.jpg", { type: "image/jpeg" }),
+    );
+  });
 
   it("reconciles compatible models and enforces the comparison limit", async () => {
     const { result, rerender } = setup();

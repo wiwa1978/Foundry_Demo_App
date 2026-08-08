@@ -46,12 +46,12 @@ import {
 import { ChatMessageHistory } from "@/features/textChat/ChatMessages";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
 import type { LiveTranslationMode } from "@/features/voice/types";
-import { TranscriptionComparisonWorkspace } from "@/features/voice/TranscriptionComparisonWorkspace";
 import type { TraditionalVoiceRequest } from "@/features/voice/useTraditionalVoiceSession";
 import {
   LiveTranslationHero,
   RealtimeVoiceHero,
   TraditionalVoiceWorkspace,
+  TranscriptionComparisonWorkspace,
   TranscriptionWorkspace,
   VoiceLiveHero,
 } from "@/features/voice/VoiceWorkspaces";

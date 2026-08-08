@@ -93,34 +93,43 @@ export function useTranscriptionSession({
       const outcomes = await Promise.all(
         request.models.map(async (requestModel) => {
           try {
-            const data = await transcribeRecording(
-              fetchClient,
-              wav,
-              requestModel,
-              request.language,
-            );
+            const outcome = {
+              model: requestModel,
+              data: await transcribeRecording(
+                fetchClient,
+                wav,
+                requestModel,
+                request.language,
+              ),
+            };
             if (isCurrent(generation)) {
               setResults((current) => ({
                 ...current,
-                [requestModel]: [...(current[requestModel] ?? []), data],
+                [requestModel]: [
+                  ...(current[requestModel] ?? []),
+                  outcome.data,
+                ],
               }));
-              if (requestModel === request.models[0]) setResult(data);
+              if (requestModel === request.models[0]) setResult(outcome.data);
               setPendingModels((current) => {
                 const next = new Set(current);
                 next.delete(requestModel);
                 return next;
               });
             }
-            return { data };
+            return outcome;
           } catch (caught) {
-            const message =
-              caught instanceof Error
-                ? caught.message
-                : "Transcription failed.";
+            const outcome = {
+              model: requestModel,
+              error:
+                caught instanceof Error
+                  ? caught.message
+                  : "Transcription failed.",
+            };
             if (isCurrent(generation)) {
               setModelErrors((current) => ({
                 ...current,
-                [requestModel]: message,
+                [requestModel]: outcome.error,
               }));
               setPendingModels((current) => {
                 const next = new Set(current);
@@ -128,7 +137,7 @@ export function useTranscriptionSession({
                 return next;
               });
             }
-            return { error: message };
+            return outcome;
           }
         }),
       );

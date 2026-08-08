@@ -12,12 +12,17 @@ export const transcriptionComparisonUseCase: UseCaseModule = {
   implementation: [
     "The browser records microphone audio or accepts one uploaded audio file.",
     "Audio is converted to 16 kHz mono PCM WAV once and submitted to every selected transcription deployment concurrently.",
-    "Each result is displayed as soon as its model completes and remains in the session history.",
+    "Each model result or error is displayed independently for side-by-side comparison.",
   ],
   codeSnippet: {
     title: "Run one recording across transcription deployments",
     language: "python",
-    code: "results = await asyncio.gather(*(transcribe(model, audio) for model in models))",
+    code: [
+      "async def transcribe(model: str):",
+      "    return await run_model_call(transcribe_audio, audio=audio, model=model)",
+      "",
+      "results = await asyncio.gather(*(transcribe(model) for model in models))",
+    ].join("\n"),
   },
   workspace: "transcriptionComparison",
   showTranscriptionComparisonControls: true,
