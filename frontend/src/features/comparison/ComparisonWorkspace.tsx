@@ -8,14 +8,18 @@ import {
 } from "lucide-react";
 import type { FormEvent } from "react";
 
+import { reasoningEffortOptions } from "@/app/workspace/constants";
 import { formatModelName } from "@/app/workspace/formatters";
-import { UseCaseComposer } from "@/app/workspace/WorkspacePrimitives";
+import {
+  ComposerSelect,
+  UseCaseComposer,
+} from "@/app/workspace/WorkspacePrimitives";
 import { Button } from "@/components/ui/button";
 import {
   ComparisonModelResponse,
   groupComparisonTurns,
 } from "@/features/textChat/ChatMessages";
-import type { ChatMessage } from "@/features/textChat/types";
+import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
 
 type ComparisonWorkspaceProps = {
   allModels: string[];
@@ -26,11 +30,13 @@ type ComparisonWorkspaceProps = {
   canSubmit: boolean;
   speechRecognitionSupported: boolean;
   isListening: boolean;
+  reasoningEffort: ReasoningEffort;
   onPromptChange: (value: string) => void;
   onSubmit: () => void;
   onToggleDictation: () => void;
   onOpenSettings: (model: string) => void;
   onModelChange: (currentModel: string, nextModel: string) => void;
+  onReasoningEffortChange: (effort: ReasoningEffort) => void;
 };
 
 export function ComparisonWorkspace({
@@ -42,11 +48,13 @@ export function ComparisonWorkspace({
   canSubmit,
   speechRecognitionSupported,
   isListening,
+  reasoningEffort,
   onPromptChange,
   onSubmit,
   onToggleDictation,
   onOpenSettings,
   onModelChange,
+  onReasoningEffortChange,
 }: ComparisonWorkspaceProps) {
   const turns = groupComparisonTurns(messages);
 
@@ -86,18 +94,20 @@ export function ComparisonWorkspace({
               canSubmit={canSubmit}
               speechRecognitionSupported={speechRecognitionSupported}
               isListening={isListening}
+              reasoningEffort={reasoningEffort}
               onPromptChange={onPromptChange}
               onSubmit={onSubmit}
               onToggleDictation={onToggleDictation}
               onOpenSettings={onOpenSettings}
               onModelChange={onModelChange}
+              onReasoningEffortChange={onReasoningEffortChange}
             />
           ))}
         </div>
       </div>
       <p className="border-t bg-white px-4 py-2 text-center text-xs text-slate-500 dark:border-[#55555a] dark:bg-[#29292c] dark:text-slate-400">
-        Text typed in any comparison prompt is mirrored to every pane. Sending
-        dispatches the same prompt to all selected models.
+        Text and reasoning effort are mirrored across every pane. Sending
+        dispatches the same settings to all selected models.
       </p>
     </div>
   );
@@ -113,11 +123,13 @@ type ComparisonModelPaneProps = {
   canSubmit: boolean;
   speechRecognitionSupported: boolean;
   isListening: boolean;
+  reasoningEffort: ReasoningEffort;
   onPromptChange: (value: string) => void;
   onSubmit: () => void;
   onToggleDictation: () => void;
   onOpenSettings: (model: string) => void;
   onModelChange: (currentModel: string, nextModel: string) => void;
+  onReasoningEffortChange: (effort: ReasoningEffort) => void;
 };
 
 function ComparisonModelPane({
@@ -130,11 +142,13 @@ function ComparisonModelPane({
   canSubmit,
   speechRecognitionSupported,
   isListening,
+  reasoningEffort,
   onPromptChange,
   onSubmit,
   onToggleDictation,
   onOpenSettings,
   onModelChange,
+  onReasoningEffortChange,
 }: ComparisonModelPaneProps) {
   function submitPanePrompt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -235,25 +249,37 @@ function ComparisonModelPane({
           <span className="text-xs font-medium">{formatModelName(model)}</span>
         }
         rightControls={
-          <Button
-            type="button"
-            variant={isListening ? "destructive" : "outline"}
-            size="icon"
-            disabled={!speechRecognitionSupported}
-            onClick={onToggleDictation}
-            title={
-              isListening
-                ? "Stop browser dictation"
-                : "Start browser dictation (speech-to-text into the prompt)"
-            }
-            className="h-8 w-8 rounded-full"
-          >
-            {isListening ? (
-              <MicOff className="h-4 w-4" />
-            ) : (
-              <Mic className="h-4 w-4" />
-            )}
-          </Button>
+          <>
+            <Button
+              type="button"
+              variant={isListening ? "destructive" : "outline"}
+              size="icon"
+              disabled={!speechRecognitionSupported}
+              onClick={onToggleDictation}
+              title={
+                isListening
+                  ? "Stop browser dictation"
+                  : "Start browser dictation (speech-to-text into the prompt)"
+              }
+              className="h-8 w-8 rounded-full"
+            >
+              {isListening ? (
+                <MicOff className="h-4 w-4" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+            </Button>
+            <ComposerSelect
+              id={`comparison-reasoning-${model}`}
+              ariaLabel={`Reasoning level for ${model}`}
+              value={reasoningEffort}
+              onChange={(value) =>
+                onReasoningEffortChange(value as ReasoningEffort)
+              }
+              options={reasoningEffortOptions}
+              title="Reasoning effort is applied to all compared models."
+            />
+          </>
         }
       />
     </form>

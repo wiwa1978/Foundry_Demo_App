@@ -151,11 +151,13 @@ export type WorkspaceComparisonViewModel = {
   prompt: string;
   isRunning: boolean;
   canSubmit: boolean;
+  reasoningEffort: ReasoningEffort;
   onPromptChange: (value: string) => void;
   onSubmit: () => void;
   onToggleDictation: () => void;
   onOpenSettings: (model: string) => void;
   onModelChange: (currentModel: string, nextModel: string) => void;
+  onReasoningEffortChange: (effort: ReasoningEffort) => void;
 };
 
 export type WorkspaceTraditionalVoiceViewModel = {

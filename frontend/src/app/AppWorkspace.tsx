@@ -69,7 +69,7 @@ export default function AppWorkspace() {
   const [useCaseDetailsOpen, setUseCaseDetailsOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [reasoningEffort, setReasoningEffort] =
-    useState<ReasoningEffort>("default");
+    useState<ReasoningEffort>("medium");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<
@@ -585,11 +585,13 @@ export default function AppWorkspace() {
       prompt,
       isRunning,
       canSubmit,
+      reasoningEffort,
       onPromptChange: setPrompt,
       onSubmit: () => void runComparison(),
       onToggleDictation: toggleDictation,
       onOpenSettings: (model) => void modelSettingsController.open(model),
       onModelChange: replaceComparisonModel,
+      onReasoningEffortChange: setReasoningEffort,
     },
     traditionalVoice: {
       configured: config?.is_traditional_voice_configured ?? false,

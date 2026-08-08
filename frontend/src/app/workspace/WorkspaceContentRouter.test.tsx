@@ -22,6 +22,7 @@ type ActionProps = {
   onGenerate?: () => void;
   onOpenSettings?: (model: string) => void;
   onModelChange?: (currentModel: string, nextModel: string) => void;
+  onReasoningEffortChange?: (effort: "medium" | "high") => void;
 };
 
 type ComposerProps = {
@@ -157,6 +158,12 @@ vi.mock("@/features/comparison/ComparisonWorkspace", () => ({
         onClick={() => props.onModelChange?.("model-a", "model-b")}
       >
         Replace comparison model
+      </button>
+      <button
+        type="button"
+        onClick={() => props.onReasoningEffortChange?.("high")}
+      >
+        Change comparison reasoning
       </button>
     </div>
   ),
@@ -385,11 +392,13 @@ function routerProps(
       prompt: "compare",
       isRunning: false,
       canSubmit: true,
+      reasoningEffort: "medium",
       onPromptChange: vi.fn(),
       onSubmit: vi.fn(),
       onToggleDictation: vi.fn(),
       onOpenSettings: vi.fn(),
       onModelChange: vi.fn(),
+      onReasoningEffortChange: vi.fn(),
     },
     traditionalVoice: {
       configured: true,
@@ -702,7 +711,7 @@ describe("WorkspaceContentRouter", () => {
     );
   });
 
-  it("routes comparison submit and model replacement callbacks", async () => {
+  it("routes comparison submit, model, and reasoning callbacks", async () => {
     const user = userEvent.setup();
     const props = routerProps();
     render(
@@ -714,10 +723,16 @@ describe("WorkspaceContentRouter", () => {
     await user.click(
       screen.getByRole("button", { name: "Replace comparison model" }),
     );
+    await user.click(
+      screen.getByRole("button", { name: "Change comparison reasoning" }),
+    );
     expect(props.comparison.onSubmit).toHaveBeenCalledOnce();
     expect(props.comparison.onModelChange).toHaveBeenCalledWith(
       "model-a",
       "model-b",
+    );
+    expect(props.comparison.onReasoningEffortChange).toHaveBeenCalledWith(
+      "high",
     );
   });
 });
