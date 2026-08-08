@@ -1,8 +1,8 @@
 import json
 import unittest
 from io import BytesIO
-from urllib.error import HTTPError
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError
 
 from pydantic import ValidationError
 

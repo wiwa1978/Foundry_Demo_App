@@ -5,10 +5,7 @@ import type { UseCaseWorkspace } from "@/app/types";
 import { maxImageComparisonModelCount } from "@/app/workspace/constants";
 import type { ImageGenerationResult } from "@/app/workspace/contracts";
 
-import {
-  editImage,
-  generateImage,
-} from "./api";
+import { editImage, generateImage } from "./api";
 
 type ImageResponse = Omit<ImageGenerationResult, "prompt">;
 

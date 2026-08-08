@@ -493,9 +493,7 @@ export default function AppWorkspace() {
           }
 
           const results =
-            "variants" in event.result
-              ? event.result.variants
-              : [event.result];
+            "variants" in event.result ? event.result.variants : [event.result];
           const assistantMessages = results.map(
             (result) => result.assistant_message,
           );

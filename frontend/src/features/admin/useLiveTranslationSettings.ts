@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
-import { loadLiveTranslationSettings, saveLiveTranslationSettings } from "@/api/admin";
+import {
+  loadLiveTranslationSettings,
+  saveLiveTranslationSettings,
+} from "@/api/admin";
 import type { FetchClient, UseCaseResourceSettings } from "@/api/types";
 
 const emptySettings: UseCaseResourceSettings = {
@@ -27,7 +30,10 @@ export function useLiveTranslationSettings({
     setLoading(true);
     void loadLiveTranslationSettings(fetchClient, controller.signal)
       .then(({ response, data }) => {
-        if (!response.ok) throw new Error(data.detail ?? "Failed to load Live Interpreter settings.");
+        if (!response.ok)
+          throw new Error(
+            data.detail ?? "Failed to load Live Interpreter settings.",
+          );
         setSettings(data);
       })
       .catch((error: Error) => {
@@ -41,12 +47,22 @@ export function useLiveTranslationSettings({
     setSaving(true);
     setMessage("");
     try {
-      const { response, data } = await saveLiveTranslationSettings(fetchClient, { binding });
-      if (!response.ok) throw new Error(data.detail ?? "Failed to save Live Interpreter settings.");
+      const { response, data } = await saveLiveTranslationSettings(
+        fetchClient,
+        { binding },
+      );
+      if (!response.ok)
+        throw new Error(
+          data.detail ?? "Failed to save Live Interpreter settings.",
+        );
       setSettings(data);
       setMessage("Live Interpreter resource saved.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to save Live Interpreter settings.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to save Live Interpreter settings.",
+      );
       throw error;
     } finally {
       setSaving(false);

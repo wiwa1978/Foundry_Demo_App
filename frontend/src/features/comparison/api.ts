@@ -94,6 +94,9 @@ export async function streamComparison({
   }
   return {
     response,
-    events: await readServerSentEvents<ComparisonStreamEvent>(response, onEvent),
+    events: await readServerSentEvents<ComparisonStreamEvent>(
+      response,
+      onEvent,
+    ),
   };
 }

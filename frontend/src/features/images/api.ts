@@ -9,23 +9,35 @@ export type ImageSample = {
   image_url: string;
 };
 
-export async function listImageSamples(fetchClient: FetchClient, signal?: AbortSignal) {
+export async function listImageSamples(
+  fetchClient: FetchClient,
+  signal?: AbortSignal,
+) {
   const response = await fetchClient(
     "/api/images/samples",
     { signal },
     { label: "Load image samples", responseKind: "json" },
   );
-  if (!response.ok) throw new Error(await readPublicApiError(response, "Could not load image samples."));
+  if (!response.ok)
+    throw new Error(
+      await readPublicApiError(response, "Could not load image samples."),
+    );
   return (await response.json()) as ImageSample[];
 }
 
-export async function getImageSample(fetchClient: FetchClient, sample: ImageSample) {
+export async function getImageSample(
+  fetchClient: FetchClient,
+  sample: ImageSample,
+) {
   const response = await fetchClient(
     sample.image_url,
     {},
     { label: `Load ${sample.name}`, traceResponse: false },
   );
-  if (!response.ok) throw new Error(await readPublicApiError(response, "Could not load image sample."));
+  if (!response.ok)
+    throw new Error(
+      await readPublicApiError(response, "Could not load image sample."),
+    );
   const blob = await response.blob();
   return new File([blob], sample.id, { type: blob.type });
 }

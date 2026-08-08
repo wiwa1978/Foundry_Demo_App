@@ -9,7 +9,8 @@ import type {
 
 const adminConfigEndpoint = "/api/admin/deployments/config";
 const deploymentsEndpoint = "/api/admin/deployments";
-const liveTranslationSettingsEndpoint = "/api/admin/use-case-settings/live_translation";
+const liveTranslationSettingsEndpoint =
+  "/api/admin/use-case-settings/live_translation";
 
 export type CreateDeploymentResponse = {
   detail?: string;
@@ -89,7 +90,11 @@ export async function saveLiveTranslationSettings(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings),
     },
-    { label: "Save Live Interpreter resource", request: settings, responseKind: "json" },
+    {
+      label: "Save Live Interpreter resource",
+      request: settings,
+      responseKind: "json",
+    },
   );
   return {
     response,

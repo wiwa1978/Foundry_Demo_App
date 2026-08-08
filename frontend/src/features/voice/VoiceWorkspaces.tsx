@@ -9,7 +9,10 @@ import {
 } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
-import { liveTranslationLanguages, liveTranslationSourceLanguages } from "@/app/workspace/constants";
+import {
+  liveTranslationLanguages,
+  liveTranslationSourceLanguages,
+} from "@/app/workspace/constants";
 import type {
   TraditionalVoiceResult,
   TraditionalVoiceStatus,
@@ -1053,7 +1056,9 @@ export function LiveTranslationHero({
       <DictationHero active={isActive} />
       <div className="flex flex-wrap justify-center gap-2">
         <Badge>Speech translation</Badge>
-        <Badge variant="outline">{mode === "standard" ? "Standard neural voice" : "Personal Voice"}</Badge>
+        <Badge variant="outline">
+          {mode === "standard" ? "Standard neural voice" : "Personal Voice"}
+        </Badge>
       </div>
       <h3 className="mt-4 text-2xl font-semibold tracking-tight">
         One room, many languages
@@ -1066,42 +1071,72 @@ export function LiveTranslationHero({
       <div className="mx-auto mt-5 grid max-w-xl gap-4 text-left sm:grid-cols-2">
         <div className="sm:col-span-2">
           <Label htmlFor="live-translation-mode">Voice mode</Label>
-          <Select value={mode} onValueChange={(value) => onModeChange(value as LiveTranslationMode)} disabled={isActive}>
-            <SelectTrigger id="live-translation-mode" className="mt-2 bg-white/80 dark:bg-[#29292c]"><SelectValue /></SelectTrigger>
+          <Select
+            value={mode}
+            onValueChange={(value) =>
+              onModeChange(value as LiveTranslationMode)
+            }
+            disabled={isActive}
+          >
+            <SelectTrigger
+              id="live-translation-mode"
+              className="mt-2 bg-white/80 dark:bg-[#29292c]"
+            >
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="standard">Standard neural voice</SelectItem>
-              <SelectItem value="personal">Personal Voice (Live Interpreter)</SelectItem>
+              <SelectItem value="personal">
+                Personal Voice (Live Interpreter)
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
-        {mode === "standard" ? <div>
-          <Label htmlFor="live-translation-source">Speak in</Label>
-          <Select value={sourceLanguage} onValueChange={onSourceLanguageChange} disabled={isActive}>
-            <SelectTrigger id="live-translation-source" className="mt-2 bg-white/80 dark:bg-[#29292c]"><SelectValue /></SelectTrigger>
-            <SelectContent>{liveTranslationSourceLanguages.map(([code, name]) => <SelectItem key={code} value={code}>{name}</SelectItem>)}</SelectContent>
-          </Select>
-        </div> : null}
+        {mode === "standard" ? (
+          <div>
+            <Label htmlFor="live-translation-source">Speak in</Label>
+            <Select
+              value={sourceLanguage}
+              onValueChange={onSourceLanguageChange}
+              disabled={isActive}
+            >
+              <SelectTrigger
+                id="live-translation-source"
+                className="mt-2 bg-white/80 dark:bg-[#29292c]"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {liveTranslationSourceLanguages.map(([code, name]) => (
+                  <SelectItem key={code} value={code}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <div className={mode === "personal" ? "sm:col-span-2" : ""}>
-        <Label htmlFor="live-translation-target">Translate everyone to</Label>
-        <Select
-          value={targetLanguage}
-          onValueChange={onTargetLanguageChange}
-          disabled={isActive}
-        >
-          <SelectTrigger
-            id="live-translation-target"
-            className="mt-2 bg-white/80 dark:bg-[#29292c]"
+          <Label htmlFor="live-translation-target">Translate everyone to</Label>
+          <Select
+            value={targetLanguage}
+            onValueChange={onTargetLanguageChange}
+            disabled={isActive}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {liveTranslationLanguages.map(([code, name]) => (
-              <SelectItem key={code} value={code}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <SelectTrigger
+              id="live-translation-target"
+              className="mt-2 bg-white/80 dark:bg-[#29292c]"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {liveTranslationLanguages.map(([code, name]) => (
+                <SelectItem key={code} value={code}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <div className="mt-5 flex justify-center">
@@ -1147,7 +1182,11 @@ export function LiveTranslationHero({
         </div>
       ) : null}
       <p className="mt-5 text-xs text-slate-500 dark:text-slate-400">
-        {mode === "personal" ? "Personal Voice requires Microsoft approval for the mapped resource. " : ""}Use headphones to prevent translated audio from being captured by the microphone.
+        {mode === "personal"
+          ? "Personal Voice requires Microsoft approval for the mapped resource. "
+          : ""}
+        Use headphones to prevent translated audio from being captured by the
+        microphone.
       </p>
     </div>
   );
