@@ -140,9 +140,10 @@ describe("useBrowserSpeech", () => {
     expect(utterance.voice).toBe(voice);
 
     act(() => result.current.toggleDictation());
-    act(() => recognition.emitResult(" stale words"));
-    expect(prompt).toBe("Existing dictated words");
+    act(() => recognition.emitResult(" dictated words finalized on stop"));
+    expect(prompt).toBe("Existing dictated words finalized on stop");
     expect(recognition.stop).toHaveBeenCalledOnce();
+    act(() => recognition.onend?.());
     act(() => result.current.toggleReadback());
     expect(localStorage.getItem("foundry-chat-voice-readback")).toBe("false");
 
@@ -237,7 +238,7 @@ describe("useBrowserSpeech", () => {
     expect(MockSpeechRecognition.instances[0].abort).toHaveBeenCalledOnce();
   });
 
-  it("filters interim and failed responses and uses speech fallbacks", () => {
+  it("renders interim speech without duplicating final results", () => {
     const speechSynthesis = {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
@@ -279,9 +280,21 @@ describe("useBrowserSpeech", () => {
         },
       }),
     );
-    expect(prompt).toBe("");
+    expect(prompt).toBe("interim");
     act(() => recognition.emitResult("final words"));
     expect(prompt).toBe("final words");
+
+    act(() =>
+      recognition.onresult?.({
+        resultIndex: 1,
+        results: {
+          0: { 0: { transcript: "final words" }, isFinal: true },
+          1: { 0: { transcript: " continue" }, isFinal: false },
+          length: 2,
+        },
+      }),
+    );
+    expect(prompt).toBe("final words continue");
 
     act(() =>
       result.current.speakResponses([

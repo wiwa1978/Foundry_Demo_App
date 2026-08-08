@@ -29,6 +29,7 @@ export function useBrowserSpeech({
   setPrompt,
 }: BrowserSpeechOptions) {
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const renderedTranscriptRef = useRef("");
   const mountedRef = useRef(true);
   const recognitionGenerationRef = useRef(0);
   const [speechRecognitionSupported, setSpeechRecognitionSupported] =
@@ -60,13 +61,16 @@ export function useBrowserSpeech({
     recognitionGenerationRef.current += 1;
     const recognition = recognitionRef.current;
     recognitionRef.current = null;
+    renderedTranscriptRef.current = "";
     recognition?.stop();
     if (mountedRef.current) setIsListening(false);
   }
 
   function toggleDictation() {
     if (isListening) {
-      stopDictation();
+      // SpeechRecognition commonly emits its final result only after stop().
+      // Keep this generation active until onend so that result is not lost.
+      recognitionRef.current?.stop();
       return;
     }
 
@@ -81,30 +85,37 @@ export function useBrowserSpeech({
     const generation = recognitionGenerationRef.current + 1;
     recognitionGenerationRef.current = generation;
     const recognition = new SpeechRecognition();
+    renderedTranscriptRef.current = "";
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = navigator.language || "en-US";
     recognition.onresult = (event) => {
       if (!isCurrentRecognition(generation)) return;
-      let finalTranscript = "";
-      for (
-        let index = event.resultIndex;
-        index < event.results.length;
-        index += 1
-      ) {
-        const result = event.results[index];
-        if (result.isFinal) finalTranscript += result[0].transcript;
+      let transcript = "";
+      for (let index = 0; index < event.results.length; index += 1) {
+        transcript += event.results[index][0].transcript;
       }
-      if (!finalTranscript.trim()) return;
+      transcript = transcript.trim();
+      if (!transcript) return;
       setPrompt((current) => {
-        const spacer = current && !current.endsWith(" ") ? " " : "";
-        return `${current}${spacer}${finalTranscript.trim()}`;
+        const previousTranscript = renderedTranscriptRef.current;
+        const promptWithoutPrevious =
+          previousTranscript && current.endsWith(previousTranscript)
+            ? current.slice(0, -previousTranscript.length).trimEnd()
+            : current;
+        const spacer =
+          promptWithoutPrevious && !promptWithoutPrevious.endsWith(" ")
+            ? " "
+            : "";
+        renderedTranscriptRef.current = transcript;
+        return `${promptWithoutPrevious}${spacer}${transcript}`;
       });
     };
     recognition.onerror = () => {
       if (!isCurrentRecognition(generation)) return;
       recognitionGenerationRef.current += 1;
       recognitionRef.current = null;
+      renderedTranscriptRef.current = "";
       setVoiceError("Voice dictation stopped. Check microphone permissions.");
       setIsListening(false);
     };
@@ -112,6 +123,7 @@ export function useBrowserSpeech({
       if (!isCurrentRecognition(generation)) return;
       recognitionGenerationRef.current += 1;
       recognitionRef.current = null;
+      renderedTranscriptRef.current = "";
       setIsListening(false);
     };
     recognitionRef.current = recognition;
