@@ -771,11 +771,20 @@ export default function AppWorkspace() {
                 activeUseCaseDetails.showComparisonControls === true,
               showImageComparisonControls:
                 activeUseCaseDetails.showImageComparisonControls === true,
+              showEnableComparison:
+                activeUseCase === "text_chat" ||
+                activeUseCase === "text_to_image",
               canUseProtectedApis,
               conversationsOpen,
               config,
               onToggleConversations: () =>
                 setConversationsOpen((open) => !open),
+              onEnableComparison: () =>
+                selectUseCase(
+                  activeUseCase === "text_to_image"
+                    ? "image_comparison"
+                    : "comparison",
+                ),
             }}
             models={{
               activeModel,

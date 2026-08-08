@@ -70,10 +70,12 @@ function sidebarProps(
       showBrowserVoiceControls: false,
       showComparisonControls: false,
       showImageComparisonControls: false,
+      showEnableComparison: true,
       canUseProtectedApis: true,
       conversationsOpen: false,
       config: configured,
       onToggleConversations: vi.fn(),
+      onEnableComparison: vi.fn(),
     },
     models: {
       activeModel: "model-a",
@@ -157,8 +159,14 @@ describe("WorkspaceSidebar", () => {
     await user.click(
       screen.getByRole("button", { name: /side-by-side guardrails/i }),
     );
+    const comparisonToggle = screen.getByRole("switch", {
+      name: /enable comparison/i,
+    });
+    expect(comparisonToggle).toHaveAttribute("aria-checked", "false");
+    await user.click(comparisonToggle);
 
     expect(props.workspace.onToggleConversations).toHaveBeenCalledOnce();
+    expect(props.workspace.onEnableComparison).toHaveBeenCalledOnce();
     expect(props.models.onOpenSettings).toHaveBeenCalledWith("model-a");
     expect(props.guardrails.onToggle).toHaveBeenCalledOnce();
     expect(screen.getByText("Foundry connected")).toBeVisible();

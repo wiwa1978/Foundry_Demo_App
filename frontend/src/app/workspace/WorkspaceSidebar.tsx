@@ -54,10 +54,12 @@ export type WorkspaceSidebarWorkspaceViewModel = {
   showBrowserVoiceControls: boolean;
   showComparisonControls: boolean;
   showImageComparisonControls: boolean;
+  showEnableComparison: boolean;
   canUseProtectedApis: boolean;
   conversationsOpen: boolean;
   config: ConfigResponse | null;
   onToggleConversations: () => void;
+  onEnableComparison: () => void;
 };
 
 export type WorkspaceSidebarModelsViewModel = {
@@ -661,6 +663,28 @@ export function WorkspaceSidebar({
                 onToggle={comparison.onToggleModel}
                 onOpenSettings={models.onOpenSettings}
               />
+            </SidebarSection>
+          </div>
+        ) : null}
+
+        {workspace.showEnableComparison ? (
+          <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
+            <SidebarSection title="Comparison">
+              <button
+                type="button"
+                role="switch"
+                aria-checked="false"
+                onClick={workspace.onEnableComparison}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:bg-slate-50 dark:border-[#606066] dark:bg-[#29292c] dark:hover:bg-[#45454a]"
+              >
+                <span className="flex min-w-0 items-center gap-2 text-sm">
+                  <GitCompareArrows className="h-4 w-4 shrink-0" />
+                  <span className="truncate">Enable comparison</span>
+                </span>
+                <Badge variant="outline" className="shrink-0">
+                  Off
+                </Badge>
+              </button>
             </SidebarSection>
           </div>
         ) : null}
