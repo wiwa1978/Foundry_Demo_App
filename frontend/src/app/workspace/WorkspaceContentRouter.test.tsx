@@ -279,6 +279,12 @@ vi.mock("@/features/voice/VoiceWorkspaces", () => ({
   ),
 }));
 
+vi.mock("@/features/voice/TranscriptionComparisonWorkspace", () => ({
+  TranscriptionComparisonWorkspace: () => (
+    <div data-testid="transcription-comparison" />
+  ),
+}));
+
 const modelSettings: ModelSettings = {
   model: "model-a",
   api_surface: "responses",
@@ -373,6 +379,7 @@ function routerProps(
       editModels: ["image-a"],
       selected: ["image-a", "image-b"],
       prompt: "an image",
+      submittedPrompt: "",
       size: "1024x1024",
       result: null,
       generating: false,
@@ -436,6 +443,23 @@ function routerProps(
       status: "idle",
       error: "",
       result: null,
+      language: "en-US",
+      sourceName: "",
+      audioUrl: "",
+      fileInputRef: createRef<HTMLInputElement>(),
+      onLanguageChange: vi.fn(),
+      onStart: vi.fn(),
+      onStop: vi.fn(),
+      onFileSelected: vi.fn(),
+    },
+    transcriptionComparison: {
+      configured: true,
+      models: ["stt-a", "stt-b"],
+      status: "idle",
+      error: "",
+      results: {},
+      modelErrors: {},
+      pendingModels: new Set(),
       language: "en-US",
       sourceName: "",
       audioUrl: "",

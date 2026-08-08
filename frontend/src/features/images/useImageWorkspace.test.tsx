@@ -83,11 +83,16 @@ describe("useImageWorkspace", () => {
       expect.any(AbortSignal),
     );
     expect(result.current.result?.prompt).toBe("a fox");
+    expect(result.current.submittedPrompt).toBe("a fox");
+    expect(result.current.prompt).toBe("");
 
     rerender({ workspace: "imageEdit" });
     await waitFor(() => expect(result.current.model).toBe("gpt-image-edit"));
     const source = new File(["image"], "source.png", { type: "image/png" });
-    act(() => result.current.setEditSource(source));
+    act(() => {
+      result.current.setPrompt("a fox");
+      result.current.setEditSource(source);
+    });
     await act(async () => result.current.runEdit());
     expect(editImage).toHaveBeenCalledWith(
       fetchClient,
@@ -99,6 +104,7 @@ describe("useImageWorkspace", () => {
       expect.any(AbortSignal),
     );
     expect(result.current.editResult?.prompt).toBe("a fox");
+    expect(result.current.prompt).toBe("");
     act(() => result.current.setEditSource(null));
     expect(result.current.editResult).toBeNull();
     expect(result.current.editError).toBe("");
@@ -114,6 +120,8 @@ describe("useImageWorkspace", () => {
     act(() => result.current.setPrompt("old prompt"));
     act(() => void result.current.runGeneration());
     await waitFor(() => expect(result.current.generating).toBe(true));
+    expect(result.current.prompt).toBe("");
+    expect(result.current.submittedPrompt).toBe("old prompt");
     const signal = vi.mocked(generateImage).mock.calls[0][2];
 
     act(() => result.current.setModel("image-b"));
@@ -141,6 +149,7 @@ describe("useImageWorkspace", () => {
     expect(result.current.comparisonErrors).toEqual({
       "image-b": "Provider unavailable",
     });
+    expect(result.current.prompt).toBe("");
     expect(result.current.comparisonGenerating).toBe(false);
   });
 

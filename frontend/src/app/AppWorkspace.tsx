@@ -109,6 +109,8 @@ export default function AppWorkspace() {
     textModels,
     transcriptionModels,
     transcriptionModel,
+    selectedTranscriptionModels,
+    selectedTranscriptions,
     traditionalTranscriptionModels,
     traditionalTranscriptionModel,
     ttsModels,
@@ -126,6 +128,7 @@ export default function AppWorkspace() {
     upsertModel,
     activateModel,
     toggleModel,
+    toggleTranscriptionModel,
     replaceComparisonModel,
   } = useModelCatalog({
     fetchClient: apiTrace.tracedFetch,
@@ -222,6 +225,11 @@ export default function AppWorkspace() {
   const transcription = useTranscriptionSession({
     fetchClient: apiTrace.tracedFetch,
     model: transcriptionModel,
+  });
+  const transcriptionComparison = useTranscriptionSession({
+    fetchClient: apiTrace.tracedFetch,
+    model: selectedTranscriptions[0] ?? "",
+    models: selectedTranscriptions,
   });
   const realtime = useRealtimeVoice({
     fetchClient: apiTrace.tracedFetch,
@@ -658,6 +666,23 @@ export default function AppWorkspace() {
       onStop: transcription.stop,
       onFileSelected: (file) => void transcription.selectFile(file),
     },
+    transcriptionComparison: {
+      configured: selectedTranscriptions.length > 0,
+      models: selectedTranscriptions,
+      status: transcriptionComparison.status,
+      error: transcriptionComparison.error,
+      results: transcriptionComparison.results,
+      modelErrors: transcriptionComparison.modelErrors,
+      pendingModels: transcriptionComparison.pendingModels,
+      language: transcriptionComparison.language,
+      sourceName: transcriptionComparison.sourceName,
+      audioUrl: transcriptionComparison.audioUrl,
+      fileInputRef: transcriptionComparison.inputRef,
+      onLanguageChange: transcriptionComparison.setLanguage,
+      onStart: () => void transcriptionComparison.start(),
+      onStop: transcriptionComparison.stop,
+      onFileSelected: (file) => void transcriptionComparison.selectFile(file),
+    },
     realtime: {
       session: {
         configured: config?.is_realtime_configured ?? false,
@@ -787,6 +812,9 @@ export default function AppWorkspace() {
                 activeUseCaseDetails.showComparisonControls === true,
               showImageComparisonControls:
                 activeUseCaseDetails.showImageComparisonControls === true,
+              showTranscriptionComparisonControls:
+                activeUseCaseDetails.showTranscriptionComparisonControls ===
+                true,
               showEnableComparison:
                 activeUseCase === "text_chat" ||
                 activeUseCase === "text_to_image",
@@ -837,6 +865,8 @@ export default function AppWorkspace() {
             comparison={{
               selectedModels,
               onToggleModel: toggleModel,
+              selectedTranscriptionModels,
+              onToggleTranscriptionModel: toggleTranscriptionModel,
             }}
             images={{
               model: imageWorkspace.model,

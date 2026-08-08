@@ -57,6 +57,7 @@ export type WorkspaceSidebarWorkspaceViewModel = {
   showBrowserVoiceControls: boolean;
   showComparisonControls: boolean;
   showImageComparisonControls: boolean;
+  showTranscriptionComparisonControls: boolean;
   showEnableComparison: boolean;
   canUseProtectedApis: boolean;
   conversationsOpen: boolean;
@@ -108,6 +109,8 @@ export type WorkspaceSidebarBrowserSpeechViewModel = {
 export type WorkspaceSidebarComparisonViewModel = {
   selectedModels: Set<string>;
   onToggleModel: (model: string) => void;
+  selectedTranscriptionModels: Set<string>;
+  onToggleTranscriptionModel: (model: string) => void;
 };
 
 export type WorkspaceSidebarImagesViewModel = {
@@ -234,13 +237,15 @@ export function WorkspaceSidebar({
     workspace.workspace === "imageEdit" ||
     workspace.workspace === "imageComparison";
   const selectedModel =
-    workspace.workspace === "transcribe"
+    workspace.workspace === "transcribe" ||
+    workspace.workspace === "transcriptionComparison"
       ? models.transcriptionModel
       : imageWorkspace
         ? images.model
         : models.activeModel;
   const selectableModels =
-    workspace.workspace === "transcribe"
+    workspace.workspace === "transcribe" ||
+    workspace.workspace === "transcriptionComparison"
       ? models.transcriptionModels
       : workspace.workspace === "imageEdit"
         ? images.editModels
@@ -704,6 +709,28 @@ export function WorkspaceSidebar({
                 </Label>
                 {liveTranslation.mode === "personal" ? <p className="text-xs text-amber-700 dark:text-amber-300">Requires Live Interpreter and Personal Voice approval.</p> : null}
               </div>
+            </SidebarSection>
+          </div>
+        ) : null}
+
+        {workspace.showTranscriptionComparisonControls ? (
+          <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
+            <SidebarSection title="Transcription comparison">
+              <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-violet-500/60 dark:bg-violet-500/15">
+                <span className="flex items-center gap-2 text-sm">
+                  <GitCompareArrows className="h-4 w-4" />
+                  One recording, multiple models
+                </span>
+                <Badge>On</Badge>
+              </div>
+              <ModelComparisonSelector
+                models={models.transcriptionModels}
+                selectedModels={comparison.selectedTranscriptionModels}
+                maximum={maxComparisonModelCount}
+                maximumMessage={`You can compare up to ${maxComparisonModelCount} models.`}
+                onToggle={comparison.onToggleTranscriptionModel}
+                onOpenSettings={models.onOpenSettings}
+              />
             </SidebarSection>
           </div>
         ) : null}

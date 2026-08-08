@@ -9,6 +9,7 @@ import { textChatUseCase } from "@/features/useCases/textChat";
 import { textToImageUseCase } from "@/features/useCases/textToImage";
 import { traditionalVoiceUseCase } from "@/features/useCases/traditionalVoice";
 import { transcribeUseCase } from "@/features/useCases/transcribe";
+import { transcriptionComparisonUseCase } from "@/features/useCases/transcriptionComparison";
 import { voiceLiveUseCase } from "@/features/useCases/voiceLive";
 
 export const useCaseModules = [
@@ -21,6 +22,7 @@ export const useCaseModules = [
   browserVoiceUseCase,
   traditionalVoiceUseCase,
   transcribeUseCase,
+  transcriptionComparisonUseCase,
   liveTranslationUseCase,
   realtimeVoiceUseCase,
   voiceLiveUseCase,

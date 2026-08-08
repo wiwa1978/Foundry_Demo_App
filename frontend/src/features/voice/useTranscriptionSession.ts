@@ -28,9 +28,11 @@ function closeRecording(resource: RecordingResource | null) {
 export function useTranscriptionSession({
   fetchClient,
   model,
+  models,
 }: {
   fetchClient: FetchClient;
   model: string;
+  models?: string[];
 }) {
   const mountedRef = useRef(true);
   const generationRef = useRef(0);
@@ -41,6 +43,11 @@ export function useTranscriptionSession({
   const [status, setStatus] = useState<TraditionalVoiceStatus>("idle");
   const [error, setError] = useState("");
   const [result, setResult] = useState<TranscriptionResult | null>(null);
+  const [results, setResults] = useState<Record<string, TranscriptionResult[]>>(
+    {},
+  );
+  const [modelErrors, setModelErrors] = useState<Record<string, string>>({});
+  const [pendingModels, setPendingModels] = useState<Set<string>>(new Set());
   const [language, setLanguage] = useState("en-US");
   const [sourceName, setSourceName] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
@@ -64,31 +71,79 @@ export function useTranscriptionSession({
   async function runForGeneration(
     source: Blob,
     name: string,
-    request: { model: string; language: string },
+    request: { models: string[]; language: string },
     generation: number,
   ) {
     if (!isCurrent(generation)) return null;
     updateStatus("processing");
     setError("");
     setResult(null);
+    if (!models) setResults({});
+    setModelErrors((current) => {
+      const next = { ...current };
+      for (const requestModel of request.models) delete next[requestModel];
+      return next;
+    });
+    setPendingModels(new Set(request.models));
     setSourceName(name);
     replaceAudioUrl(URL.createObjectURL(source));
     try {
       const wav = await convertAudioToWav(source);
       if (!isCurrent(generation)) return null;
-      const data = await transcribeRecording(
-        fetchClient,
-        wav,
-        request.model,
-        request.language,
+      const outcomes = await Promise.all(
+        request.models.map(async (requestModel) => {
+          try {
+            const data = await transcribeRecording(
+              fetchClient,
+              wav,
+              requestModel,
+              request.language,
+            );
+            if (isCurrent(generation)) {
+              setResults((current) => ({
+                ...current,
+                [requestModel]: [...(current[requestModel] ?? []), data],
+              }));
+              if (requestModel === request.models[0]) setResult(data);
+              setPendingModels((current) => {
+                const next = new Set(current);
+                next.delete(requestModel);
+                return next;
+              });
+            }
+            return { data };
+          } catch (caught) {
+            const message =
+              caught instanceof Error
+                ? caught.message
+                : "Transcription failed.";
+            if (isCurrent(generation)) {
+              setModelErrors((current) => ({
+                ...current,
+                [requestModel]: message,
+              }));
+              setPendingModels((current) => {
+                const next = new Set(current);
+                next.delete(requestModel);
+                return next;
+              });
+            }
+            return { error: message };
+          }
+        }),
       );
       if (!isCurrent(generation)) return null;
-      setResult(data);
+      const firstOutcome = outcomes[0];
+      if (request.models.length === 1 && !("data" in firstOutcome)) {
+        throw new Error(firstOutcome.error);
+      }
+      const data = "data" in firstOutcome ? firstOutcome.data : null;
       updateStatus("complete");
       return data;
     } catch (caught) {
       if (!isCurrent(generation)) return null;
       updateStatus("idle");
+      setPendingModels(new Set());
       setError(
         caught instanceof Error ? caught.message : "Transcription failed.",
       );
@@ -133,7 +188,7 @@ export function useTranscriptionSession({
       return;
     }
 
-    const request = { model, language };
+    const request = { models: models ?? [model], language };
     const generation = generationRef.current + 1;
     generationRef.current = generation;
     updateStatus("requesting");
@@ -220,7 +275,12 @@ export function useTranscriptionSession({
     invalidate();
     const generation = generationRef.current + 1;
     generationRef.current = generation;
-    return runForGeneration(source, name, { model, language }, generation);
+    return runForGeneration(
+      source,
+      name,
+      { models: models ?? [model], language },
+      generation,
+    );
   }
 
   function selectFile(file: File | undefined) {
@@ -254,7 +314,10 @@ export function useTranscriptionSession({
     inputRef,
     invalidate,
     language,
+    modelErrors,
+    pendingModels,
     result,
+    results,
     run,
     selectFile,
     setLanguage,

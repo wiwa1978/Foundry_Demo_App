@@ -70,6 +70,7 @@ function sidebarProps(
       showBrowserVoiceControls: false,
       showComparisonControls: false,
       showImageComparisonControls: false,
+      showTranscriptionComparisonControls: false,
       showEnableComparison: true,
       canUseProtectedApis: true,
       conversationsOpen: false,
@@ -112,6 +113,8 @@ function sidebarProps(
     comparison: {
       selectedModels: new Set(["model-a", "model-b"]),
       onToggleModel: vi.fn(),
+      selectedTranscriptionModels: new Set(["transcribe-a"]),
+      onToggleTranscriptionModel: vi.fn(),
     },
     images: {
       model: "image-a",
@@ -321,6 +324,7 @@ describe("WorkspaceSidebar", () => {
         showComparisonControls: true,
       },
       comparison: {
+        ...sidebarProps().comparison,
         selectedModels: new Set(["model-a", "model-b", "model-c"]),
         onToggleModel: vi.fn(),
       },

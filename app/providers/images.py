@@ -21,6 +21,10 @@ class ImageResult(TypedDict):
     duration_ms: int
 
 
+class ImagePromptRejectedError(RuntimeError):
+    pass
+
+
 def generate_image(*, model: str, prompt: str, width: int, height: int) -> ImageResult:
     settings = load_settings()
     if not settings.is_configured:
@@ -33,7 +37,8 @@ def generate_image(*, model: str, prompt: str, width: int, height: int) -> Image
     is_flux_model = "flux" in normalized_model
     if is_flux_model:
         url = (
-            f"{_flux_base_url(settings.endpoint or '')}/providers/blackforestlabs/v1/"
+            f"{_flux_base_url(settings.flux_endpoint or settings.endpoint or '')}"
+            "/providers/blackforestlabs/v1/"
             f"{_flux_model_path(normalized_model)}?api-version=preview"
         )
         credential_scope = "https://cognitiveservices.azure.com/.default"
@@ -96,6 +101,11 @@ def generate_image(*, model: str, prompt: str, width: int, height: int) -> Image
             detail = error.get("error", {}).get("message") or error.get("detail") or detail
         except json.JSONDecodeError:
             pass
+        if _is_prompt_policy_rejection(detail):
+            raise ImagePromptRejectedError(
+                "The image provider rejected this prompt under its content policy. "
+                "Revise the prompt and try again."
+            ) from exc
         raise RuntimeError(f"{api_name} image generation failed ({exc.code}): {detail}") from exc
     except URLError as exc:
         raise RuntimeError(
@@ -119,11 +129,7 @@ def _flux_base_url(endpoint_value: str) -> str:
     parsed = urlparse(normalize_endpoint(endpoint_value))
     if not parsed.scheme or not parsed.hostname:
         raise RuntimeError("FOUNDRY_PROJECT_ENDPOINT must be a valid Foundry endpoint.")
-    hostname = parsed.hostname
-    if hostname.endswith(".services.ai.azure.com"):
-        resource_name = hostname.removesuffix(".services.ai.azure.com")
-        hostname = f"{resource_name}.api.cognitive.microsoft.com"
-    return f"{parsed.scheme}://{hostname}"
+    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 def _flux_model_path(normalized_model: str) -> str:
@@ -138,6 +144,19 @@ def _flux_model_path(normalized_model: str) -> str:
     if "1.1" in normalized_model or "1-1" in normalized_model:
         return "flux-pro-1.1"
     raise RuntimeError(f"Unsupported FLUX image deployment: {normalized_model}.")
+
+
+def _is_prompt_policy_rejection(detail: str) -> bool:
+    normalized_detail = detail.casefold()
+    return any(
+        marker in normalized_detail
+        for marker in (
+            "bingblocklist_prompt",
+            "content_policy_violation",
+            "content violated rai policy",
+            "prompt was filtered",
+        )
+    )
 
 
 def _extract_generated_image(result: dict[str, Any]) -> tuple[str | None, str | None]:

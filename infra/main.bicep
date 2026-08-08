@@ -128,6 +128,9 @@ param foundryAccountName string
 @description('Optional Foundry OpenAI-compatible endpoint.')
 param foundryOpenAiEndpoint string = ''
 
+@description('Optional Foundry FLUX provider endpoint override.')
+param foundryFluxEndpoint string = ''
+
 @description('Comma-separated Foundry model deployment names.')
 param foundryModels string
 
@@ -289,6 +292,7 @@ module containerApp 'modules/container-app.bicep' = {
     foundryAccountName: foundryAccountName
     foundryProjectEndpoint: foundryProjectEndpoint
     foundryOpenAiEndpoint: foundryOpenAiEndpoint
+    foundryFluxEndpoint: foundryFluxEndpoint
     foundryModels: foundryModels
     foundryEmbeddingModel: foundryEmbeddingModel
     foundryRealtimeEndpoint: foundryRealtimeEndpoint

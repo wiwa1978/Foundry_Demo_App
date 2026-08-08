@@ -20,6 +20,7 @@ class FoundrySettings:
     voice_live_endpoint: str | None = None
     voice_live_model: str = "gpt-realtime"
     voice_live_voice: str = "en-US-Ava:DragonHDLatestNeural"
+    flux_endpoint: str | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -111,4 +112,5 @@ def load_settings() -> FoundrySettings:
             "AZURE_VOICELIVE_VOICE", default="en-US-Ava:DragonHDLatestNeural"
         )
         or "en-US-Ava:DragonHDLatestNeural",
+        flux_endpoint=first_env("FOUNDRY_FLUX_ENDPOINT"),
     )

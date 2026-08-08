@@ -13,7 +13,7 @@ from app.concurrency import run_model_call
 from app.errors import ExternalServiceError, InvalidRequestError
 from app.features.images.schemas import ImageResponse, ImageSampleResponse
 from app.model_settings import get_model_settings
-from app.providers.images import edit_image, generate_image
+from app.providers.images import ImagePromptRejectedError, edit_image, generate_image
 from app.schemas import ImageGenerationRequest
 
 router = APIRouter(tags=["Images"])
@@ -114,6 +114,9 @@ async def generate(request: ImageGenerationRequest) -> dict:
                 height=request.height,
             )
         )
+    except ImagePromptRejectedError as exc:
+        logger.info("image_prompt_rejected", extra={"model": request.model})
+        raise InvalidRequestError(str(exc)) from exc
     except Exception as exc:
         logger.exception("image_generation_failed")
         raise ExternalServiceError("Image generation") from exc

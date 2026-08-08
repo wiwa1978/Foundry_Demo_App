@@ -46,6 +46,7 @@ import {
 import { ChatMessageHistory } from "@/features/textChat/ChatMessages";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
 import type { LiveTranslationMode } from "@/features/voice/types";
+import { TranscriptionComparisonWorkspace } from "@/features/voice/TranscriptionComparisonWorkspace";
 import type { TraditionalVoiceRequest } from "@/features/voice/useTraditionalVoiceSession";
 import {
   LiveTranslationHero,
@@ -129,6 +130,7 @@ export type WorkspaceImagesViewModel = {
   editModels: string[];
   selected: string[];
   prompt: string;
+  submittedPrompt: string;
   size: string;
   result: ImageGenerationResult | null;
   generating: boolean;
@@ -203,6 +205,16 @@ export type WorkspaceTranscriptionViewModel = {
   onStart: () => void;
   onStop: () => void;
   onFileSelected: (file: File | undefined) => void;
+};
+
+export type WorkspaceTranscriptionComparisonViewModel = Omit<
+  WorkspaceTranscriptionViewModel,
+  "model" | "result"
+> & {
+  models: string[];
+  results: Record<string, TranscriptionResult[]>;
+  modelErrors: Record<string, string>;
+  pendingModels: Set<string>;
 };
 
 export type WorkspaceRealtimeSessionViewModel = {
@@ -283,6 +295,7 @@ export type WorkspaceContentRouterProps = {
   comparison: WorkspaceComparisonViewModel;
   traditionalVoice: WorkspaceTraditionalVoiceViewModel;
   transcription: WorkspaceTranscriptionViewModel;
+  transcriptionComparison: WorkspaceTranscriptionComparisonViewModel;
   realtime: WorkspaceRealtimeViewModel;
   guardrails: WorkspaceGuardrailsViewModel;
   chat: WorkspaceChatViewModel;
@@ -297,6 +310,7 @@ export function WorkspaceContentRouter({
   comparison,
   traditionalVoice,
   transcription,
+  transcriptionComparison,
   realtime,
   guardrails,
   chat,
@@ -371,6 +385,7 @@ export function WorkspaceContentRouter({
         model={images.model}
         models={images.models}
         prompt={images.prompt}
+        submittedPrompt={images.submittedPrompt}
         size={images.size}
         result={images.result}
         generating={images.generating}
@@ -459,6 +474,10 @@ export function WorkspaceContentRouter({
 
   if (route.workspace === "transcribe") {
     return <TranscriptionWorkspace {...transcription} />;
+  }
+
+  if (route.workspace === "transcriptionComparison") {
+    return <TranscriptionComparisonWorkspace {...transcriptionComparison} />;
   }
 
   if (route.workspace === "realtimeVoice") {
