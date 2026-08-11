@@ -6,9 +6,9 @@ Streams microphone audio to Azure Speech Live Interpreter and plays translated a
 | --- | --- |
 | Marketplace module | [`module.ts`](module.ts) |
 | Frontend entry point | [`frontend.ts`](frontend.ts) |
-| Backend entry point | [`backend.py`](backend.py) |
+| Shared backend package | [`../shared/voice/backend`](../shared/voice/backend) |
 | Frontend voice code | [`frontend/src/features/voice`](../../frontend/src/features/voice) |
 | Audio worklet | [`frontend/src/live-interpreter-worklet.js`](../../frontend/src/live-interpreter-worklet.js) |
-| Backend WebSocket | [`app/features/voice/websockets.py`](../../app/features/voice/websockets.py) |
+| Backend WebSocket | [`../shared/voice/backend/websockets.py`](../shared/voice/backend/websockets.py) |
 | Live Interpreter integration | [`app/live_interpreter.py`](../../app/live_interpreter.py) |
 | Backend tests | [`tests/test_live_interpreter.py`](../../tests/test_live_interpreter.py) |

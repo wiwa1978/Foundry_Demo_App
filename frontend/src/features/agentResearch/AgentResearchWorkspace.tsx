@@ -23,9 +23,9 @@ type AgentResearchWorkspaceProps = {
   runConfig: AgentResearchRunConfig | null;
   isRunning: boolean;
   error: string;
-  trace: AgentResearchTrace | null;
-  traceLoading: boolean;
-  traceError: string;
+  trace?: AgentResearchTrace | null;
+  traceLoading?: boolean;
+  traceError?: string;
   onQuestionChange: (value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;

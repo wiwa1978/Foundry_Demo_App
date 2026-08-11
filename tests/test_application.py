@@ -35,7 +35,7 @@ def test_lifespan_initializes_persistence_once():
 def test_health_and_readiness_contracts(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "container_apps")
     application = create_app()
-    with patch("app.features.system.router.check_persistence") as check:
+    with patch("app.api.features.system.router.check_persistence") as check:
         client = TestClient(application)
         health = client.get("/api/health")
         ready = client.get("/api/ready")
@@ -66,7 +66,7 @@ def test_request_id_is_validated_and_returned(monkeypatch, caplog):
 def test_unexpected_errors_are_sanitized(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     with patch(
-        "app.features.system.router.load_settings",
+        "app.api.features.system.router.load_settings",
         side_effect=RuntimeError("internal secret"),
     ):
         response = TestClient(create_app(), raise_server_exceptions=False).get("/api/config")
@@ -82,8 +82,8 @@ def test_unexpected_errors_are_sanitized(monkeypatch):
 
 def test_provider_errors_use_consistent_public_contract(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
-    with patch("app.features.images.router.generate_image", side_effect=RuntimeError("provider secret")):
-        with patch("app.features.images.router.get_model_settings") as settings:
+    with patch("usecases_media.shared.images.backend.router.generate_image", side_effect=RuntimeError("provider secret")):
+        with patch("usecases_media.shared.images.backend.router.get_model_settings") as settings:
             settings.return_value.modalities = ("image",)
             response = TestClient(create_app(), raise_server_exceptions=False).post(
                 "/api/images/generate",
@@ -100,7 +100,7 @@ def test_provider_errors_use_consistent_public_contract(monkeypatch):
 
 def test_oversized_document_upload_remains_413(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
-    monkeypatch.setattr("app.features.document_qa.router.MAX_DOCUMENT_BYTES", 4)
+    monkeypatch.setattr("usecases_media.document_qa.backend.router.MAX_DOCUMENT_BYTES", 4)
     response = TestClient(create_app()).post(
         "/api/documents",
         files={"files": ("large.txt", b"xxxxx", "text/plain")},

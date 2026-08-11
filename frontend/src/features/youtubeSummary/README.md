@@ -9,7 +9,7 @@ audio with the selected transcription model before summarizing it with the Found
 - `YouTubeSummaryWorkspace.tsx` renders the URL, language, model, summary, and transcript UI.
 - `useYouTubeSummary.ts` owns request state and forwards provider traces to the shared trace drawer.
 - `api.ts` calls `POST /api/youtube/summarize`.
-- `app/features/youtube_summary/service.py` validates URLs, retrieves captions, performs a bounded
+- `usecases_media/youtube_summary/backend/service.py` validates URLs, retrieves captions, performs a bounded
   `yt-dlp`/FFmpeg audio fallback, chunks long transcripts, and summarizes them hierarchically.
 
 ## Limits

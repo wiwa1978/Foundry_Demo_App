@@ -4,14 +4,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.config import load_environment
+from app.core.config import load_environment
 
 load_environment()
 
-from app.live_interpreter import LiveInterpreterSession
-from app.persistence import initialize_persistence
-from app.providers.settings import load_settings
-from app.use_case_settings import resolve_use_case_binding
+from app.application.use_case_settings import resolve_use_case_binding
+from app.infrastructure.azure.foundry.settings import load_settings
+from app.infrastructure.persistence.registry import initialize_persistence
+from usecases_media.shared.voice.backend.live_interpreter import LiveInterpreterSession
 
 
 async def main() -> None:

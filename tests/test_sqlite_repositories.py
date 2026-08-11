@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app.conversation_store import (
+from app.application.conversations import (
     append_message,
     create_conversation,
     delete_conversation,
@@ -12,18 +12,18 @@ from app.conversation_store import (
     list_conversation_page,
     list_conversations,
 )
-from app.errors import InvalidRequestError
-from app.model_settings import (
+from app.application.models import (
     ModelSettings,
     get_model_settings,
     list_models,
     save_model_settings,
 )
-from app.persistence import initialize_persistence, reset_repositories
-from app.persistence_models import Conversation, ConversationMessage
-from app.security import UserScope
-from app.sqlite_store import SCHEMA_VERSION, SQLiteConversationRepository
-from app.use_case_settings import get_use_case_binding, save_use_case_binding
+from app.application.use_case_settings import get_use_case_binding, save_use_case_binding
+from app.core.errors import InvalidRequestError
+from app.domain.identity import UserScope
+from app.infrastructure.persistence.models import Conversation, ConversationMessage
+from app.infrastructure.persistence.registry import initialize_persistence, reset_repositories
+from app.infrastructure.persistence.sqlite import SCHEMA_VERSION, SQLiteConversationRepository
 
 USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
 OTHER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-2")
@@ -187,7 +187,7 @@ class SqliteRepositoryTests(unittest.TestCase):
         finally:
             connection.close()
 
-        with self.assertLogs("app.sqlite_store", level="WARNING") as logs:
+        with self.assertLogs("app.infrastructure.persistence.sqlite", level="WARNING") as logs:
             initialize_persistence()
 
         self.assertEqual(list_conversations(USER_SCOPE), [])

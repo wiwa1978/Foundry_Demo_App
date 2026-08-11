@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.infrastructure.persistence.registry import reset_repositories
 from app.main import create_app
-from app.persistence import reset_repositories
 
 
 class FakeUpstream:
@@ -62,11 +62,11 @@ def test_voice_live_websocket_relays_messages(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     upstream = FakeUpstream()
     with patch(
-        "app.features.voice.websockets.create_voice_live_connection_info",
+        "usecases_media.shared.voice.backend.websockets.create_voice_live_connection_info",
         return_value={"url": "wss://voice.example", "token": "token"},
     ):
         with patch(
-            "app.features.voice.websockets.websocket_connect",
+            "usecases_media.shared.voice.backend.websockets.websocket_connect",
             return_value=FakeConnection(upstream),
         ):
             with TestClient(create_app()).websocket_connect(
@@ -91,14 +91,14 @@ def test_live_interpreter_websocket_starts_writes_audio_and_closes(monkeypatch, 
         "FOUNDRY_PROJECT_ENDPOINT_REGION2",
         "https://speech-east.services.ai.azure.com/api/projects/demo",
     )
-    from app.persistence import initialize_persistence
-    from app.use_case_settings import save_use_case_binding
+    from app.application.use_case_settings import save_use_case_binding
+    from app.infrastructure.persistence.registry import initialize_persistence
     initialize_persistence()
     save_use_case_binding("live_translation", "REGION2")
     session = FakeInterpreterSession()
     try:
         with patch(
-            "app.features.voice.websockets.LiveInterpreterSession",
+            "usecases_media.shared.voice.backend.websockets.LiveInterpreterSession",
             return_value=session,
         ):
             # Entering TestClient runs the application lifespan and initializes persistence.

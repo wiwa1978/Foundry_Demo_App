@@ -10,8 +10,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.security import is_privileged_user
 from app.main import app
-from app.security import is_privileged_user
 
 client = TestClient(app)
 

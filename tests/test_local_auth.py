@@ -1,4 +1,4 @@
-from app.local_auth import decode_cookie, encode_cookie, user_from_claims
+from app.api.local_auth import decode_cookie, encode_cookie, user_from_claims
 
 
 def test_signed_session_cookie_round_trip(monkeypatch):

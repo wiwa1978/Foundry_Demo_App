@@ -91,9 +91,6 @@ export type WorkspaceMetricsViewModel = {
   days: number;
   loading: boolean;
   error: string;
-  trace: AgentResearchTrace | null;
-  traceLoading: boolean;
-  traceError: string;
   setModel: (model: string) => void;
   setDays: (days: number) => void;
   refresh: () => Promise<void>;
@@ -329,6 +326,9 @@ export type WorkspaceAgentResearchViewModel = {
   runConfig: AgentResearchRunConfig | null;
   isRunning: boolean;
   error: string;
+  trace: AgentResearchTrace | null;
+  traceLoading: boolean;
+  traceError: string;
   onQuestionChange: (value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;

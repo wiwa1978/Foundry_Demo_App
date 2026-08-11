@@ -5,7 +5,7 @@ This folder maps the voice use cases shown in the marketplace to executable code
 ## HTTP APIs
 
 - [`api.ts`](./api.ts): realtime session tokens and recorded transcription requests.
-- [Voice HTTP router](../../../../app/features/voice/router.py)
+- [Voice HTTP router](../../../../usecases_media/shared/voice/backend/router.py)
 - [Traditional voice route](../../../../app/main.py) combines transcription, shared chat orchestration and TTS.
 
 ## Realtime transports

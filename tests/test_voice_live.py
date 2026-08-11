@@ -1,13 +1,13 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.providers.realtime import create_voice_live_connection_info
-from app.providers.settings import FoundrySettings
+from app.infrastructure.azure.foundry.realtime import create_voice_live_connection_info
+from app.infrastructure.azure.foundry.settings import FoundrySettings
 
 
 class VoiceLiveTests(unittest.TestCase):
-    @patch("app.providers.realtime.get_azure_credential")
-    @patch("app.providers.realtime.load_settings")
+    @patch("app.infrastructure.azure.foundry.realtime.get_azure_credential")
+    @patch("app.infrastructure.azure.foundry.realtime.load_settings")
     def test_connection_info_uses_resource_endpoint_and_entra_token(
         self, load_settings: MagicMock, get_credential: MagicMock
     ) -> None:
@@ -41,7 +41,7 @@ class VoiceLiveTests(unittest.TestCase):
             "https://ai.azure.com/.default"
         )
 
-    @patch("app.providers.realtime.load_settings")
+    @patch("app.infrastructure.azure.foundry.realtime.load_settings")
     def test_connection_info_requires_endpoint(self, load_settings: MagicMock) -> None:
         load_settings.return_value = FoundrySettings(
             endpoint=None,
@@ -60,7 +60,7 @@ class VoiceLiveTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Voice Live is not configured"):
             create_voice_live_connection_info()
 
-    @patch("app.providers.realtime.load_settings")
+    @patch("app.infrastructure.azure.foundry.realtime.load_settings")
     def test_connection_info_rejects_http_endpoint(self, load_settings: MagicMock) -> None:
         load_settings.return_value = FoundrySettings(
             endpoint=None,

@@ -15,7 +15,7 @@ export type AgentResearchStep = {
 export type AgentResearchRunConfig = {
   agentName: string;
   projectEndpoint: string | null;
-  tracingEnabled: boolean;
+  tracingEnabled?: boolean;
 };
 
 export type AgentResearchTraceSpan = {

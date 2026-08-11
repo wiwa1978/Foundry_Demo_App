@@ -270,12 +270,13 @@ frontend/src/features/shared/             Shared visuals such as SoundWaveIcon
 frontend/src/features/<feature>/README.md Customer-facing implementation walkthrough
 frontend/src/App.tsx                      Lazy-loaded application shell and root error boundary
 frontend/src/app/AppWorkspace.tsx         Workspace state orchestration and composition
-app/features/<feature>/                    FastAPI transport for one feature
-app/services/                              Shared business orchestration
-app/gateways/                              External service boundaries
+usecases_media/<feature>/backend/          Media use-case FastAPI transport and services
+usecases_agents/<feature>/backend/         Agent use-case FastAPI transport and services
+app/application/                           Shared application orchestration
+app/infrastructure/azure/                  Shared Azure service boundaries
 ```
 
-To add a media use case, create a folder under `usecases_media/` with `module.ts`, `frontend.ts`, and, when needed, `backend.py`, then register the module in `frontend/src/app/useCaseRegistry.ts`. Agent use cases follow the equivalent structure under `usecases_agents/`.
+To add a media use case, create a folder under `usecases_media/` with `module.ts`, `frontend.ts`, and, when needed, a `backend/` package, then register the module in `frontend/src/app/useCaseRegistry.ts`. Agent use cases follow the equivalent structure under `usecases_agents/`.
 
 Each `UseCaseModule` owns its marketplace metadata and behavior flags, including the workspace type, whether browser voice controls are shown, whether comparison controls are shown, and whether composer dictation is enabled. This keeps use-case decisions out of the generic app shell.
 

@@ -2,18 +2,22 @@ from unittest.mock import patch
 
 import pytest
 
-from app.cosmos_store import (
-    CosmosConversationRepository,
-    CosmosModelSettingsRepository,
-    CosmosUseCaseResourceSettingsRepository,
-)
-from app.persistence import get_repositories, persistence_backend, reset_repositories
-from app.repository_contracts import (
+from app.infrastructure.persistence.contracts import (
     ConversationRepository,
     ModelSettingsRepository,
     UseCaseResourceSettingsRepository,
 )
-from app.sqlite_store import (
+from app.infrastructure.persistence.cosmos import (
+    CosmosConversationRepository,
+    CosmosModelSettingsRepository,
+    CosmosUseCaseResourceSettingsRepository,
+)
+from app.infrastructure.persistence.registry import (
+    get_repositories,
+    persistence_backend,
+    reset_repositories,
+)
+from app.infrastructure.persistence.sqlite import (
     SQLiteConversationRepository,
     SQLiteModelSettingsRepository,
     SQLiteUseCaseResourceSettingsRepository,

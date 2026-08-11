@@ -3,9 +3,9 @@ import unittest
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.features.models.service import is_transcription_model
-from app.providers.settings import FoundrySettings
-from app.providers.speech import transcribe_audio, transcribe_speech_audio
+from app.api.features.models.service import is_transcription_model
+from app.infrastructure.azure.foundry.settings import FoundrySettings
+from app.infrastructure.azure.foundry.speech import transcribe_audio, transcribe_speech_audio
 
 
 class SpeechTranscriptionTests(unittest.TestCase):
@@ -21,8 +21,8 @@ class SpeechTranscriptionTests(unittest.TestCase):
 
         self.assertFalse(is_transcription_model("gpt-5.5"))
 
-    @patch("app.providers.speech.create_audio_client")
-    @patch("app.providers.speech.load_settings")
+    @patch("app.infrastructure.azure.foundry.speech.create_audio_client")
+    @patch("app.infrastructure.azure.foundry.speech.load_settings")
     def test_openai_transcription_returns_text_and_trace(
         self, load_settings: MagicMock, create_client: MagicMock
     ) -> None:
@@ -52,8 +52,8 @@ class SpeechTranscriptionTests(unittest.TestCase):
         self.assertEqual(result["foundry_request"]["path"], "/audio/transcriptions")
         client.audio.transcriptions.create.assert_called_once()
 
-    @patch("app.providers.speech.get_azure_credential")
-    @patch("app.providers.speech.load_settings")
+    @patch("app.infrastructure.azure.foundry.speech.get_azure_credential")
+    @patch("app.infrastructure.azure.foundry.speech.load_settings")
     def test_transcribe_speech_audio_collects_continuous_segments(
         self, load_settings: MagicMock, get_credential: MagicMock
     ) -> None:

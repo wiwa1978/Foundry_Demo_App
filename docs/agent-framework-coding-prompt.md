@@ -15,7 +15,8 @@ in the UI.
 
 - Inspect the existing FastAPI app structure first and follow the current patterns.
 - Add the official Microsoft Agent Framework dependency used by the current Python SDK/docs.
-- Create a new backend feature for agent research, following the repo convention under `app/features/`.
+- Create a new backend feature for agent research under
+  `usecases_agents/research_assistant_prompt/backend/`.
 - Expose an API that:
   - accepts a question
   - creates and runs a single research agent
@@ -47,7 +48,7 @@ in the UI.
 
 ## Suggested implementation shape
 
-- `app/features/agent_research/`
+- `usecases_agents/research_assistant_prompt/backend/`
   - `router.py`
   - `schemas.py`
   - `__init__.py`

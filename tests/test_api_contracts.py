@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.conversation_store import Conversation
+from app.application.conversations import Conversation
 from app.main import app, create_app
 
 client = TestClient(app)
@@ -29,10 +29,10 @@ def test_auth_me_returns_public_unauthenticated_contract(monkeypatch):
     }
 
 
-@patch("app.features.conversations.router.list_conversation_page")
+@patch("app.api.features.conversations.router.list_conversation_page")
 def test_conversation_list_contract(mock_list_page, monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
-    from app.conversation_store import ConversationPage
+    from app.application.conversations import ConversationPage
 
     mock_list_page.return_value = ConversationPage(
         conversations=[
@@ -98,7 +98,7 @@ def test_invalid_request_error_has_stable_code_and_request_id(monkeypatch):
     assert response.headers["x-request-id"] == "contract-request-400"
 
 
-@patch("app.features.conversations.router.get_conversation", return_value=None)
+@patch("app.api.features.conversations.router.get_conversation", return_value=None)
 def test_not_found_error_has_stable_code(_mock_get_conversation, monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     response = client.get("/api/conversations/missing")
@@ -138,8 +138,8 @@ def test_every_json_operation_has_an_explicit_openapi_response_schema():
         if (path, method) not in excluded
     ]
 
-    assert len(operations) == 43
-    assert len(eligible) == 31
+    assert len(operations) == 44
+    assert len(eligible) == 32
     for path, method, operation in eligible:
         response = operation["responses"]["200"]
         assert response["content"]["application/json"]["schema"], (method, path)

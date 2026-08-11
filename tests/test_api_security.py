@@ -6,11 +6,11 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from app.api.schemas import MAX_PROMPT_LENGTH
+from app.api.security import auth_mode
+from app.infrastructure.persistence.registry import reset_repositories
+from app.infrastructure.persistence.sqlite import initialize_sqlite_store
 from app.main import app
-from app.persistence import reset_repositories
-from app.schemas import MAX_PROMPT_LENGTH
-from app.security import auth_mode
-from app.sqlite_store import initialize_sqlite_store
 
 client = TestClient(app)
 
@@ -103,10 +103,10 @@ def test_container_apps_mode_requires_encoded_principal(monkeypatch):
         "/api/conversations",
         headers={"x-ms-client-principal-id": "spoofed"},
     )
-    from app.conversation_store import ConversationPage
+    from app.application.conversations import ConversationPage
 
     with patch(
-        "app.features.conversations.router.list_conversation_page",
+        "app.api.features.conversations.router.list_conversation_page",
         return_value=ConversationPage(conversations=[], next_cursor=None),
     ):
         accepted = client.get(
@@ -199,7 +199,7 @@ def test_prompt_length_is_bounded(monkeypatch):
 
 def test_audio_upload_is_bounded(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
-    monkeypatch.setattr("app.features.voice.router.MAX_AUDIO_BYTES", 4)
+    monkeypatch.setattr("usecases_media.shared.voice.backend.router.MAX_AUDIO_BYTES", 4)
     response = client.post(
         "/api/transcriptions",
         data={"model": "transcribe-test"},

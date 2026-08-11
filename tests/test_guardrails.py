@@ -1,25 +1,25 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.conversation_store import build_model_history
-from app.foundry_admin import (
+from app.application.chat import (
+    guardrail_error_details,
+    guardrail_variants,
+    public_provider_error,
+)
+from app.application.conversations import build_model_history
+from app.application.foundry_admin import (
     get_deployment_guardrail_policy,
     guardrail_policy_exists,
     list_foundry_deployments,
     list_guardrail_policies,
 )
-from app.model_settings import (
+from app.application.models import (
     DEPLOYMENT_DEFAULT_GUARDRAIL,
     ModelSettings,
     _document_to_settings,
 )
-from app.providers.chat import complete_chat
-from app.security import UserScope
-from app.services.chat import (
-    guardrail_error_details,
-    guardrail_variants,
-    public_provider_error,
-)
+from app.domain.identity import UserScope
+from app.infrastructure.azure.foundry.chat import complete_chat
 
 USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
 
@@ -72,8 +72,8 @@ def test_other_provider_errors_remain_generic():
     )
 
 
-@patch("app.foundry_admin._create_management_client")
-@patch("app.foundry_admin.load_admin_config")
+@patch("app.application.foundry_admin._create_management_client")
+@patch("app.application.foundry_admin.load_admin_config")
 def test_lists_only_custom_policies_as_selectable(mock_config, mock_client):
     mock_config.return_value = SimpleNamespace(
         is_configured=True,
@@ -98,7 +98,7 @@ def test_lists_only_custom_policies_as_selectable(mock_config, mock_client):
     assert policies[1]["is_selectable"] is True
 
 
-@patch("app.foundry_admin.list_guardrail_policies")
+@patch("app.application.foundry_admin.list_guardrail_policies")
 def test_policy_validation_rejects_system_policy(mock_list):
     mock_list.return_value = [
         {"name": "Microsoft.DefaultV2", "is_selectable": False},
@@ -109,8 +109,8 @@ def test_policy_validation_rejects_system_policy(mock_list):
     assert guardrail_policy_exists("Microsoft.DefaultV2") is False
 
 
-@patch("app.foundry_admin._create_management_client")
-@patch("app.foundry_admin.load_admin_config")
+@patch("app.application.foundry_admin._create_management_client")
+@patch("app.application.foundry_admin.load_admin_config")
 def test_lists_usable_foundry_deployments(mock_config, mock_client):
     mock_config.return_value = SimpleNamespace(
         is_configured=True,
@@ -154,8 +154,8 @@ def test_lists_usable_foundry_deployments(mock_config, mock_client):
     )
 
 
-@patch("app.foundry_admin._create_management_client")
-@patch("app.foundry_admin.load_admin_config")
+@patch("app.application.foundry_admin._create_management_client")
+@patch("app.application.foundry_admin.load_admin_config")
 def test_reads_policy_assigned_to_deployment(mock_config, mock_client):
     mock_config.return_value = SimpleNamespace(
         is_configured=True,
@@ -183,8 +183,8 @@ def test_reads_policy_assigned_to_deployment(mock_config, mock_client):
     )
 
 
-@patch("app.providers.chat.create_openai_client")
-@patch("app.providers.chat.load_settings")
+@patch("app.infrastructure.azure.foundry.chat.create_openai_client")
+@patch("app.infrastructure.azure.foundry.chat.load_settings")
 def test_guarded_chat_sends_policy_header(mock_settings, mock_client_context):
     mock_settings.return_value = SimpleNamespace(is_configured=True, endpoint="endpoint")
     response = SimpleNamespace(
@@ -225,7 +225,7 @@ def test_guarded_chat_sends_policy_header(mock_settings, mock_client_context):
     assert result["guardrail_results"]["content_filter_results"]
 
 
-@patch("app.conversation_store.get_conversation_messages")
+@patch("app.application.conversations.get_conversation_messages")
 def test_history_keeps_guardrail_variants_separate(mock_messages):
     def message(role, content, variant=None):
         return SimpleNamespace(
@@ -300,7 +300,7 @@ def test_legacy_guardrail_setting_migrates_to_default_vs_custom():
     )
 
 
-@patch("app.conversation_store.get_conversation_messages")
+@patch("app.application.conversations.get_conversation_messages")
 def test_history_follows_policy_name_when_slots_change(mock_messages):
     def message(role, content, variant=None, policy_name=None):
         return SimpleNamespace(

@@ -4,9 +4,9 @@ Each media marketplace use case has a dedicated executable module containing:
 
 - `module.ts` for marketplace registration and behavior metadata.
 - `frontend.ts` as the public frontend entry point.
-- `backend.py` as the public backend router entry point when the use case has a server component.
+- `backend/` for backend code owned by the use case when it has a server component.
 
-Shared implementation remains single-source in the existing capability slices and is exposed through these use-case entry points, avoiding duplicated voice and image runtimes.
+Voice and image implementations remain single-source under `shared/voice/backend` and `shared/images/backend`, avoiding duplicated runtimes across cards.
 
 | Modality | Use case | Implementation map |
 | --- | --- | --- |

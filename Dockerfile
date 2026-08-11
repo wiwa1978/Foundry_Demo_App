@@ -34,6 +34,7 @@ RUN pip install \
     -r requirements.lock
 
 COPY app ./app
+COPY usecases_agents ./usecases_agents
 COPY usecases_media ./usecases_media
 COPY --from=frontend-build /src/frontend/dist ./frontend/dist
 

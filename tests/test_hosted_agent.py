@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.features.hosted_agent.service import stream_hosted_agent
+from usecases_agents.research_assistant_hosted.backend.service import stream_hosted_agent
 
 
 @pytest.mark.anyio
@@ -20,9 +20,17 @@ async def test_stream_invokes_routed_hosted_agent_endpoint():
     )
 
     with (
-        patch("app.features.hosted_agent.service.load_settings", return_value=settings),
-        patch("app.features.hosted_agent.service.get_azure_credential"),
-        patch("app.features.hosted_agent.service.AIProjectClient", return_value=project_client),
+        patch(
+            "usecases_agents.research_assistant_hosted.backend.service.load_settings",
+            return_value=settings,
+        ),
+        patch(
+            "usecases_agents.research_assistant_hosted.backend.service.get_azure_credential"
+        ),
+        patch(
+            "usecases_agents.research_assistant_hosted.backend.service.AIProjectClient",
+            return_value=project_client,
+        ),
     ):
         events = [event async for event in stream_hosted_agent("Question")]
 

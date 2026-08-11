@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from app.config import (
+from app.core.config import (
     ConfigurationError,
     env_bool,
     env_csv,

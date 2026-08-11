@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from openai import PermissionDeniedError
 
-from app.features.agent_research.service import stream_agent_research
+from usecases_agents.research_assistant_prompt.backend.service import stream_agent_research
 
 
 async def _events(question: str) -> list[dict]:
@@ -15,6 +15,7 @@ async def _events(question: str) -> list[dict]:
 async def test_stream_invokes_published_agent_reference():
     citation = SimpleNamespace(url="https://example.com", title="Example")
     completed_response = SimpleNamespace(
+        id="resp_test123",
         output=[SimpleNamespace(content=[SimpleNamespace(annotations=[citation])])]
     )
     stream = [
@@ -31,9 +32,17 @@ async def test_stream_invokes_published_agent_reference():
     )
 
     with (
-        patch("app.features.agent_research.service.load_settings", return_value=settings),
-        patch("app.features.agent_research.service.get_azure_credential"),
-        patch("app.features.agent_research.service.AIProjectClient", return_value=project_client),
+        patch(
+            "usecases_agents.research_assistant_prompt.backend.service.load_settings",
+            return_value=settings,
+        ),
+        patch(
+            "usecases_agents.research_assistant_prompt.backend.service.get_azure_credential"
+        ),
+        patch(
+            "usecases_agents.research_assistant_prompt.backend.service.AIProjectClient",
+            return_value=project_client,
+        ),
     ):
         events = await _events("Question")
 
@@ -52,6 +61,8 @@ async def test_stream_invokes_published_agent_reference():
         "type": "completed",
         "answer": "Hello",
         "citations": [{"title": "Example", "url": "https://example.com"}],
+        "response_id": "resp_test123",
+        "tracing_enabled": False,
     }
 
 
@@ -72,9 +83,17 @@ async def test_stream_surfaces_agent_permission_error():
     )
 
     with (
-        patch("app.features.agent_research.service.load_settings", return_value=settings),
-        patch("app.features.agent_research.service.get_azure_credential"),
-        patch("app.features.agent_research.service.AIProjectClient", return_value=project_client),
+        patch(
+            "usecases_agents.research_assistant_prompt.backend.service.load_settings",
+            return_value=settings,
+        ),
+        patch(
+            "usecases_agents.research_assistant_prompt.backend.service.get_azure_credential"
+        ),
+        patch(
+            "usecases_agents.research_assistant_prompt.backend.service.AIProjectClient",
+            return_value=project_client,
+        ),
     ):
         events = await _events("Question")
 

@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.local_auth import AUTH_FLOW_COOKIE, AUTH_SESSION_COOKIE, decode_cookie
+from app.api.local_auth import AUTH_FLOW_COOKIE, AUTH_SESSION_COOKIE, decode_cookie
 from app.main import create_app
 
 
@@ -15,8 +15,8 @@ def test_local_auth_callback_sets_session_cookie_and_clears_flow_cookie(monkeypa
         "preferred_username": "ada@example.com",
         "tid": "tenant-1",
     }
-    with patch("app.features.auth.router.decode_cookie", return_value={"state": "state-1"}):
-        with patch("app.features.auth.router.complete_auth_flow", return_value=claims):
+    with patch("app.api.features.auth.router.decode_cookie", return_value={"state": "state-1"}):
+        with patch("app.api.features.auth.router.complete_auth_flow", return_value=claims):
             client = TestClient(create_app())
             client.cookies.set(AUTH_FLOW_COOKIE, "flow-cookie")
             response = client.get(

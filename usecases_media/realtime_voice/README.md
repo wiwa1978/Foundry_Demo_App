@@ -6,8 +6,8 @@ Connects the browser to a Foundry realtime voice deployment for low-latency spee
 | --- | --- |
 | Marketplace module | [`module.ts`](module.ts) |
 | Frontend entry point | [`frontend.ts`](frontend.ts) |
-| Backend entry point | [`backend.py`](backend.py) |
+| Shared backend package | [`../shared/voice/backend`](../shared/voice/backend) |
 | Frontend voice code | [`frontend/src/features/voice`](../../frontend/src/features/voice) |
-| Backend voice API | [`app/features/voice`](../../app/features/voice) |
+| Backend voice API | [`../shared/voice/backend/router.py`](../shared/voice/backend/router.py) |
 | Realtime provider | [`app/providers/realtime.py`](../../app/providers/realtime.py) |
 | Frontend test | [`frontend/src/features/voice/useRealtimeVoice.test.tsx`](../../frontend/src/features/voice/useRealtimeVoice.test.tsx) |

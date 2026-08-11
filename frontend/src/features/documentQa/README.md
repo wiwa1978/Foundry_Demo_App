@@ -11,7 +11,7 @@ This folder is the customer-facing entry point for the Document Q&A use case.
 
 ## Backend
 
-- [FastAPI router](../../../../app/features/document_qa/router.py)
+- [FastAPI router](../../../../usecases_media/document_qa/backend/router.py)
 - [Document Q&A service](../../../../app/services/document_qa.py)
 - [Blob/Search gateway](../../../../app/gateways/documents.py)
 - [Azure implementation](../../../../app/document_store.py)

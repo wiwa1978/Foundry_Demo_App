@@ -3,12 +3,12 @@ from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.features.admin.service import create_deployment
-from app.features.models.service import discover_models
-from app.features.voice.service import traditional_voice_service
-from app.model_settings import ModelSettings
-from app.providers.settings import FoundrySettings
-from app.schemas import AdminDeploymentRequest
+from app.api.features.admin.schemas import AdminDeploymentRequest
+from app.api.features.admin.service import create_deployment
+from app.api.features.models.service import discover_models
+from app.application.models import ModelSettings
+from app.infrastructure.azure.foundry.settings import FoundrySettings
+from usecases_media.shared.voice.backend.service import traditional_voice_service
 
 
 def _settings() -> FoundrySettings:
@@ -33,13 +33,13 @@ def test_model_discovery_classifies_deployments_and_preserves_configured_models(
         {"name": "speech-in", "model_name": "whisper"},
         {"name": "speech-out", "model_name": "gpt-4o-mini-tts"},
     ]
-    with patch("app.features.models.service.load_settings", return_value=_settings()):
+    with patch("app.api.features.models.service.load_settings", return_value=_settings()):
         with patch(
-            "app.features.models.service.list_foundry_deployments",
+            "app.api.features.models.service.list_foundry_deployments",
             return_value=deployments,
         ):
             with patch(
-                "app.features.models.service.get_model_settings",
+                "app.api.features.models.service.get_model_settings",
                 side_effect=lambda model: ModelSettings(model=model),
             ):
                 result = discover_models()
@@ -51,9 +51,9 @@ def test_model_discovery_classifies_deployments_and_preserves_configured_models(
 
 
 def test_model_discovery_sanitizes_provider_failures():
-    with patch("app.features.models.service.load_settings", return_value=_settings()):
+    with patch("app.api.features.models.service.load_settings", return_value=_settings()):
         with patch(
-            "app.features.models.service.list_foundry_deployments",
+            "app.api.features.models.service.list_foundry_deployments",
             side_effect=RuntimeError("provider secret"),
         ):
             result = discover_models()
@@ -72,8 +72,8 @@ def test_admin_deployment_service_registers_created_deployment():
     )
     run_model_call = AsyncMock(return_value={"status": "accepted"})
     saved = ModelSettings(model="demo", modalities=("text", "voice"))
-    with patch("app.features.admin.service.run_model_call", run_model_call):
-        with patch("app.features.admin.service.save_model_settings", return_value=saved):
+    with patch("app.api.features.admin.service.run_model_call", run_model_call):
+        with patch("app.api.features.admin.service.save_model_settings", return_value=saved):
             result = asyncio.run(create_deployment(payload))
 
     assert run_model_call.await_args is not None
@@ -98,49 +98,49 @@ def test_traditional_voice_service_combines_transcription_chat_and_speech():
         "assistant_message": {"id": "assistant-1"},
     }
     with ExitStack() as stack:
-        stack.enter_context(patch("app.features.voice.service.run_model_call", model_calls))
+        stack.enter_context(patch("usecases_media.shared.voice.backend.service.run_model_call", model_calls))
         stack.enter_context(
             patch(
-                "app.features.voice.service.get_or_create_conversation",
+                "usecases_media.shared.voice.backend.service.get_or_create_conversation",
                 return_value=conversation,
             )
         )
         stack.enter_context(
-            patch("app.features.voice.service.get_model_settings", return_value=model_settings)
+            patch("usecases_media.shared.voice.backend.service.get_model_settings", return_value=model_settings)
         )
         stack.enter_context(
             patch(
-                "app.features.voice.service.chat_service.guardrail_variants",
+                "usecases_media.shared.voice.backend.service.chat_service.guardrail_variants",
                 return_value=[(None, None)],
             )
         )
         stack.enter_context(
             patch(
-                "app.features.voice.service.chat_service.guardrail_histories",
+                "usecases_media.shared.voice.backend.service.chat_service.guardrail_histories",
                 return_value={None: []},
             )
         )
         stack.enter_context(
             patch(
-                "app.features.voice.service.chat_service.run_and_store_variant",
+                "usecases_media.shared.voice.backend.service.chat_service.run_and_store_variant",
                 return_value=variant_result,
             )
         )
         stack.enter_context(
-            patch("app.features.voice.service.append_message", return_value=MagicMock())
+            patch("usecases_media.shared.voice.backend.service.append_message", return_value=MagicMock())
         )
         stack.enter_context(
-            patch("app.features.voice.service.get_conversation", return_value=None)
+            patch("usecases_media.shared.voice.backend.service.get_conversation", return_value=None)
         )
         stack.enter_context(
             patch(
-                "app.features.voice.service.conversation_to_dict",
+                "usecases_media.shared.voice.backend.service.conversation_to_dict",
                 return_value={"id": "conversation-1"},
             )
         )
         stack.enter_context(
             patch(
-                "app.features.voice.service.message_to_dict",
+                "usecases_media.shared.voice.backend.service.message_to_dict",
                 return_value={"id": "user-1"},
             )
         )

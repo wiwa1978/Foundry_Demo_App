@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.infrastructure.persistence.registry import reset_repositories
 from app.main import create_app
-from app.persistence import reset_repositories
 
 
 def test_comparison_returns_one_result_per_model(monkeypatch, tmp_path):
@@ -52,7 +52,7 @@ def test_comparison_returns_one_result_per_model(monkeypatch, tmp_path):
             },
         },
     ]
-    with patch("app.features.comparison.router.chat_service.run_and_store_variant", side_effect=sequence):
+    with patch("usecases_media.text_chat_comparison.backend.router.chat_service.run_and_store_variant", side_effect=sequence):
         with TestClient(create_app()) as client:
             response = client.post(
                 "/api/compare",
@@ -69,7 +69,7 @@ def test_comparison_provider_failure_is_502(monkeypatch, tmp_path):
     monkeypatch.setenv("SQLITE_DATABASE_PATH", str(tmp_path / "comparison-error.sqlite3"))
     reset_repositories()
     with patch(
-        "app.features.comparison.router.chat_service.run_and_store_variant",
+        "usecases_media.text_chat_comparison.backend.router.chat_service.run_and_store_variant",
         return_value={
             "model": "a",
             "error": "Model request failed. Try again later.",
@@ -121,7 +121,7 @@ def test_comparison_stream_publishes_models_as_they_finish(monkeypatch, tmp_path
         }
 
     with patch(
-        "app.features.comparison.router.chat_service.run_and_store_variant",
+        "usecases_media.text_chat_comparison.backend.router.chat_service.run_and_store_variant",
         side_effect=complete_model,
     ):
         with TestClient(create_app()) as client:

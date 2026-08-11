@@ -8,10 +8,14 @@ from urllib.request import Request
 
 import pytest
 
-from app.providers.clients import azure_openai_endpoint, openai_base_url
-from app.providers.http import SafeHTTPSRedirectHandler, build_checked_request, open_checked_url
-from app.providers.images import _extract_generated_image
-from app.providers.realtime import _normalize_realtime_endpoint
+from app.infrastructure.azure.foundry.clients import azure_openai_endpoint, openai_base_url
+from app.infrastructure.azure.foundry.http import (
+    SafeHTTPSRedirectHandler,
+    build_checked_request,
+    open_checked_url,
+)
+from app.infrastructure.azure.foundry.images import _extract_generated_image
+from app.infrastructure.azure.foundry.realtime import _normalize_realtime_endpoint
 
 REJECTED_URLS = (
     "file:///etc/passwd",

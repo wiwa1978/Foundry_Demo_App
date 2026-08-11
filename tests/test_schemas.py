@@ -1,14 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import (
-    AdminDeploymentRequest,
+from app.api.features.admin.schemas import AdminDeploymentRequest
+from app.api.features.models.schemas import ModelRegistrationRequest, ModelSettingsRequest
+from app.api.schemas import (
     ChatRequest,
     CompareRequest,
     DocumentQuestionRequest,
     ImageGenerationRequest,
-    ModelRegistrationRequest,
-    ModelSettingsRequest,
     RealtimeSessionRequest,
 )
 

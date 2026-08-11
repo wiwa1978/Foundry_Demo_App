@@ -17,9 +17,10 @@ flowchart LR
 ```
 
 The frontend is a lazy-loaded application shell with feature-specific API modules and customer-facing
-implementation guides under `frontend/src/features/`. FastAPI composes feature routers from
-`app/features/`; reusable orchestration is in `app/services/`, provider boundaries in `app/gateways/`,
-and storage behavior behind typed repository contracts.
+implementation guides under `frontend/src/features/`. FastAPI composes use-case routers from
+`usecases_media/*/backend/` and `usecases_agents/*/backend/`. Shared orchestration is in
+`app/application/`, Azure provider boundaries are in `app/infrastructure/azure/`, and storage
+behavior remains behind typed repository contracts.
 
 ## Data boundaries
 

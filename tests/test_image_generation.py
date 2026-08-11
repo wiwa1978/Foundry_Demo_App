@@ -6,9 +6,13 @@ from urllib.error import HTTPError
 
 from pydantic import ValidationError
 
-from app.providers.images import ImagePromptRejectedError, edit_image, generate_image
-from app.providers.settings import FoundrySettings, load_settings
-from app.schemas import ImageGenerationRequest
+from app.api.schemas import ImageGenerationRequest
+from app.infrastructure.azure.foundry.images import (
+    ImagePromptRejectedError,
+    edit_image,
+    generate_image,
+)
+from app.infrastructure.azure.foundry.settings import FoundrySettings, load_settings
 
 
 class ImageGenerationTests(unittest.TestCase):
@@ -16,7 +20,7 @@ class ImageGenerationTests(unittest.TestCase):
         "os.environ",
         {"FOUNDRY_FLUX_ENDPOINT": "https://flux-demo.services.ai.azure.com"},
     )
-    @patch("app.providers.settings.list_models", return_value=[])
+    @patch("app.infrastructure.azure.foundry.settings.list_models", return_value=[])
     def test_load_settings_reads_flux_endpoint(self, _list_models: MagicMock) -> None:
         self.assertEqual(
             load_settings().flux_endpoint,
@@ -31,9 +35,9 @@ class ImageGenerationTests(unittest.TestCase):
                 width=2000,
             )
 
-    @patch("app.providers.http.urlopen")
-    @patch("app.providers.images.get_azure_credential")
-    @patch("app.providers.images.load_settings")
+    @patch("app.infrastructure.azure.foundry.http.urlopen")
+    @patch("app.infrastructure.azure.foundry.images.get_azure_credential")
+    @patch("app.infrastructure.azure.foundry.images.load_settings")
     def test_generate_image_uses_mai_endpoint_and_entra_token(
         self,
         load_settings: MagicMock,
@@ -79,9 +83,9 @@ class ImageGenerationTests(unittest.TestCase):
             "https://cognitiveservices.azure.com/.default"
         )
 
-    @patch("app.providers.http.urlopen")
-    @patch("app.providers.images.get_azure_credential")
-    @patch("app.providers.images.load_settings")
+    @patch("app.infrastructure.azure.foundry.http.urlopen")
+    @patch("app.infrastructure.azure.foundry.images.get_azure_credential")
+    @patch("app.infrastructure.azure.foundry.images.load_settings")
     def test_generate_image_uses_openai_endpoint_for_gpt_image(
         self,
         load_settings: MagicMock,
@@ -130,9 +134,9 @@ class ImageGenerationTests(unittest.TestCase):
             "https://ai.azure.com/.default"
         )
 
-    @patch("app.providers.http.urlopen")
-    @patch("app.providers.images.get_azure_credential")
-    @patch("app.providers.images.load_settings")
+    @patch("app.infrastructure.azure.foundry.http.urlopen")
+    @patch("app.infrastructure.azure.foundry.images.get_azure_credential")
+    @patch("app.infrastructure.azure.foundry.images.load_settings")
     def test_generate_image_uses_bfl_endpoint_for_flux(
         self,
         load_settings: MagicMock,
@@ -182,9 +186,9 @@ class ImageGenerationTests(unittest.TestCase):
             "https://cognitiveservices.azure.com/.default"
         )
 
-    @patch("app.providers.http.urlopen")
-    @patch("app.providers.images.get_azure_credential")
-    @patch("app.providers.images.load_settings")
+    @patch("app.infrastructure.azure.foundry.http.urlopen")
+    @patch("app.infrastructure.azure.foundry.images.get_azure_credential")
+    @patch("app.infrastructure.azure.foundry.images.load_settings")
     def test_generate_image_uses_configured_flux_endpoint(
         self,
         load_settings: MagicMock,
@@ -225,9 +229,9 @@ class ImageGenerationTests(unittest.TestCase):
             "https://flux-demo.services.ai.azure.com/providers/blackforestlabs/v1/flux-2-pro?api-version=preview",
         )
 
-    @patch("app.providers.http.urlopen")
-    @patch("app.providers.images.get_azure_credential")
-    @patch("app.providers.images.load_settings")
+    @patch("app.infrastructure.azure.foundry.http.urlopen")
+    @patch("app.infrastructure.azure.foundry.images.get_azure_credential")
+    @patch("app.infrastructure.azure.foundry.images.load_settings")
     def test_generate_image_identifies_prompt_policy_rejection(
         self,
         load_settings: MagicMock,
@@ -273,9 +277,9 @@ class ImageGenerationTests(unittest.TestCase):
                 height=1024,
             )
 
-    @patch("app.providers.http.urlopen")
-    @patch("app.providers.images.get_azure_credential")
-    @patch("app.providers.images.load_settings")
+    @patch("app.infrastructure.azure.foundry.http.urlopen")
+    @patch("app.infrastructure.azure.foundry.images.get_azure_credential")
+    @patch("app.infrastructure.azure.foundry.images.load_settings")
     def test_generate_image_identifies_safety_system_rejection(
         self,
         load_settings: MagicMock,
@@ -321,9 +325,9 @@ class ImageGenerationTests(unittest.TestCase):
                 height=1024,
             )
 
-    @patch("app.providers.http.urlopen")
-    @patch("app.providers.images.get_azure_credential")
-    @patch("app.providers.images.load_settings")
+    @patch("app.infrastructure.azure.foundry.http.urlopen")
+    @patch("app.infrastructure.azure.foundry.images.get_azure_credential")
+    @patch("app.infrastructure.azure.foundry.images.load_settings")
     def test_edit_image_uses_openai_multipart_endpoint(
         self,
         load_settings: MagicMock,

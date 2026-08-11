@@ -12,7 +12,7 @@ This use case runs custom agent code hosted by Foundry Agent Service. Each frame
 
 | Layer | Location |
 | --- | --- |
-| Backend API and Foundry invocation | [`app/features/hosted_agent`](../../app/features/hosted_agent) |
+| Backend API and Foundry invocation | [`backend`](backend) |
 | Frontend workspace | [`frontend/src/features/hostedAgent`](../../frontend/src/features/hostedAgent) |
 | Marketplace metadata | [`frontend/src/features/useCases/hostedAgent.ts`](../../frontend/src/features/useCases/hostedAgent.ts) |
 | Backend tests | [`tests/test_hosted_agent.py`](../../tests/test_hosted_agent.py) |

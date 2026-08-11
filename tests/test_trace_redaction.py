@@ -1,4 +1,4 @@
-from app.providers.tracing import redact_foundry_trace
+from app.infrastructure.azure.foundry.tracing import redact_foundry_trace
 
 
 def test_trace_redaction_removes_sensitive_content():

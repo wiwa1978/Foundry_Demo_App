@@ -1,8 +1,11 @@
 import unittest
 from unittest import mock
 
-from app.live_interpreter import TARGET_LANGUAGE_PATTERN, build_live_interpreter_endpoint
-from app.use_case_settings import resolve_foundry_binding
+from app.application.use_case_settings import resolve_foundry_binding
+from usecases_media.shared.voice.backend.live_interpreter import (
+    TARGET_LANGUAGE_PATTERN,
+    build_live_interpreter_endpoint,
+)
 
 
 class LiveInterpreterEndpointTests(unittest.TestCase):

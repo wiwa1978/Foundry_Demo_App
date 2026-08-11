@@ -6,7 +6,7 @@ This use case invokes the published Foundry Prompt Agent named `ResearchAgent`. 
 
 | Layer | Location |
 | --- | --- |
-| Backend API and Foundry invocation | [`app/features/agent_research`](../../app/features/agent_research) |
+| Backend API and Foundry invocation | [`backend`](backend) |
 | Frontend workspace | [`frontend/src/features/agentResearch`](../../frontend/src/features/agentResearch) |
 | Marketplace metadata | [`frontend/src/features/useCases/agentResearch.ts`](../../frontend/src/features/useCases/agentResearch.ts) |
 | Backend tests | [`tests/test_agent_research.py`](../../tests/test_agent_research.py) |

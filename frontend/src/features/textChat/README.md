@@ -12,7 +12,7 @@ This folder is the customer-facing entry point for the Text Chat use case.
 
 ## Backend flow
 
-- [FastAPI router](../../../../app/features/text_chat/router.py)
+- [FastAPI router](../../../../usecases_media/text_chat/backend/router.py)
 - [Chat orchestration service](../../../../app/services/chat.py)
 - [Foundry gateway](../../../../app/gateways/foundry_chat.py)
 - [Conversation persistence facade](../../../../app/conversation_store.py)

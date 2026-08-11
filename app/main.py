@@ -6,23 +6,23 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
-from app.api_middleware import require_authenticated_api_user
-from app.config import load_environment, load_runtime_settings
-from app.errors import (
+from app.api.middleware import require_authenticated_api_user
+from app.api.security import AuthMode, admin_principals, auth_mode
+from app.api.static import mount_static_assets
+from app.api.static import router as static_router
+from app.core.config import load_environment, load_runtime_settings
+from app.core.errors import (
     ApplicationError,
     application_error_handler,
     http_error_handler,
     request_validation_error_handler,
 )
-from app.observability import (
+from app.core.observability import (
     configure_logging,
     request_context_middleware,
     unexpected_error_handler,
 )
-from app.persistence import initialize_persistence
-from app.security import AuthMode, admin_principals, auth_mode
-from app.static_routes import mount_static_assets
-from app.static_routes import router as static_router
+from app.infrastructure.persistence.registry import initialize_persistence
 
 load_environment()
 runtime_settings = load_runtime_settings()
@@ -55,19 +55,23 @@ def _log_authorization_posture() -> None:
 
 
 def create_app() -> FastAPI:
-    from app.features.admin.router import router as admin_router
-    from app.features.agent_research.router import router as agent_research_router
-    from app.features.auth.router import router as auth_router
-    from app.features.conversations.router import router as conversations_router
-    from app.features.hosted_agent.router import router as hosted_agent_router
-    from app.features.models.router import router as models_router
-    from app.features.system.router import router as system_router
-    from usecases_media.document_qa.backend import router as document_qa_router
-    from usecases_media.stt_chat_tts.backend import router as voice_router
-    from usecases_media.text_chat.backend import router as text_chat_router
-    from usecases_media.text_chat_comparison.backend import router as comparison_router
-    from usecases_media.text_to_image.backend import router as images_router
-    from usecases_media.youtube_summary.backend import router as youtube_summary_router
+    from app.api.features.admin.router import router as admin_router
+    from app.api.features.auth.router import router as auth_router
+    from app.api.features.conversations.router import router as conversations_router
+    from app.api.features.models.router import router as models_router
+    from app.api.features.system.router import router as system_router
+    from usecases_agents.research_assistant_hosted.backend.router import (
+        router as hosted_agent_router,
+    )
+    from usecases_agents.research_assistant_prompt.backend.router import (
+        router as agent_research_router,
+    )
+    from usecases_media.document_qa.backend.router import router as document_qa_router
+    from usecases_media.shared.images.backend.router import router as images_router
+    from usecases_media.shared.voice.backend.router import router as voice_router
+    from usecases_media.text_chat.backend.router import router as text_chat_router
+    from usecases_media.text_chat_comparison.backend.router import router as comparison_router
+    from usecases_media.youtube_summary.backend.router import router as youtube_summary_router
 
     application = FastAPI(title="Foundry Chat App", lifespan=lifespan)
     mount_static_assets(application)
