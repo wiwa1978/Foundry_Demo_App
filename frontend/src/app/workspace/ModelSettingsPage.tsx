@@ -1,4 +1,4 @@
-import { GitCompareArrows, RotateCcw, X } from "lucide-react";
+import { CopyPlus, GitCompareArrows, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 
 import { deploymentDefaultGuardrail } from "@/app/workspace/constants";
@@ -26,12 +26,26 @@ type ModelSettingsPageProps = {
   policies: GuardrailPolicy[];
   deploymentPolicy: DeploymentGuardrailPolicy | null;
   policiesLoading: boolean;
+  creatingPolicyCopies: boolean;
   error: string;
   onClose: () => void;
   onSave: () => void;
+  onCreatePolicyCopies: () => void;
   onReset: () => void;
   onChange: (patch: Partial<ModelSettings>) => void;
 };
+
+function guardrailPolicyOptionLabel(policy: GuardrailPolicy) {
+  if (
+    policy.name.startsWith("FoundryChat-") &&
+    policy.base_policy_name?.startsWith("Microsoft.")
+  ) {
+    return `${policy.base_policy_name} (selectable copy)`;
+  }
+  return policy.is_selectable
+    ? policy.name
+    : `${policy.name} (system-managed; deployment only)`;
+}
 
 export function ModelSettingsPage({
   model,
@@ -40,9 +54,11 @@ export function ModelSettingsPage({
   policies,
   deploymentPolicy,
   policiesLoading,
+  creatingPolicyCopies,
   error,
   onClose,
   onSave,
+  onCreatePolicyCopies,
   onReset,
   onChange,
 }: ModelSettingsPageProps) {
@@ -142,18 +158,31 @@ export function ModelSettingsPage({
                           test on the chat page.
                         </p>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={
-                          draft.guardrail_policy_names.length !== 2 ||
-                          policiesLoading
-                        }
-                        onClick={() => setGuardrailComparisonOpen(true)}
-                      >
-                        <GitCompareArrows className="h-4 w-4" />
-                        Visualize differences
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={policiesLoading || creatingPolicyCopies}
+                          onClick={onCreatePolicyCopies}
+                        >
+                          <CopyPlus className="h-4 w-4" />
+                          {creatingPolicyCopies
+                            ? "Creating copies..."
+                            : "Create selectable copies"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={
+                            draft.guardrail_policy_names.length !== 2 ||
+                            policiesLoading
+                          }
+                          onClick={() => setGuardrailComparisonOpen(true)}
+                        >
+                          <GitCompareArrows className="h-4 w-4" />
+                          Visualize differences
+                        </Button>
+                      </div>
                     </div>
                     <div className="rounded-lg border border-blue-200 bg-white/80 px-3 py-2 dark:border-[#606066] dark:bg-[#29292c]">
                       <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -206,10 +235,7 @@ export function ModelSettingsPage({
                                 value={policy.name}
                                 disabled={!policy.is_selectable}
                               >
-                                {policy.name}
-                                {policy.is_selectable
-                                  ? ""
-                                  : " (system-managed; deployment only)"}
+                                {guardrailPolicyOptionLabel(policy)}
                               </option>
                             ))}
                           </select>
@@ -220,10 +246,10 @@ export function ModelSettingsPage({
                         as request-level overrides. They do not need to be
                         assigned to this deployment. The same model settings and
                         prompt are used for both requests. System-managed
-                        Microsoft policies are shown for visibility but cannot
-                        be sent as request-level overrides. Assign one to the
-                        deployment and select the deployment default, or create
-                        a custom policy based on it for side-by-side comparison.
+                        Microsoft policies cannot be sent as request-level
+                        overrides. Use Create selectable copies to provision
+                        equivalent user-managed policies for side-by-side
+                        comparison.
                       </p>
                       {!policiesLoading && !selectablePolicies.length ? (
                         <p className="text-xs text-amber-700 dark:text-amber-300">

@@ -133,9 +133,11 @@ export type WorkspaceModelSettingsViewModel = {
   policies: GuardrailPolicy[];
   deploymentPolicy: DeploymentGuardrailPolicy | null;
   policiesLoading: boolean;
+  creatingPolicyCopies: boolean;
   error: string;
   onClose: () => void;
   save: () => Promise<void>;
+  createPolicyCopies: () => Promise<void>;
   resetDraft: () => void;
   changeDraft: (patch: Partial<ModelSettings>) => void;
 };
@@ -480,9 +482,11 @@ export function WorkspaceContentRouter({
         policies={settings.model.policies}
         deploymentPolicy={settings.model.deploymentPolicy}
         policiesLoading={settings.model.policiesLoading}
+        creatingPolicyCopies={settings.model.creatingPolicyCopies}
         error={settings.model.error}
         onClose={settings.model.onClose}
         onSave={() => void settings.model.save()}
+        onCreatePolicyCopies={() => void settings.model.createPolicyCopies()}
         onReset={settings.model.resetDraft}
         onChange={settings.model.changeDraft}
       />

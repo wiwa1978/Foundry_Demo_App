@@ -40,10 +40,27 @@ const policies: GuardrailPolicy[] = [
     content_filters: [],
     is_selectable: true,
   },
+  {
+    name: "FoundryChat-Microsoft-Default",
+    type: "UserManaged",
+    mode: "Blocking",
+    base_policy_name: "Microsoft.Default",
+    content_filters: [],
+    is_selectable: true,
+  },
+  {
+    name: "FoundryChat-Microsoft-DefaultV2",
+    type: "UserManaged",
+    mode: "Blocking",
+    base_policy_name: "Microsoft.DefaultV2",
+    content_filters: [],
+    is_selectable: true,
+  },
 ];
 
 it("shows system-managed policies without allowing invalid request overrides", async () => {
   const user = userEvent.setup();
+  const onCreatePolicyCopies = vi.fn();
   render(
     <ModelSettingsPage
       model="gpt-5.5"
@@ -55,9 +72,11 @@ it("shows system-managed policies without allowing invalid request overrides", a
         policy_name: "NoGuardrails",
       }}
       policiesLoading={false}
+      creatingPolicyCopies={false}
       error=""
       onClose={vi.fn()}
       onSave={vi.fn()}
+      onCreatePolicyCopies={onCreatePolicyCopies}
       onReset={vi.fn()}
       onChange={vi.fn()}
     />,
@@ -78,6 +97,20 @@ it("shows system-managed policies without allowing invalid request overrides", a
   expect(
     screen.getAllByRole("option", { name: "NoGuardrails" })[0],
   ).toBeEnabled();
+  expect(
+    screen.getAllByRole("option", {
+      name: "Microsoft.Default (selectable copy)",
+    })[0],
+  ).toBeEnabled();
+  expect(
+    screen.getAllByRole("option", {
+      name: "Microsoft.DefaultV2 (selectable copy)",
+    })[0],
+  ).toBeEnabled();
+  await user.click(
+    screen.getByRole("button", { name: "Create selectable copies" }),
+  );
+  expect(onCreatePolicyCopies).toHaveBeenCalledOnce();
   expect(
     screen.getByText(/cannot be sent as request-level overrides/i),
   ).toBeVisible();

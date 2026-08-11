@@ -10,7 +10,12 @@ from app.api.features.admin.schemas import (
     UseCaseResourceSettingsRequest,
     UseCaseResourceSettingsResponse,
 )
-from app.api.features.admin.service import create_deployment, deployment_config
+from app.api.features.admin.service import (
+    create_deployment,
+    create_guardrail_policy_copies,
+    deployment_config,
+)
+from app.api.features.models.schemas import GuardrailPolicyListResponse
 from app.application.foundry_admin import AdminConfigDocument
 from app.application.use_case_settings import (
     LIVE_TRANSLATION_USE_CASE,
@@ -46,6 +51,19 @@ async def post_admin_deployment(
 ) -> dict:
     result = await create_deployment(payload)
     audit_event("model_deployment_created", request=request, model=payload.deployment_name)
+    return result
+
+
+@router.post(
+    "/api/admin/guardrails/selectable-copies",
+    response_model=GuardrailPolicyListResponse,
+)
+async def post_guardrail_policy_copies(
+    request: Request,
+    _admin: Annotated[UserScope, Depends(privileged_user_scope)],
+) -> dict:
+    result = await create_guardrail_policy_copies()
+    audit_event("guardrail_policy_copies_created", request=request)
     return result
 
 

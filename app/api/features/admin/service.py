@@ -6,6 +6,7 @@ from app.application.foundry_admin import (
     DeploymentRequest,
     admin_config_to_dict,
     create_foundry_deployment,
+    create_system_guardrail_policy_copies,
     load_admin_config,
 )
 from app.application.models import ModelSettings, save_model_settings, settings_to_dict
@@ -15,6 +16,14 @@ from app.core.errors import ExternalServiceError
 
 def deployment_config() -> AdminConfigDocument:
     return admin_config_to_dict(load_admin_config())
+
+
+async def create_guardrail_policy_copies() -> dict[str, Any]:
+    try:
+        policies = await run_model_call(create_system_guardrail_policy_copies)
+    except Exception as exc:
+        raise ExternalServiceError("Guardrail policy copy creation") from exc
+    return {"policies": policies}
 
 
 async def create_deployment(payload: AdminDeploymentRequest) -> dict[str, Any]:

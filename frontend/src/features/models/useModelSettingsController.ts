@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  createSelectableGuardrailPolicyCopies,
   listGuardrailPolicies,
   loadDeploymentGuardrailPolicy,
 } from "@/api/guardrails";
@@ -39,11 +40,14 @@ export function useModelSettingsController({
   const [deploymentPolicy, setDeploymentPolicy] =
     useState<DeploymentGuardrailPolicy | null>(null);
   const [policiesLoading, setPoliciesLoading] = useState(false);
+  const [creatingPolicyCopies, setCreatingPolicyCopies] = useState(false);
   const [error, setError] = useState("");
   const loadControllerRef = useRef<AbortController | null>(null);
   const loadGenerationRef = useRef(0);
   const saveControllerRef = useRef<AbortController | null>(null);
   const saveGenerationRef = useRef(0);
+  const policyCopyControllerRef = useRef<AbortController | null>(null);
+  const policyCopyGenerationRef = useRef(0);
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
@@ -59,12 +63,19 @@ export function useModelSettingsController({
     saveControllerRef.current = null;
   }, []);
 
+  const cancelPolicyCopy = useCallback(() => {
+    policyCopyGenerationRef.current += 1;
+    policyCopyControllerRef.current?.abort();
+    policyCopyControllerRef.current = null;
+  }, []);
+
   useEffect(
     () => () => {
       cancelLoad();
       cancelSave();
+      cancelPolicyCopy();
     },
-    [cancelLoad, cancelSave],
+    [cancelLoad, cancelPolicyCopy, cancelSave],
   );
 
   const open = useCallback(
@@ -75,6 +86,7 @@ export function useModelSettingsController({
 
       cancelLoad();
       cancelSave();
+      cancelPolicyCopy();
       const controller = new AbortController();
       loadControllerRef.current = controller;
       const generation = loadGenerationRef.current;
@@ -85,6 +97,7 @@ export function useModelSettingsController({
       setPoliciesLoading(true);
       setDeploymentPolicy(null);
       setSaving(false);
+      setCreatingPolicyCopies(false);
 
       try {
         const [settingsResponse, policiesResponse, deploymentPolicyResponse] =
@@ -163,16 +176,25 @@ export function useModelSettingsController({
         }
       }
     },
-    [activeModel, cancelLoad, cancelSave, fetchClient, onOpen],
+    [
+      activeModel,
+      cancelLoad,
+      cancelPolicyCopy,
+      cancelSave,
+      fetchClient,
+      onOpen,
+    ],
   );
 
   const close = useCallback(() => {
     cancelLoad();
     cancelSave();
+    cancelPolicyCopy();
     setSettingsModel(null);
     setPoliciesLoading(false);
     setSaving(false);
-  }, [cancelLoad, cancelSave]);
+    setCreatingPolicyCopies(false);
+  }, [cancelLoad, cancelPolicyCopy, cancelSave]);
 
   const changeDraft = useCallback((patch: Partial<ModelSettings>) => {
     setDraft((current) => (current ? { ...current, ...patch } : current));
@@ -235,6 +257,51 @@ export function useModelSettingsController({
     }
   }, [cancelSave, fetchClient, upsertModel]);
 
+  const createPolicyCopies = useCallback(async () => {
+    cancelPolicyCopy();
+    const controller = new AbortController();
+    policyCopyControllerRef.current = controller;
+    const generation = policyCopyGenerationRef.current;
+    setCreatingPolicyCopies(true);
+    setError("");
+    try {
+      const response = await createSelectableGuardrailPolicyCopies(
+        fetchClient,
+        controller.signal,
+      );
+      const data = (await response.json()) as PoliciesResponse;
+      if (
+        generation !== policyCopyGenerationRef.current ||
+        controller.signal.aborted
+      ) {
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(
+          data.detail ?? "Failed to create selectable guardrail copies.",
+        );
+      }
+      setPolicies(data.policies ?? []);
+    } catch (copyError) {
+      if (
+        generation === policyCopyGenerationRef.current &&
+        !controller.signal.aborted &&
+        !isAbortError(copyError)
+      ) {
+        setError(
+          copyError instanceof Error
+            ? copyError.message
+            : "Failed to create selectable guardrail copies.",
+        );
+      }
+    } finally {
+      if (generation === policyCopyGenerationRef.current) {
+        setCreatingPolicyCopies(false);
+        policyCopyControllerRef.current = null;
+      }
+    }
+  }, [cancelPolicyCopy, fetchClient]);
+
   const saveModelCapabilities = useCallback(
     async (model: string, modalities: ModelModality[]) => {
       const settingsResponse = await loadModelSettings(
@@ -271,10 +338,12 @@ export function useModelSettingsController({
     policies,
     deploymentPolicy,
     policiesLoading,
+    creatingPolicyCopies,
     error,
     open,
     close,
     save,
+    createPolicyCopies,
     saveModelCapabilities,
     changeDraft,
     resetDraft,

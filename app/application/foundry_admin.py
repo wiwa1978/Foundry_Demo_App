@@ -86,6 +86,12 @@ class DeploymentResult(TypedDict, total=False):
     name: str | None
 
 
+SYSTEM_GUARDRAIL_POLICY_COPIES = {
+    "Microsoft.Default": "FoundryChat-Microsoft-Default",
+    "Microsoft.DefaultV2": "FoundryChat-Microsoft-DefaultV2",
+}
+
+
 class _DeploymentSku(TypedDict):
     name: str
     capacity: int
@@ -143,6 +149,46 @@ def list_guardrail_policies() -> list[GuardrailPolicy]:
         resource_group_name=config.resource_group,
         account_name=config.account_name,
     )
+    return sorted(
+        (_guardrail_policy_to_dict(policy) for policy in policies),
+        key=lambda policy: policy["name"].lower(),
+    )
+
+
+def create_system_guardrail_policy_copies() -> list[GuardrailPolicy]:
+    config = load_admin_config()
+    if not config.is_configured:
+        raise RuntimeError(
+            "Foundry guardrail administration is not configured. Set "
+            f"{', '.join(config.missing)} in the environment."
+        )
+
+    client = _create_management_client(config)
+    policies = list(
+        client.rai_policies.list(
+            resource_group_name=config.resource_group,
+            account_name=config.account_name,
+        )
+    )
+    policies_by_name = {
+        str(getattr(policy, "name", "") or "").lower(): policy for policy in policies
+    }
+    for source_name, copy_name in SYSTEM_GUARDRAIL_POLICY_COPIES.items():
+        existing = policies_by_name.get(copy_name.lower())
+        if existing is not None:
+            continue
+
+        source = policies_by_name.get(source_name.lower())
+        if source is None:
+            raise RuntimeError(f"Foundry system guardrail {source_name} was not found.")
+        created = client.rai_policies.create_or_update(
+            resource_group_name=config.resource_group,
+            account_name=config.account_name,
+            rai_policy_name=copy_name,
+            rai_policy=_guardrail_policy_copy_resource(source, source_name),
+        )
+        policies.append(created)
+        policies_by_name[copy_name.lower()] = created
     return sorted(
         (_guardrail_policy_to_dict(policy) for policy in policies),
         key=lambda policy: policy["name"].lower(),
@@ -208,8 +254,7 @@ def create_foundry_deployment(request: DeploymentRequest) -> DeploymentResult:
     config = load_admin_config()
     if not config.is_configured:
         raise RuntimeError(
-            "Foundry deployment admin is not configured. Set "
-            f"{', '.join(config.missing)} in .env."
+            f"Foundry deployment admin is not configured. Set {', '.join(config.missing)} in .env."
         )
 
     client = _create_management_client(config)
@@ -255,6 +300,33 @@ def _create_management_client(config: FoundryAdminConfig) -> Any:
     )
 
 
+def _guardrail_policy_copy_resource(policy: Any, source_name: str) -> dict[str, Any]:
+    properties = getattr(policy, "properties", None)
+    content_filters: list[dict[str, Any]] = []
+    for content_filter in getattr(properties, "content_filters", None) or []:
+        copied_filter: dict[str, Any] = {
+            "name": str(getattr(content_filter, "name", "") or ""),
+            "source": str(getattr(content_filter, "source", "") or ""),
+            "enabled": bool(getattr(content_filter, "enabled", False)),
+            "blocking": bool(getattr(content_filter, "blocking", False)),
+        }
+        severity_threshold = getattr(content_filter, "severity_threshold", None)
+        if severity_threshold is not None:
+            copied_filter["severityThreshold"] = str(severity_threshold)
+        content_filters.append(copied_filter)
+    return {
+        "tags": {
+            "managedBy": "FoundryChatApp",
+            "sourcePolicy": source_name,
+        },
+        "properties": {
+            "basePolicyName": source_name,
+            "mode": str(getattr(properties, "mode", "") or "Blocking"),
+            "contentFilters": content_filters,
+        },
+    }
+
+
 def _guardrail_policy_to_dict(policy: Any) -> GuardrailPolicy:
     properties = getattr(policy, "properties", None)
     policy_type = str(getattr(properties, "type", "") or "")
@@ -291,9 +363,7 @@ def _deployment_summary(deployment: Any) -> DeploymentSummary:
         "name": str(getattr(deployment, "name", "") or ""),
         "model_name": _optional_text(getattr(model, "name", None)),
         "model_version": _optional_text(getattr(model, "version", None)),
-        "provisioning_state": str(
-            getattr(properties, "provisioning_state", "") or ""
-        ),
+        "provisioning_state": str(getattr(properties, "provisioning_state", "") or ""),
     }
 
 

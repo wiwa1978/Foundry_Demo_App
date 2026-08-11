@@ -8,6 +8,8 @@ from app.application.chat import (
 )
 from app.application.conversations import build_model_history
 from app.application.foundry_admin import (
+    SYSTEM_GUARDRAIL_POLICY_COPIES,
+    create_system_guardrail_policy_copies,
     get_deployment_guardrail_policy,
     guardrail_policy_exists,
     list_foundry_deployments,
@@ -52,8 +54,7 @@ def test_content_filter_error_is_reported_as_a_blocked_request():
     )
 
     assert public_provider_error("Model request", error) == (
-        "Request blocked by the configured content safety policy. "
-        "Modify your prompt and try again."
+        "Request blocked by the configured content safety policy. Modify your prompt and try again."
     )
     assert guardrail_error_details(error) == error.body
 
@@ -98,15 +99,95 @@ def test_lists_only_custom_policies_as_selectable(mock_config, mock_client):
     assert policies[1]["is_selectable"] is True
 
 
+@patch("app.application.foundry_admin._create_management_client")
+@patch("app.application.foundry_admin.load_admin_config")
+def test_creates_selectable_copies_of_system_policies(mock_config, mock_client):
+    mock_config.return_value = SimpleNamespace(
+        is_configured=True,
+        subscription_id="subscription",
+        resource_group="group",
+        account_name="account",
+    )
+    default = _policy("Microsoft.Default", "SystemManaged")
+    default.properties.content_filters = [
+        SimpleNamespace(
+            name="Hate",
+            source="Prompt",
+            enabled=True,
+            blocking=True,
+            severity_threshold="Medium",
+        )
+    ]
+    default_v2 = _policy("Microsoft.DefaultV2", "SystemManaged")
+    default_v2.properties.content_filters = []
+    client = MagicMock()
+    client.rai_policies.list.return_value = [default, default_v2]
+    client.rai_policies.create_or_update.side_effect = [
+        _policy(copy_name, "UserManaged") for copy_name in SYSTEM_GUARDRAIL_POLICY_COPIES.values()
+    ]
+    mock_client.return_value = client
+
+    policies = create_system_guardrail_policy_copies()
+
+    assert [policy["name"] for policy in policies] == [
+        "FoundryChat-Microsoft-Default",
+        "FoundryChat-Microsoft-DefaultV2",
+        "Microsoft.Default",
+        "Microsoft.DefaultV2",
+    ]
+    assert all(
+        policy["is_selectable"] for policy in policies if policy["name"].startswith("FoundryChat-")
+    )
+    first_call = client.rai_policies.create_or_update.call_args_list[0]
+    assert first_call.kwargs["rai_policy_name"] == "FoundryChat-Microsoft-Default"
+    assert first_call.kwargs["rai_policy"]["properties"] == {
+        "basePolicyName": "Microsoft.Default",
+        "mode": "Blocking",
+        "contentFilters": [
+            {
+                "name": "Hate",
+                "source": "Prompt",
+                "enabled": True,
+                "blocking": True,
+                "severityThreshold": "Medium",
+            }
+        ],
+    }
+
+
+@patch("app.application.foundry_admin._create_management_client")
+@patch("app.application.foundry_admin.load_admin_config")
+def test_policy_copy_creation_preserves_existing_copies(mock_config, mock_client):
+    mock_config.return_value = SimpleNamespace(
+        is_configured=True,
+        subscription_id="subscription",
+        resource_group="group",
+        account_name="account",
+    )
+    existing = [
+        _policy(source_name, "SystemManaged") for source_name in SYSTEM_GUARDRAIL_POLICY_COPIES
+    ] + [_policy(copy_name, "UserManaged") for copy_name in SYSTEM_GUARDRAIL_POLICY_COPIES.values()]
+    client = MagicMock()
+    client.rai_policies.list.return_value = existing
+    mock_client.return_value = client
+
+    policies = create_system_guardrail_policy_copies()
+
+    assert len(policies) == 4
+    client.rai_policies.create_or_update.assert_not_called()
+
+
 @patch("app.application.foundry_admin.list_guardrail_policies")
 def test_policy_validation_rejects_system_policy(mock_list):
     mock_list.return_value = [
         {"name": "Microsoft.DefaultV2", "is_selectable": False},
         {"name": "strict-demo", "is_selectable": True},
+        {"name": "FoundryChat-Microsoft-DefaultV2", "is_selectable": True},
     ]
 
     assert guardrail_policy_exists("strict-demo") is True
     assert guardrail_policy_exists("Microsoft.DefaultV2") is False
+    assert guardrail_policy_exists("FoundryChat-Microsoft-DefaultV2") is True
 
 
 @patch("app.application.foundry_admin._create_management_client")

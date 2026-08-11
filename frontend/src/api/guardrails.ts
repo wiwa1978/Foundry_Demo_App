@@ -2,6 +2,8 @@ import type { FetchClient } from "@/api/types";
 
 const guardrailPoliciesEndpoint = "/api/guardrails/policies";
 const deploymentPolicyEndpoint = "/api/guardrails/deployment-policy";
+const selectablePolicyCopiesEndpoint =
+  "/api/admin/guardrails/selectable-copies";
 
 export function listGuardrailPolicies(
   fetchClient: FetchClient,
@@ -11,6 +13,17 @@ export function listGuardrailPolicies(
     guardrailPoliciesEndpoint,
     { signal },
     { label: "List Foundry guardrails", responseKind: "json" },
+  );
+}
+
+export function createSelectableGuardrailPolicyCopies(
+  fetchClient: FetchClient,
+  signal?: AbortSignal,
+) {
+  return fetchClient(
+    selectablePolicyCopiesEndpoint,
+    { method: "POST", signal },
+    { label: "Create selectable guardrail copies", responseKind: "json" },
   );
 }
 

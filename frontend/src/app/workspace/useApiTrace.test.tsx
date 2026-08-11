@@ -36,6 +36,7 @@ describe("useApiTrace", () => {
       result.current.update(requestId, {
         status: 200,
         durationMs: 12,
+        request: { prompt: "revised private prompt", model: "gpt-4.1-mini" },
         response: { content: "updated private answer" },
       });
     });
@@ -47,7 +48,7 @@ describe("useApiTrace", () => {
     ]);
     expect(result.current.entries[0]).toMatchObject({
       id: "trace-1",
-      request: { prompt: "[redacted]", model: "gpt-4.1" },
+      request: { prompt: "[redacted]", model: "gpt-4.1-mini" },
       status: 200,
       durationMs: 12,
       response: { content: "[redacted]" },

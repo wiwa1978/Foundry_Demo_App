@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createSelectableGuardrailPolicyCopies,
   listGuardrailPolicies,
   loadDeploymentGuardrailPolicy,
 } from "@/api/guardrails";
@@ -16,6 +17,7 @@ import type {
 import { useModelSettingsController } from "./useModelSettingsController";
 
 vi.mock("@/api/guardrails", () => ({
+  createSelectableGuardrailPolicyCopies: vi.fn(),
   listGuardrailPolicies: vi.fn(),
   loadDeploymentGuardrailPolicy: vi.fn(),
 }));
@@ -191,6 +193,26 @@ describe("useModelSettingsController", () => {
     expect(upsertModel).toHaveBeenCalledWith("model-a", ["text"]);
     expect(result.current.draft?.temperature).toBe(0.2);
     expect(result.current.saving).toBe(false);
+  });
+
+  it("creates selectable policy copies and refreshes the policy catalog", async () => {
+    vi.mocked(createSelectableGuardrailPolicyCopies).mockResolvedValue(
+      response({ policies: [policy("FoundryChat-Microsoft-Default")] }),
+    );
+    const { result } = setup();
+
+    await act(async () => {
+      await result.current.createPolicyCopies();
+    });
+
+    expect(createSelectableGuardrailPolicyCopies).toHaveBeenCalledWith(
+      fetchClient,
+      expect.any(AbortSignal),
+    );
+    expect(result.current.policies).toEqual([
+      policy("FoundryChat-Microsoft-Default"),
+    ]);
+    expect(result.current.creatingPolicyCopies).toBe(false);
   });
 
   it("surfaces failed loads and saves without updating the catalog", async () => {

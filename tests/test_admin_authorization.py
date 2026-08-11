@@ -17,6 +17,7 @@ client = TestClient(app)
 
 PRIVILEGED_REQUESTS = (
     ("get", "/api/admin/deployments/config", None),
+    ("post", "/api/admin/guardrails/selectable-copies", None),
     ("post", "/api/admin/deployments", {"deployment_name": "d1", "model_name": "m1"}),
     ("post", "/api/models", {"model": "gpt-4o-mini"}),
     ("put", "/api/model-settings", {"model": "gpt-4o-mini"}),
@@ -58,9 +59,7 @@ def _call(method: str, path: str, body: dict | None, headers: dict[str, str]):
 
 
 @pytest.mark.parametrize(("method", "path", "body"), PRIVILEGED_REQUESTS)
-def test_privileged_endpoints_reject_non_admin_authenticated_user(
-    monkeypatch, method, path, body
-):
+def test_privileged_endpoints_reject_non_admin_authenticated_user(monkeypatch, method, path, body):
     monkeypatch.setenv("APP_AUTH_MODE", "container_apps")
     monkeypatch.setenv("APP_AUTH_TENANT_ID", "tenant-1")
     monkeypatch.setenv("ADMIN_PRINCIPALS", "admin@example.com")

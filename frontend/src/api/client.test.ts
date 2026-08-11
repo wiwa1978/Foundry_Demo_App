@@ -79,4 +79,96 @@ describe("createTracedFetch", () => {
     expect(appendResponse).not.toHaveBeenCalled();
     await expect(response.text()).resolves.toBe("data: event\n\n");
   });
+
+  it("preserves non-JSON requests and captures text or headerless responses", async () => {
+    const appendRequest = vi
+      .fn()
+      .mockReturnValueOnce("trace-4")
+      .mockReturnValueOnce("trace-5");
+    const appendResponse = vi.fn();
+    const client = createTracedFetch(
+      {
+        appendRequest,
+        updateRequest: vi.fn(),
+        appendResponse,
+      },
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response("plain text", {
+            headers: { "Content-Type": "text/plain" },
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(null, {
+            status: 204,
+            statusText: "No Content",
+          }),
+        ),
+    );
+
+    await client("/text", { method: "post", body: "not-json" });
+    await client(
+      "/binary",
+      { body: "ignored" },
+      { request: { source: "override" } },
+    );
+
+    expect(appendRequest).toHaveBeenNthCalledWith(1, {
+      label: "POST /text",
+      method: "POST",
+      url: "/text",
+      request: "not-json",
+    });
+    expect(appendRequest).toHaveBeenNthCalledWith(2, {
+      label: "GET /binary",
+      method: "GET",
+      url: "/binary",
+      request: { source: "override" },
+    });
+    expect(appendResponse).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ response: "plain text" }),
+    );
+    expect(appendResponse).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ response: "204 No Content" }),
+    );
+  });
+
+  it("summarizes malformed JSON and records non-Error failures", async () => {
+    const updateRequest = vi.fn();
+    const appendResponse = vi.fn();
+    const client = createTracedFetch(
+      {
+        appendRequest: vi
+          .fn()
+          .mockReturnValueOnce("trace-6")
+          .mockReturnValueOnce("trace-7"),
+        updateRequest,
+        appendResponse,
+      },
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response("not-json", {
+            status: 502,
+            statusText: "Bad Gateway",
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+        .mockRejectedValueOnce("offline"),
+    );
+
+    await client("/invalid-json", {}, { responseKind: "json" });
+    await expect(client("/string-error")).rejects.toBe("offline");
+
+    expect(appendResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ response: "502 Bad Gateway" }),
+    );
+    expect(updateRequest).toHaveBeenLastCalledWith(
+      "trace-7",
+      expect.objectContaining({ error: "Request failed" }),
+    );
+  });
 });

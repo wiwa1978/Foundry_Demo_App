@@ -19,14 +19,14 @@ param searchServiceName string
 @description('Foundry (CognitiveServices) account name in this RG.')
 param foundryAccountName string
 
-var acrPullRoleId                     = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
-var storageBlobDataContributorRoleId  = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
-var searchIndexDataReaderRoleId       = '1407120a-92aa-4202-b7e9-c0e197c71c8f'
-var searchIndexDataContributorRoleId  = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
-var searchServiceContributorRoleId    = '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
-var cognitiveServicesUserRoleId       = 'a97b65f3-24c7-4388-baec-2e87135dc908'
-var cognitiveServicesOpenAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
-var azureAiDeveloperRoleId            = '64702f94-c441-49e6-a78b-ef80e0188fee'
+var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+var searchIndexDataReaderRoleId = '1407120a-92aa-4202-b7e9-c0e197c71c8f'
+var searchIndexDataContributorRoleId = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
+var searchServiceContributorRoleId = '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
+var cognitiveServicesUserRoleId = 'a97b65f3-24c7-4388-baec-2e87135dc908'
+var cognitiveServicesOpenAiContributorRoleId = 'a001fd3d-188f-4b5d-821b-7da978bf7442'
+var azureAiDeveloperRoleId = '64702f94-c441-49e6-a78b-ef80e0188fee'
 var cognitiveServicesSpeechUserRoleId = 'f2dc8367-1007-4938-bd23-fe263f013447'
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
@@ -61,7 +61,10 @@ resource storageBlobContributor 'Microsoft.Authorization/roleAssignments@2022-04
   properties: {
     principalId: principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      storageBlobDataContributorRoleId
+    )
   }
 }
 
@@ -81,7 +84,10 @@ resource searchIndexDataContributor 'Microsoft.Authorization/roleAssignments@202
   properties: {
     principalId: principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchIndexDataContributorRoleId)
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      searchIndexDataContributorRoleId
+    )
   }
 }
 
@@ -105,13 +111,16 @@ resource foundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
-resource foundryOpenAiUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(foundryAccount.id, principalId, cognitiveServicesOpenAiUserRoleId)
+resource foundryOpenAiContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, principalId, cognitiveServicesOpenAiContributorRoleId)
   scope: foundryAccount
   properties: {
     principalId: principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleId)
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      cognitiveServicesOpenAiContributorRoleId
+    )
   }
 }
 
@@ -131,6 +140,9 @@ resource foundrySpeechUser 'Microsoft.Authorization/roleAssignments@2022-04-01' 
   properties: {
     principalId: principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesSpeechUserRoleId)
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      cognitiveServicesSpeechUserRoleId
+    )
   }
 }

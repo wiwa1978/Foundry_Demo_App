@@ -122,7 +122,7 @@ var searchIndexDataReaderRoleId = '1407120a-92aa-4202-b7e9-c0e197c71c8f'
 var searchIndexDataContributorRoleId = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
 var searchServiceContributorRoleId = '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
 var cognitiveServicesUserRoleId = 'a97b65f3-24c7-4388-baec-2e87135dc908'
-var cognitiveServicesOpenAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+var cognitiveServicesOpenAiContributorRoleId = 'a001fd3d-188f-4b5d-821b-7da978bf7442'
 var azureAiDeveloperRoleId = '64702f94-c441-49e6-a78b-ef80e0188fee'
 var cognitiveServicesSpeechUserRoleId = 'f2dc8367-1007-4938-bd23-fe263f013447'
 var entraAuthenticationSecretName = 'entra-auth-client-secret'
@@ -202,7 +202,10 @@ resource storageBlobDataContributorAssignment 'Microsoft.Authorization/roleAssig
   properties: {
     principalId: appIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      storageBlobDataContributorRoleId
+    )
   }
 }
 
@@ -212,7 +215,10 @@ resource searchIndexDataContributorAssignment 'Microsoft.Authorization/roleAssig
   properties: {
     principalId: appIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchIndexDataContributorRoleId)
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      searchIndexDataContributorRoleId
+    )
   }
 }
 
@@ -246,13 +252,16 @@ resource foundryUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
   }
 }
 
-resource foundryOpenAiUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(foundryAccount.id, managedIdentityName, cognitiveServicesOpenAiUserRoleId)
+resource foundryOpenAiContributorAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, managedIdentityName, cognitiveServicesOpenAiContributorRoleId)
   scope: foundryAccount
   properties: {
     principalId: appIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleId)
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      cognitiveServicesOpenAiContributorRoleId
+    )
   }
 }
 
@@ -272,7 +281,10 @@ resource foundrySpeechUserAssignment 'Microsoft.Authorization/roleAssignments@20
   properties: {
     principalId: appIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesSpeechUserRoleId)
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      cognitiveServicesSpeechUserRoleId
+    )
   }
 }
 
@@ -303,18 +315,22 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       secrets: concat(
-        enableEntraAuthentication ? [
-          {
-            name: entraAuthenticationSecretName
-            value: entraAuthenticationClientSecret
-          }
-        ] : [],
-        !empty(azureSpeechKey) ? [
-          {
-            name: 'azure-speech-key'
-            value: azureSpeechKey
-          }
-        ] : []
+        enableEntraAuthentication
+          ? [
+              {
+                name: entraAuthenticationSecretName
+                value: entraAuthenticationClientSecret
+              }
+            ]
+          : [],
+        !empty(azureSpeechKey)
+          ? [
+              {
+                name: 'azure-speech-key'
+                value: azureSpeechKey
+              }
+            ]
+          : []
       )
     }
     template: {
@@ -322,102 +338,110 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'foundry-chat-app'
           image: containerImage
-          env: concat([
-            {
-              name: 'AZURE_CLIENT_ID'
-              value: appIdentity.properties.clientId
-            }
-            {
-              name: 'PERSISTENCE_BACKEND'
-              value: 'cosmos'
-            }
-            {
-              name: 'APP_AUTH_MODE'
-              value: enableEntraAuthentication ? 'container_apps' : 'disabled'
-            }
-            {
-              name: 'APP_AUTH_TENANT_ID'
-              value: entraAuthenticationTenantId
-            }
-            {
-              name: 'ADMIN_PRINCIPALS'
-              value: adminPrincipals
-            }
-            {
-              name: 'FOUNDRY_PROJECT_ENDPOINT'
-              value: foundryProjectEndpoint
-            }
-            {
-              name: 'FOUNDRY_HOSTED_AGENT_NAME'
-              value: foundryHostedAgentName
-            }
-            {
-              name: 'FOUNDRY_OPENAI_ENDPOINT'
-              value: foundryOpenAiEndpoint
-            }
-            {
-              name: 'FOUNDRY_FLUX_ENDPOINT'
-              value: foundryFluxEndpoint
-            }
-            {
-              name: 'FOUNDRY_MODELS'
-              value: foundryModels
-            }
-            {
-              name: 'FOUNDRY_REALTIME_ENDPOINT'
-              value: empty(foundryRealtimeEndpoint) ? foundryProjectEndpoint : foundryRealtimeEndpoint
-            }
-            {
-              name: 'FOUNDRY_REALTIME_MODEL'
-              value: foundryRealtimeModel
-            }
-            {
-              name: 'AZURE_STORAGE_ACCOUNT_URL'
-              value: 'https://${storageAccount.name}.blob.${environment().suffixes.storage}'
-            }
-            {
-              name: 'AZURE_STORAGE_CONTAINER_NAME'
-              value: storageContainerName
-            }
-            {
-              name: 'AZURE_SEARCH_ENDPOINT'
-              value: searchEndpoint
-            }
-            {
-              name: 'AZURE_SEARCH_INDEX_NAME'
-              value: searchIndexName
-            }
-            {
-              name: 'FOUNDRY_EMBEDDING_MODEL'
-              value: foundryEmbeddingModel
-            }
-            {
-              name: 'AZURE_COSMOS_ENDPOINT'
-              value: cosmosEndpoint
-            }
-            {
-              name: 'AZURE_COSMOS_DATABASE_NAME'
-              value: cosmosDatabaseName
-            }
-            {
-              name: 'AZURE_COSMOS_CONTAINER_NAME'
-              value: cosmosContainerName
-            }
-          ], !empty(azureSpeechEndpoint) ? [
-            {
-              name: 'AZURE_SPEECH_ENDPOINT'
-              value: azureSpeechEndpoint
-            }
-            {
-              name: 'AZURE_SPEECH_TRANSCRIPTION_MODEL'
-              value: 'MAI-Transcribe-1.5'
-            }
-          ] : [], !empty(azureSpeechKey) ? [
-            {
-              name: 'AZURE_SPEECH_KEY'
-              secretRef: 'azure-speech-key'
-            }
-          ] : [])
+          env: concat(
+            [
+              {
+                name: 'AZURE_CLIENT_ID'
+                value: appIdentity.properties.clientId
+              }
+              {
+                name: 'PERSISTENCE_BACKEND'
+                value: 'cosmos'
+              }
+              {
+                name: 'APP_AUTH_MODE'
+                value: enableEntraAuthentication ? 'container_apps' : 'disabled'
+              }
+              {
+                name: 'APP_AUTH_TENANT_ID'
+                value: entraAuthenticationTenantId
+              }
+              {
+                name: 'ADMIN_PRINCIPALS'
+                value: adminPrincipals
+              }
+              {
+                name: 'FOUNDRY_PROJECT_ENDPOINT'
+                value: foundryProjectEndpoint
+              }
+              {
+                name: 'FOUNDRY_HOSTED_AGENT_NAME'
+                value: foundryHostedAgentName
+              }
+              {
+                name: 'FOUNDRY_OPENAI_ENDPOINT'
+                value: foundryOpenAiEndpoint
+              }
+              {
+                name: 'FOUNDRY_FLUX_ENDPOINT'
+                value: foundryFluxEndpoint
+              }
+              {
+                name: 'FOUNDRY_MODELS'
+                value: foundryModels
+              }
+              {
+                name: 'FOUNDRY_REALTIME_ENDPOINT'
+                value: empty(foundryRealtimeEndpoint) ? foundryProjectEndpoint : foundryRealtimeEndpoint
+              }
+              {
+                name: 'FOUNDRY_REALTIME_MODEL'
+                value: foundryRealtimeModel
+              }
+              {
+                name: 'AZURE_STORAGE_ACCOUNT_URL'
+                value: 'https://${storageAccount.name}.blob.${environment().suffixes.storage}'
+              }
+              {
+                name: 'AZURE_STORAGE_CONTAINER_NAME'
+                value: storageContainerName
+              }
+              {
+                name: 'AZURE_SEARCH_ENDPOINT'
+                value: searchEndpoint
+              }
+              {
+                name: 'AZURE_SEARCH_INDEX_NAME'
+                value: searchIndexName
+              }
+              {
+                name: 'FOUNDRY_EMBEDDING_MODEL'
+                value: foundryEmbeddingModel
+              }
+              {
+                name: 'AZURE_COSMOS_ENDPOINT'
+                value: cosmosEndpoint
+              }
+              {
+                name: 'AZURE_COSMOS_DATABASE_NAME'
+                value: cosmosDatabaseName
+              }
+              {
+                name: 'AZURE_COSMOS_CONTAINER_NAME'
+                value: cosmosContainerName
+              }
+            ],
+            !empty(azureSpeechEndpoint)
+              ? [
+                  {
+                    name: 'AZURE_SPEECH_ENDPOINT'
+                    value: azureSpeechEndpoint
+                  }
+                  {
+                    name: 'AZURE_SPEECH_TRANSCRIPTION_MODEL'
+                    value: 'MAI-Transcribe-1.5'
+                  }
+                ]
+              : [],
+            !empty(azureSpeechKey)
+              ? [
+                  {
+                    name: 'AZURE_SPEECH_KEY'
+                    secretRef: 'azure-speech-key'
+                  }
+                ]
+              : []
+          )
           resources: {
             cpu: json(containerCpu)
             memory: containerMemory
@@ -461,7 +485,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
     searchIndexDataContributorAssignment
     searchServiceContributorAssignment
     foundryUserAssignment
-    foundryOpenAiUserAssignment
+    foundryOpenAiContributorAssignment
     foundryAiDeveloperAssignment
   ]
 }
