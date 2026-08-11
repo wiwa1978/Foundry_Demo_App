@@ -108,9 +108,9 @@ def load_settings() -> FoundrySettings:
         tts_model=first_env(
             "FOUNDRY_TTS_MODEL",
             "AZURE_OPENAI_TTS_MODEL",
-            default="gpt-4o-mini-tts",
+            default="gpt-audio-mini",
         )
-        or "gpt-4o-mini-tts",
+        or "gpt-audio-mini",
         tts_voice=first_env("FOUNDRY_TTS_VOICE", default="alloy") or "alloy",
         speech_endpoint=first_env("AZURE_SPEECH_ENDPOINT"),
         speech_key=first_env("AZURE_SPEECH_KEY"),

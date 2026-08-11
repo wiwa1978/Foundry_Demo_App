@@ -134,7 +134,7 @@ expires after eight hours.
 | `FOUNDRY_REALTIME_ENDPOINT` | Optional OpenAI-compatible endpoint for the Realtime voice demo, usually `https://<resource>.services.ai.azure.com/openai/v1`. Defaults to `FOUNDRY_PROJECT_ENDPOINT` when omitted by deriving `/openai/v1` from the project endpoint. `AZURE_OPENAI_ENDPOINT` is also accepted. |
 | `FOUNDRY_REALTIME_MODEL` | Optional realtime deployment name used by the voice demo. Defaults to a realtime model in `FOUNDRY_MODELS`, or `gpt-realtime-2.1`. |
 | `FOUNDRY_TRANSCRIPTION_MODEL` | Optional OpenAI-compatible transcription deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-transcribe`. |
-| `FOUNDRY_TTS_MODEL` | Optional text-to-speech deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-tts`. |
+| `FOUNDRY_TTS_MODEL` | Optional text-to-speech deployment for the traditional voice pipeline. Defaults to `gpt-audio-mini`. |
 | `FOUNDRY_TTS_VOICE` | Optional TTS voice name for the traditional voice pipeline. Defaults to `alloy`. |
 | `AZURE_SPEECH_ENDPOINT` | Azure AI Speech custom-domain endpoint for Recorded Audio Transcription with the configured MAI model, and for Live translation. |
 | `AZURE_SPEECH_KEY` | Optional Azure AI Speech resource key fallback. By default the app uses Microsoft Entra ID through Azure CLI locally and managed identity in Azure. |
