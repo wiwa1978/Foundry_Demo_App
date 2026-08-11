@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+requiredVersions:
+  extensions:
+    azure.ai.agents: ">=1.0.0-beta.4"
+name: foundry-chat-research-assistant-hosted
+services:
+  hosted-assistant:
+    host: azure.ai.agent
+    project: src
+    language: python
+    codeConfiguration:
+      runtime: python_3_13
+      entryPoint: main.py
+    kind: hosted
+    name: hosted-assistant
+    description: Research assistant implemented with Microsoft Agent Framework and hosted by Foundry.
+    protocols:
+      - protocol: responses
+        version: 2.0.0
+    environmentVariables:
+      - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+        value: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+    container:
+      resources:
+        cpu: "0.5"
+        memory: 1Gi
+infra:
+  provider: microsoft.foundry

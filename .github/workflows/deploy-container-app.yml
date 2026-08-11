@@ -9,6 +9,7 @@ on:
       - ".github/workflows/ci.yml"
       - "app/**"
       - "frontend/**"
+      - "usecases_media/**"
       - "infra/**"
       - "scripts/wait-for-container-app.sh"
       - "scripts/smoke-test-container-app.sh"
@@ -48,6 +49,7 @@ env:
   CONTAINER_APP_NAME:          ${{ vars.CONTAINER_APP_NAME || 'ca-foundry-chat' }}
   CONTAINER_APPS_ENV_ID:       ${{ vars.CONTAINER_APPS_ENV_ID }}
   FOUNDRY_PROJECT_ENDPOINT:    ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+  FOUNDRY_HOSTED_AGENT_NAME:   ${{ vars.FOUNDRY_HOSTED_AGENT_NAME }}
   FOUNDRY_ACCOUNT_NAME:        ${{ vars.FOUNDRY_ACCOUNT_NAME || 'aifoundrydemo66fb' }}
   FOUNDRY_MODELS:              ${{ vars.FOUNDRY_MODELS }}
   FOUNDRY_EMBEDDING_MODEL:     ${{ vars.FOUNDRY_EMBEDDING_MODEL || 'text-embedding-3-small' }}
@@ -144,6 +146,7 @@ jobs:
               containerAppsEnvironmentId="${{ env.CONTAINER_APPS_ENV_ID }}" \
               foundryAccountName="${{ env.FOUNDRY_ACCOUNT_NAME }}" \
               foundryProjectEndpoint="${{ env.FOUNDRY_PROJECT_ENDPOINT }}" \
+              foundryHostedAgentName="${{ env.FOUNDRY_HOSTED_AGENT_NAME }}" \
               foundryModels="${{ env.FOUNDRY_MODELS }}" \
               foundryEmbeddingModel="${{ env.FOUNDRY_EMBEDDING_MODEL }}" \
               foundryRealtimeModel="${{ env.FOUNDRY_REALTIME_MODEL }}" \

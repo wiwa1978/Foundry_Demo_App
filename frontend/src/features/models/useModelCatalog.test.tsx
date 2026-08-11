@@ -160,7 +160,7 @@ describe("useModelCatalog", () => {
     const { result } = setup({ canUseProtectedApis: true });
     const staleSignal = vi.mocked(discoverModels).mock.calls[0][1];
 
-    act(() => vi.advanceTimersByTime(30_000));
+    act(() => vi.advanceTimersByTime(5 * 60_000));
     expect(staleSignal.aborted).toBe(true);
     await act(async () => {
       fresh.resolve(
@@ -226,11 +226,11 @@ describe("useModelCatalog", () => {
     });
     document.dispatchEvent(new Event("visibilitychange"));
     expect(discoverModels).toHaveBeenCalledTimes(2);
-    act(() => vi.advanceTimersByTime(30_000));
+    act(() => vi.advanceTimersByTime(5 * 60_000));
     expect(discoverModels).toHaveBeenCalledTimes(3);
 
     unmount();
-    act(() => vi.advanceTimersByTime(30_000));
+    act(() => vi.advanceTimersByTime(5 * 60_000));
     expect(discoverModels).toHaveBeenCalledTimes(3);
     if (visibilityDescriptor) {
       Object.defineProperty(document, "visibilityState", visibilityDescriptor);
@@ -358,7 +358,7 @@ describe("useModelCatalog", () => {
       result.current.setTtsModel("tts-b");
     });
 
-    act(() => vi.advanceTimersByTime(30_000));
+    act(() => vi.advanceTimersByTime(5 * 60_000));
     await flushPromises();
     expect(result.current.transcriptionModel).toBe("transcribe-next");
     expect(result.current.traditionalTranscriptionModel).toBe("whisper-next");

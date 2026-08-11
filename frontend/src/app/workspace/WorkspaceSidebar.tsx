@@ -1,3 +1,8 @@
+import type { DocumentSummary } from "@media/document_qa/frontend";
+import {
+  type LiveTranslationMode,
+  SidebarPipelineSelect,
+} from "@media/live_translation/frontend";
 import {
   Clock,
   GitCompareArrows,
@@ -45,9 +50,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { DocumentSummary } from "@/features/documentQa/types";
-import type { LiveTranslationMode } from "@/features/voice/types";
-import { SidebarPipelineSelect } from "@/features/voice/VoiceWorkspaces";
 import { cn } from "@/lib/utils";
 
 export type WorkspaceSidebarWorkspaceViewModel = {

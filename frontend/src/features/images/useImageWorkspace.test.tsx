@@ -147,6 +147,36 @@ describe("useImageWorkspace", () => {
     expect(result.current.result).toBeNull();
   });
 
+  it("keeps the completed image while a new prompt is generating", async () => {
+    vi.mocked(generateImage).mockResolvedValueOnce(
+      imageResponse("image-a", "first"),
+    );
+    const { result } = setup();
+    await waitFor(() => expect(result.current.model).toBe("image-a"));
+    act(() => result.current.setPrompt("first prompt"));
+    await act(async () => result.current.runGeneration());
+
+    let resolveRequest: (value: Response) => void = () => undefined;
+    vi.mocked(generateImage).mockImplementationOnce(
+      () => new Promise((resolve) => (resolveRequest = resolve)),
+    );
+    act(() => result.current.setPrompt("second prompt"));
+    act(() => void result.current.runGeneration());
+
+    await waitFor(() => expect(result.current.generating).toBe(true));
+    expect(result.current.submittedPrompt).toBe("second prompt");
+    expect(result.current.result).toMatchObject({
+      image_base64: "first",
+      prompt: "first prompt",
+    });
+
+    await act(async () => resolveRequest(imageResponse("image-a", "second")));
+    expect(result.current.result).toMatchObject({
+      image_base64: "second",
+      prompt: "second prompt",
+    });
+  });
+
   it("preserves partial comparison successes and per-model errors", async () => {
     vi.mocked(generateImage).mockImplementation((_client, request) =>
       request.model === "image-a"

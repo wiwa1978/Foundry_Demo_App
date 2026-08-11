@@ -155,6 +155,7 @@ def _is_prompt_policy_rejection(detail: str) -> bool:
             "content_policy_violation",
             "content violated rai policy",
             "prompt was filtered",
+            "request was rejected by the safety system",
         )
     )
 

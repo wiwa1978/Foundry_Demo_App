@@ -36,6 +36,11 @@ class ExternalServiceError(ApplicationError):
         )
 
 
+class ServiceAuthorizationError(ApplicationError):
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail=detail, status_code=403, code="service_forbidden")
+
+
 async def application_error_handler(
     request: Request,
     exc: ApplicationError,

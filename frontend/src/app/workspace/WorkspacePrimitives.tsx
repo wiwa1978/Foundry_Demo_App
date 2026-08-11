@@ -177,7 +177,7 @@ export function UseCaseComposer({
   value: string;
   disabled: boolean;
   submitting?: boolean;
-  disclaimer: string;
+  disclaimer?: string;
   error?: string;
   leftControls?: ReactNode;
   rightControls?: ReactNode;
@@ -288,9 +288,11 @@ export function UseCaseComposer({
           {error}
         </p>
       ) : null}
-      <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
-        {disclaimer}
-      </p>
+      {disclaimer ? (
+        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+          {disclaimer}
+        </p>
+      ) : null}
     </div>
   );
 }

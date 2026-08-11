@@ -18,7 +18,7 @@ import {
 } from "@/app/workspace/constants";
 import type { StatusMessage } from "@/app/workspace/contracts";
 
-const discoveryIntervalMs = 30_000;
+const discoveryIntervalMs = 5 * 60_000;
 
 type DesiredModelKind = "text" | "image";
 

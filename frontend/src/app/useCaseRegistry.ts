@@ -1,24 +1,31 @@
-import { browserVoiceUseCase } from "@/features/useCases/browserVoice";
-import { comparisonUseCase } from "@/features/useCases/comparison";
-import { documentQaUseCase } from "@/features/useCases/documentQa";
-import { imageComparisonUseCase } from "@/features/useCases/imageComparison";
-import { imageToImageUseCase } from "@/features/useCases/imageToImage";
-import { liveTranslationUseCase } from "@/features/useCases/liveTranslation";
-import { realtimeVoiceUseCase } from "@/features/useCases/realtimeVoice";
-import { textChatUseCase } from "@/features/useCases/textChat";
-import { textToImageUseCase } from "@/features/useCases/textToImage";
-import { traditionalVoiceUseCase } from "@/features/useCases/traditionalVoice";
-import { transcribeUseCase } from "@/features/useCases/transcribe";
-import { transcriptionComparisonUseCase } from "@/features/useCases/transcriptionComparison";
-import { voiceLiveUseCase } from "@/features/useCases/voiceLive";
+import { browserVoiceUseCase } from "@media/browser_voice/module";
+import { documentQaUseCase } from "@media/document_qa/module";
+import { imageComparisonUseCase } from "@media/image_comparison/module";
+import { imageToImageUseCase } from "@media/image_to_image/module";
+import { liveTranslationUseCase } from "@media/live_translation/module";
+import { realtimeVoiceUseCase } from "@media/realtime_voice/module";
+import { transcribeUseCase } from "@media/recorded_transcription/module";
+import { traditionalVoiceUseCase } from "@media/stt_chat_tts/module";
+import { textChatUseCase } from "@media/text_chat/module";
+import { comparisonUseCase } from "@media/text_chat_comparison/module";
+import { textToImageUseCase } from "@media/text_to_image/module";
+import { transcriptionComparisonUseCase } from "@media/transcription_comparison/module";
+import { voiceLiveUseCase } from "@media/voice_live/module";
+import { youtubeSummaryUseCase } from "@media/youtube_summary/module";
+
+import { agentResearchUseCase } from "@/features/useCases/agentResearch";
+import { hostedAgentUseCase } from "@/features/useCases/hostedAgent";
 
 export const useCaseModules = [
   textChatUseCase,
+  agentResearchUseCase,
+  hostedAgentUseCase,
   comparisonUseCase,
   documentQaUseCase,
   textToImageUseCase,
   imageComparisonUseCase,
   imageToImageUseCase,
+  youtubeSummaryUseCase,
   browserVoiceUseCase,
   traditionalVoiceUseCase,
   transcribeUseCase,

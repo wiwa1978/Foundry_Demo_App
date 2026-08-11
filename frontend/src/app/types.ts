@@ -1,5 +1,7 @@
 export type UseCaseId =
   | "text_chat"
+  | "agent_research"
+  | "hosted_agent"
   | "document_qa"
   | "comparison"
   | "browser_voice"
@@ -11,12 +13,21 @@ export type UseCaseId =
   | "live_translation"
   | "text_to_image"
   | "image_to_image"
-  | "image_comparison";
+  | "image_comparison"
+  | "youtube_summary";
 
 export type UseCaseIconName =
-  "chat" | "comparison" | "browserVoice" | "documents" | "image" | "voiceWave";
+  | "chat"
+  | "comparison"
+  | "browserVoice"
+  | "documents"
+  | "image"
+  | "video"
+  | "voiceWave";
 export type UseCaseWorkspace =
   | "chat"
+  | "agentResearch"
+  | "hostedAgent"
   | "comparison"
   | "image"
   | "imageEdit"
@@ -26,12 +37,17 @@ export type UseCaseWorkspace =
   | "voiceLive"
   | "liveTranslation"
   | "transcribe"
-  | "transcriptionComparison";
+  | "transcriptionComparison"
+  | "youtubeSummary";
 export type UseCaseModality = "text" | "image" | "audio" | "video";
+export type UseCaseCategory = "media" | "agents";
 
 export type UseCaseModule = {
   id: UseCaseId;
+  category?: UseCaseCategory;
   title: string;
+  typeLabel?: string;
+  frameworkLabel?: string;
   shortTitle: string;
   description: string;
   badge: string;

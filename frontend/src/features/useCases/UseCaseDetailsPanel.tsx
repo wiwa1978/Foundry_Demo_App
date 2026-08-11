@@ -29,6 +29,9 @@ export function UseCaseDetailsPanel({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge>{useCase.badge}</Badge>
+              <Badge variant="secondary">
+                {useCase.category === "agents" ? "Agents" : "Media"}
+              </Badge>
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 Use-case implementation
               </span>
@@ -39,6 +42,14 @@ export function UseCaseDetailsPanel({
             >
               {useCase.title}
             </h2>
+            {useCase.typeLabel ? (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <Badge>{useCase.typeLabel}</Badge>
+                {useCase.frameworkLabel ? (
+                  <Badge>{useCase.frameworkLabel}</Badge>
+                ) : null}
+              </div>
+            ) : null}
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
               {useCase.description}
             </p>

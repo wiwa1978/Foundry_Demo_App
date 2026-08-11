@@ -47,6 +47,9 @@ export type ConfigResponse = {
   is_configured: boolean;
   endpoint: string | null;
   models: string[];
+  is_agent_research_configured?: boolean;
+  is_hosted_agent_configured?: boolean;
+  hosted_agent_name?: string | null;
   is_realtime_configured: boolean;
   realtime_endpoint: string | null;
   realtime_model: string | null;

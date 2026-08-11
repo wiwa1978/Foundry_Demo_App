@@ -12,9 +12,10 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],
-      include: ["src/**/*.{ts,tsx}"],
+      include: ["src/**/*.{ts,tsx}", "../usecases_media/**/*.{ts,tsx}"],
       exclude: [
         "src/**/*.test.{ts,tsx}",
+        "../usecases_media/**/*.test.{ts,tsx}",
         "src/components/ui/**",
         "src/test/**",
         "src/**/types.ts",
@@ -33,9 +34,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@media": path.resolve(__dirname, "../usecases_media"),
     },
   },
   server: {
+    fs: {
+      allow: [path.resolve(__dirname, "..")],
+    },
     port: 5173,
     proxy: {
       "/api": {

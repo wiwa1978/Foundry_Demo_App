@@ -116,6 +116,7 @@ expires after eight hours.
 | `PERSISTENCE_BACKEND` | Persistence provider: `sqlite` (default, recommended locally) or `cosmos` (used by Azure deployments). This MVP resets app tables/container data instead of migrating incompatible schemas. |
 | `SQLITE_DATABASE_PATH` | Optional SQLite file path. Defaults to `data/foundry_chat.sqlite3`. Schema version mismatches deliberately reset the app tables during startup. |
 | `FOUNDRY_PROJECT_ENDPOINT` | Microsoft Foundry project endpoint, usually `https://<resource>.services.ai.azure.com/api/projects/<project-name>`. The app derives the OpenAI-compatible `/openai/v1` model endpoint from this value for inference. `AZURE_AI_PROJECT_ENDPOINT` and `AZURE_AIPROJECT_ENDPOINT` are also accepted. |
+| `FOUNDRY_HOSTED_AGENT_NAME` | Optional hosted agent name. Defaults to `hosted-assistant`, matching `usecases_agents/research_assistant_hosted/microsoft_agent_framework/azure.yaml`. |
 | `FOUNDRY_OPENAI_ENDPOINT` | Optional compatibility fallback if you want to provide the direct endpoint explicitly, usually `https://<resource>.services.ai.azure.com/openai/v1`. `AZURE_OPENAI_ENDPOINT` is also accepted. |
 | `FOUNDRY_FLUX_ENDPOINT` | Optional FLUX provider endpoint override, usually `https://<resource>.services.ai.azure.com`. Defaults to the resource origin derived from `FOUNDRY_PROJECT_ENDPOINT`. |
 | `FOUNDRY_MODELS` | Optional comma-separated deployment names used to seed the configured model registry. New deployments and local endpoints are stored in the database, so this does not need to be updated after setup. |
@@ -192,22 +193,30 @@ The chat composer includes a model dropdown that stays synchronized with the sid
 
 The top bar includes a **Use cases** marketplace. Use cases are local UI presets that focus the app for a scenario without changing the underlying Foundry configuration. The app always opens in **Text Chat** after a refresh or browser restart.
 
+Browse the source-oriented catalogs under [`usecases_media`](usecases_media/README.md) and [`usecases_agents`](usecases_agents/README.md). Each catalog provides one implementation map per marketplace use case.
+
 | Use case | What changes |
 | --- | --- |
-| **Text Chat** | Shows the clean single-model chat workspace and hides voice/comparison sidebar controls. [Browse the implementation](frontend/src/features/textChat/README.md). |
-| **Document Q&A** | Shows document upload/index controls, stores original files in Blob Storage, stores chunks in Azure AI Search, retrieves relevant chunks with Foundry embeddings, and answers with the selected Foundry chat deployment. [Browse the implementation](frontend/src/features/documentQa/README.md). |
-| **Side by Side comparison** | Opens the comparison workspace and shows model multi-select controls. [Browse the implementation](frontend/src/features/comparison/README.md). |
-| **Browser based voice** | Keeps the text chat workspace and exposes browser dictation/readback controls. [Browse voice implementations](frontend/src/features/voice/README.md). |
-| **STT -> Chat -> TTS** | Opens the traditional Foundry voice pipeline workspace. [Browse voice implementations](frontend/src/features/voice/README.md). |
-| **Recorded Audio Transcription** | Records or uploads completed audio and returns a finalized transcript using `GPT-transcribe`, `GPT-4o-transcribe`, `GPT-4o-mini-transcribe`, or `MAI-Transcribe-1.5`. [Browse voice implementations](frontend/src/features/voice/README.md). |
-| **Live translation** | Streams microphone audio to Azure Speech Live Interpreter and returns translated audio. [Browse voice implementations](frontend/src/features/voice/README.md). |
-| **Realtime Speech in / Speech out** | Opens the Foundry Realtime WebRTC workspace. [Browse voice implementations](frontend/src/features/voice/README.md). |
+| **Text Chat** | Shows the clean single-model chat workspace and hides voice/comparison sidebar controls. [Browse the implementation](usecases_media/text_chat/README.md). |
+| **Research Assistant Agent (Prompt Agent)** | Invokes the portal-built `ResearchAgent` by agent reference. [Browse the implementation](usecases_agents/research_assistant_prompt/README.md). |
+| **Research Assistant Agent (Hosted Agent)** | Invokes custom Microsoft Agent Framework code deployed and registered in Foundry Agent Service. [Browse implementations and deployment guidance](usecases_agents/research_assistant_hosted/README.md). |
+| **Document Q&A** | Shows document upload/index controls, stores original files in Blob Storage, stores chunks in Azure AI Search, retrieves relevant chunks with Foundry embeddings, and answers with the selected Foundry chat deployment. [Browse the implementation](usecases_media/document_qa/README.md). |
+| **Side by Side comparison** | Opens the comparison workspace and shows model multi-select controls. [Browse the implementation](usecases_media/text_chat_comparison/README.md). |
+| **Browser based voice** | Keeps the text chat workspace and exposes browser dictation/readback controls. [Browse the implementation](usecases_media/browser_voice/README.md). |
+| **STT -> Chat -> TTS** | Opens the traditional Foundry voice pipeline workspace. [Browse the implementation](usecases_media/stt_chat_tts/README.md). |
+| **Recorded Audio Transcription** | Records or uploads completed audio and returns a finalized transcript using `GPT-transcribe`, `GPT-4o-transcribe`, `GPT-4o-mini-transcribe`, or `MAI-Transcribe-1.5`. [Browse the implementation](usecases_media/recorded_transcription/README.md). |
+| **YouTube Video Summarization** | Retrieves available captions from a public YouTube URL, falls back to bounded audio transcription when needed, and summarizes long transcripts with the selected Foundry chat model. [Browse the implementation](usecases_media/youtube_summary/README.md). |
+| **Live translation** | Streams microphone audio to Azure Speech Live Interpreter and returns translated audio. [Browse the implementation](usecases_media/live_translation/README.md). |
+| **Realtime Speech in / Speech out** | Opens the Foundry Realtime WebRTC workspace. [Browse the implementation](usecases_media/realtime_voice/README.md). |
 
 Settings, API trace, metrics, previous conversations, and model settings remain available outside the marketplace because they are shared app capabilities.
 
 See the [use case implementation index](docs/use-cases/README.md) for stable links from each demo
 scenario to its frontend, backend, and tests. Text Chat is the first fully extracted reference slice;
 the remaining use cases are migrated incrementally.
+
+For the planned **Microsoft Agent Framework** research assistant demo, see
+[docs/agent-framework-coding-prompt.md](docs/agent-framework-coding-prompt.md).
 
 ## Microsoft Entra sign-in
 
@@ -255,7 +264,7 @@ Use cases are intentionally modular so the app can be shared as a clean customer
 ```text
 frontend/src/app/types.ts                 Shared use-case contracts
 frontend/src/app/useCaseRegistry.ts       Ordered registry shown in the marketplace
-frontend/src/features/useCases/*.ts       One metadata module per use case
+usecases_media/*/module.ts                One executable marketplace module per media use case
 frontend/src/features/marketplace/        Marketplace UI
 frontend/src/features/shared/             Shared visuals such as SoundWaveIcon
 frontend/src/features/<feature>/README.md Customer-facing implementation walkthrough
@@ -266,7 +275,7 @@ app/services/                              Shared business orchestration
 app/gateways/                              External service boundaries
 ```
 
-To add a new use case, create a module in `frontend/src/features/useCases/` that exports a `UseCaseModule`, then add it to `frontend/src/app/useCaseRegistry.ts`. The app shell consumes the registry for the marketplace and selected use-case labels, while shared backend routes and model settings remain reusable across use cases.
+To add a media use case, create a folder under `usecases_media/` with `module.ts`, `frontend.ts`, and, when needed, `backend.py`, then register the module in `frontend/src/app/useCaseRegistry.ts`. Agent use cases follow the equivalent structure under `usecases_agents/`.
 
 Each `UseCaseModule` owns its marketplace metadata and behavior flags, including the workspace type, whether browser voice controls are shown, whether comparison controls are shown, and whether composer dictation is enabled. This keeps use-case decisions out of the generic app shell.
 

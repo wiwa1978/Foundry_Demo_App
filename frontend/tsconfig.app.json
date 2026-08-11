@@ -19,8 +19,9 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@media/*": ["../usecases_media/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../usecases_media/**/*.ts", "../usecases_media/**/*.tsx"]
 }

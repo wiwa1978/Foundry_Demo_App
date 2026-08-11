@@ -54,7 +54,14 @@ def discover_models() -> dict[str, Any]:
     try:
         deployments = list_foundry_deployments()
     except Exception as exc:
-        logger.exception("Model discovery failed", exc_info=exc)
+        status_code = getattr(exc, "status_code", None)
+        if status_code in {401, 403}:
+            logger.warning(
+                "Model discovery unavailable status=%s; using configured model names.",
+                status_code,
+            )
+        else:
+            logger.exception("Model discovery failed", exc_info=exc)
         return {
             "models": configured_models,
             "transcription_models": list(

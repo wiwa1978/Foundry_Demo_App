@@ -9,6 +9,9 @@ class ConfigResponse(BaseModel):
     endpoint: str | None
     auth_mode: str
     models: list[str]
+    is_agent_research_configured: bool
+    is_hosted_agent_configured: bool
+    hosted_agent_name: str | None
     is_realtime_configured: bool
     realtime_endpoint: str | None
     realtime_model: str | None

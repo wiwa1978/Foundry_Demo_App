@@ -1,8 +1,8 @@
+import { textChatUseCase } from "@media/text_chat/module";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { textChatUseCase } from "./textChat";
 import { UseCaseDetailsPanel } from "./UseCaseDetailsPanel";
 
 describe("UseCaseDetailsPanel", () => {

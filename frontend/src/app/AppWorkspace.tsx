@@ -1,3 +1,20 @@
+import { useBrowserSpeech } from "@media/browser_voice/frontend";
+import {
+  documentAnswerStreamEndpoint,
+  useDocumentLibrary,
+} from "@media/document_qa/frontend";
+import { useImageWorkspace } from "@media/image_comparison/frontend";
+import { useLiveTranslation } from "@media/live_translation/frontend";
+import { useRealtimeVoice } from "@media/realtime_voice/frontend";
+import { useTranscriptionSession } from "@media/recorded_transcription/frontend";
+import { useTraditionalVoiceSession } from "@media/stt_chat_tts/frontend";
+import { useChatStream } from "@media/text_chat/frontend";
+import {
+  comparisonStreamEndpoint,
+  streamComparison,
+} from "@media/text_chat_comparison/frontend";
+import { useVoiceLive } from "@media/voice_live/frontend";
+import { useYouTubeSummary } from "@media/youtube_summary/frontend";
 import { GitCompareArrows, HelpCircle, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -34,14 +51,9 @@ import { WorkspaceSidebar } from "@/app/workspace/WorkspaceSidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { useAdminDeployment } from "@/features/admin/useAdminDeployment";
 import { useLiveTranslationSettings } from "@/features/admin/useLiveTranslationSettings";
-import {
-  comparisonStreamEndpoint,
-  streamComparison,
-} from "@/features/comparison/api";
-import { documentAnswerStreamEndpoint } from "@/features/documentQa/api";
-import { useDocumentLibrary } from "@/features/documentQa/useDocumentLibrary";
+import { useAgentResearchStream } from "@/features/agentResearch/useAgentResearchStream";
 import { useGuardrailComparison } from "@/features/guardrails/useGuardrailComparison";
-import { useImageWorkspace } from "@/features/images/useImageWorkspace";
+import { useHostedAgentStream } from "@/features/hostedAgent/useHostedAgentStream";
 import { UseCaseMarketplace } from "@/features/marketplace/UseCaseMarketplace";
 import { useModelMetrics } from "@/features/metrics/useModelMetrics";
 import { useModelCatalog } from "@/features/models/useModelCatalog";
@@ -52,14 +64,7 @@ import type {
   ReasoningEffort,
   TextChatRequest,
 } from "@/features/textChat/types";
-import { useChatStream } from "@/features/textChat/useChatStream";
 import { UseCaseDetailsPanel } from "@/features/useCases/UseCaseDetailsPanel";
-import { useBrowserSpeech } from "@/features/voice/useBrowserSpeech";
-import { useLiveTranslation } from "@/features/voice/useLiveTranslation";
-import { useRealtimeVoice } from "@/features/voice/useRealtimeVoice";
-import { useTraditionalVoiceSession } from "@/features/voice/useTraditionalVoiceSession";
-import { useTranscriptionSession } from "@/features/voice/useTranscriptionSession";
-import { useVoiceLive } from "@/features/voice/useVoiceLive";
 import { cn } from "@/lib/utils";
 
 import { useAppBootstrap } from "./useAppBootstrap";
@@ -241,6 +246,11 @@ export default function AppWorkspace() {
     voice: config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural",
   });
   const liveTranslation = useLiveTranslation();
+  const youtubeSummary = useYouTubeSummary({
+    fetchClient: apiTrace.tracedFetch,
+    appendFoundryTrace: apiTrace.appendFoundryTrace,
+    appendFoundryResponseTrace: apiTrace.appendFoundryResponseTrace,
+  });
   const chatStream = useChatStream({
     fetchClient: apiTrace.tracedFetch,
     sessionRef: useCaseSessionRef,
@@ -282,6 +292,12 @@ export default function AppWorkspace() {
       });
     },
     speakResponses,
+  });
+  const agentResearch = useAgentResearchStream({
+    fetchClient: apiTrace.tracedFetch,
+  });
+  const hostedAgent = useHostedAgentStream({
+    fetchClient: apiTrace.tracedFetch,
   });
   const cancelChatStreamRef = useRef(chatStream.cancel);
   cancelChatStreamRef.current = chatStream.cancel;
@@ -334,6 +350,8 @@ export default function AppWorkspace() {
     }
     if (useCase !== activeUseCase) {
       chatStream.cancel();
+      agentResearch.reset();
+      hostedAgent.reset();
       useCaseSessionRef.current += 1;
       setCurrentConversationId(null);
       setMessages([]);
@@ -370,6 +388,9 @@ export default function AppWorkspace() {
     }
     if (nextUseCase.workspace !== "transcribe") {
       transcription.invalidate();
+    }
+    if (nextUseCase.workspace !== "youtubeSummary") {
+      youtubeSummary.invalidate();
     }
   }
 
@@ -558,6 +579,20 @@ export default function AppWorkspace() {
           )
         : Boolean(activeModel));
   const authDisplayName = auth?.name || auth?.email || "Signed in";
+  const youtubeTranscriptionModels = Array.from(
+    new Set(
+      [
+        ...transcriptionModels,
+        config?.speech_transcription_model,
+        config?.transcription_model,
+      ].filter((model): model is string => Boolean(model)),
+    ),
+  );
+  const youtubeTranscriptionModel = youtubeTranscriptionModels.includes(
+    transcriptionModel,
+  )
+    ? transcriptionModel
+    : (youtubeTranscriptionModels[0] ?? "");
   const contentRouterProps: WorkspaceContentRouterProps = {
     route: {
       view: activeView,
@@ -742,6 +777,27 @@ export default function AppWorkspace() {
       policyNames: guardrailComparison.activePolicies,
       deploymentPolicyName: guardrailComparison.deploymentPolicy?.policy_name,
     },
+    youtubeSummary: {
+      url: youtubeSummary.url,
+      language: youtubeSummary.language,
+      model: activeModel,
+      models: textModels,
+      transcriptionModel: youtubeTranscriptionModel,
+      transcriptionModels: youtubeTranscriptionModels,
+      result: youtubeSummary.result,
+      loading: youtubeSummary.loading,
+      error: youtubeSummary.error,
+      onUrlChange: youtubeSummary.setUrl,
+      onLanguageChange: youtubeSummary.setLanguage,
+      onModelChange: setActiveModel,
+      onTranscriptionModelChange: setTranscriptionModel,
+      onSummarize: () =>
+        void youtubeSummary.summarize(
+          activeModel,
+          youtubeTranscriptionModel || null,
+          reasoningEffort === "default" ? null : reasoningEffort,
+        ),
+    },
     chat: {
       activeModel,
       models: textModels,
@@ -760,6 +816,37 @@ export default function AppWorkspace() {
       onToggleDictation: toggleDictation,
       onReasoningEffortChange: setReasoningEffort,
       onOpenUseCases: () => setUseCaseMarketplaceOpen(true),
+    },
+    agentResearch: {
+      configured: config?.is_agent_research_configured ?? false,
+      projectEndpoint: config?.endpoint ?? null,
+      question: agentResearch.question,
+      answer: agentResearch.answer,
+      steps: agentResearch.steps,
+      citations: agentResearch.citations,
+      runConfig: agentResearch.runConfig,
+      isRunning: agentResearch.isRunning,
+      error: agentResearch.error,
+      trace: agentResearch.trace,
+      traceLoading: agentResearch.traceLoading,
+      traceError: agentResearch.traceError,
+      onQuestionChange: agentResearch.setQuestion,
+      onSubmit: () => void agentResearch.submit(),
+      onCancel: agentResearch.cancel,
+    },
+    hostedAgent: {
+      configured: config?.is_hosted_agent_configured ?? false,
+      agentName: config?.hosted_agent_name ?? null,
+      projectEndpoint: config?.endpoint ?? null,
+      message: hostedAgent.message,
+      answer: hostedAgent.answer,
+      steps: hostedAgent.steps,
+      runConfig: hostedAgent.runConfig,
+      isRunning: hostedAgent.isRunning,
+      error: hostedAgent.error,
+      onMessageChange: hostedAgent.setMessage,
+      onSubmit: () => void hostedAgent.submit(),
+      onCancel: hostedAgent.cancel,
     },
   };
   return (
@@ -956,30 +1043,37 @@ export default function AppWorkspace() {
                               : activeUseCaseDetails.workspace === "comparison"
                                 ? `Comparing ${selected.length} model endpoint${selected.length === 1 ? "" : "s"}`
                                 : activeUseCaseDetails.workspace ===
-                                    "transcriptionComparison"
-                                  ? `Comparing ${selectedTranscriptions.length} transcription endpoint${selectedTranscriptions.length === 1 ? "" : "s"}`
-                                  : activeUseCase === "document_qa"
-                                    ? `${documentLibrary.documents.length} indexed document${documentLibrary.documents.length === 1 ? "" : "s"} - active model: ${formatModelName(activeModel)}`
-                                    : activeUseCaseDetails.workspace ===
-                                          "traditionalVoice" ||
-                                        activeUseCaseDetails.workspace ===
-                                          "transcribe" ||
-                                        activeUseCaseDetails.workspace ===
-                                          "realtimeVoice" ||
-                                        activeUseCaseDetails.workspace ===
-                                          "voiceLive" ||
-                                        activeUseCaseDetails.workspace ===
-                                          "liveTranslation"
-                                      ? activeUseCaseDetails.description
-                                      : `${
-                                          currentConversationId
-                                            ? (conversations.find(
-                                                (item) =>
-                                                  item.id ===
-                                                  currentConversationId,
-                                              )?.title ?? "Saved chat")
-                                            : "New unsaved chat"
-                                        } - active model: ${formatModelName(activeModel)}`}
+                                        "agentResearch" ||
+                                      activeUseCaseDetails.workspace ===
+                                        "hostedAgent"
+                                  ? activeUseCaseDetails.description
+                                  : activeUseCaseDetails.workspace ===
+                                      "transcriptionComparison"
+                                    ? `Comparing ${selectedTranscriptions.length} transcription endpoint${selectedTranscriptions.length === 1 ? "" : "s"}`
+                                    : activeUseCase === "document_qa"
+                                      ? `${documentLibrary.documents.length} indexed document${documentLibrary.documents.length === 1 ? "" : "s"} - active model: ${formatModelName(activeModel)}`
+                                      : activeUseCaseDetails.workspace ===
+                                            "traditionalVoice" ||
+                                          activeUseCaseDetails.workspace ===
+                                            "transcribe" ||
+                                          activeUseCaseDetails.workspace ===
+                                            "realtimeVoice" ||
+                                          activeUseCaseDetails.workspace ===
+                                            "voiceLive" ||
+                                          activeUseCaseDetails.workspace ===
+                                            "liveTranslation" ||
+                                          activeUseCaseDetails.workspace ===
+                                            "youtubeSummary"
+                                        ? activeUseCaseDetails.description
+                                        : `${
+                                            currentConversationId
+                                              ? (conversations.find(
+                                                  (item) =>
+                                                    item.id ===
+                                                    currentConversationId,
+                                                )?.title ?? "Saved chat")
+                                              : "New unsaved chat"
+                                          } - active model: ${formatModelName(activeModel)}`}
                 </p>
               </div>
               <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">

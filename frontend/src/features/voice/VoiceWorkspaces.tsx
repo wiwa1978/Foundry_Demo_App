@@ -1169,6 +1169,15 @@ export function LiveTranslationHero({
           {error}
         </p>
       ) : null}
+      {status === "live" && !transcript.length ? (
+        <p
+          className="mt-4 text-sm text-slate-600 dark:text-slate-300"
+          role="status"
+        >
+          Listening... Speak a complete phrase. Its translation will appear
+          here and play through your speakers.
+        </p>
+      ) : null}
       {transcript.length ? (
         <div className="mt-5 grid gap-2 text-left">
           {transcript.map((entry) => (

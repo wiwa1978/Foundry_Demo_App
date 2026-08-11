@@ -56,15 +56,18 @@ def _log_authorization_posture() -> None:
 
 def create_app() -> FastAPI:
     from app.features.admin.router import router as admin_router
+    from app.features.agent_research.router import router as agent_research_router
     from app.features.auth.router import router as auth_router
-    from app.features.comparison.router import router as comparison_router
     from app.features.conversations.router import router as conversations_router
-    from app.features.document_qa.router import router as document_qa_router
-    from app.features.images.router import router as images_router
+    from app.features.hosted_agent.router import router as hosted_agent_router
     from app.features.models.router import router as models_router
     from app.features.system.router import router as system_router
-    from app.features.text_chat.router import router as text_chat_router
-    from app.features.voice.router import router as voice_router
+    from usecases_media.document_qa.backend import router as document_qa_router
+    from usecases_media.stt_chat_tts.backend import router as voice_router
+    from usecases_media.text_chat.backend import router as text_chat_router
+    from usecases_media.text_chat_comparison.backend import router as comparison_router
+    from usecases_media.text_to_image.backend import router as images_router
+    from usecases_media.youtube_summary.backend import router as youtube_summary_router
 
     application = FastAPI(title="Foundry Chat App", lifespan=lifespan)
     mount_static_assets(application)
@@ -77,9 +80,12 @@ def create_app() -> FastAPI:
     application.include_router(text_chat_router)
     application.include_router(document_qa_router)
     application.include_router(voice_router)
+    application.include_router(youtube_summary_router)
     application.include_router(images_router)
     application.include_router(comparison_router)
     application.include_router(conversations_router)
+    application.include_router(agent_research_router)
+    application.include_router(hosted_agent_router)
     application.include_router(system_router)
     application.include_router(auth_router)
     application.include_router(models_router)

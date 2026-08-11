@@ -1,0 +1,26 @@
+# Media use cases
+
+Each media marketplace use case has a dedicated executable module containing:
+
+- `module.ts` for marketplace registration and behavior metadata.
+- `frontend.ts` as the public frontend entry point.
+- `backend.py` as the public backend router entry point when the use case has a server component.
+
+Shared implementation remains single-source in the existing capability slices and is exposed through these use-case entry points, avoiding duplicated voice and image runtimes.
+
+| Modality | Use case | Implementation map |
+| --- | --- | --- |
+| Text | Text Chat | [`text_chat`](text_chat/README.md) |
+| Text | Document Q&A | [`document_qa`](document_qa/README.md) |
+| Text | Side by Side - Text Chat | [`text_chat_comparison`](text_chat_comparison/README.md) |
+| Audio | Browser based voice | [`browser_voice`](browser_voice/README.md) |
+| Audio | STT -> Chat -> TTS | [`stt_chat_tts`](stt_chat_tts/README.md) |
+| Audio | Recorded Audio Transcription | [`recorded_transcription`](recorded_transcription/README.md) |
+| Audio | Side by Side - Recorded Audio Transcription | [`transcription_comparison`](transcription_comparison/README.md) |
+| Audio | Realtime Speech in / Speech out | [`realtime_voice`](realtime_voice/README.md) |
+| Audio | Voice Live travel concierge | [`voice_live`](voice_live/README.md) |
+| Audio | Live translation | [`live_translation`](live_translation/README.md) |
+| Image | Text to Image | [`text_to_image`](text_to_image/README.md) |
+| Image | Image to Image | [`image_to_image`](image_to_image/README.md) |
+| Image | Side by Side - Text Image | [`image_comparison`](image_comparison/README.md) |
+| Video | YouTube Video Summarization | [`youtube_summary`](youtube_summary/README.md) |

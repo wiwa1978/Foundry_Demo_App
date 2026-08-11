@@ -8,6 +8,7 @@ describe("useCaseModules", () => {
 
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids[0]).toBe("text_chat");
+    expect(ids).toContain("youtube_summary");
   });
 
   it("provides complete marketplace metadata", () => {

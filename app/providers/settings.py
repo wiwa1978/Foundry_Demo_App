@@ -21,6 +21,8 @@ class FoundrySettings:
     voice_live_model: str = "gpt-realtime"
     voice_live_voice: str = "en-US-Ava:DragonHDLatestNeural"
     flux_endpoint: str | None = None
+    hosted_agent_name: str | None = None
+    application_insights_resource_id: str | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -33,6 +35,14 @@ class FoundrySettings:
     @property
     def is_traditional_voice_configured(self) -> bool:
         return bool(self.endpoint and self.transcription_model and self.tts_model)
+
+    @property
+    def is_agent_research_configured(self) -> bool:
+        return bool(self.endpoint)
+
+    @property
+    def is_hosted_agent_configured(self) -> bool:
+        return bool(self.endpoint and self.hosted_agent_name)
 
     @property
     def is_speech_transcription_configured(self) -> bool:
@@ -113,4 +123,12 @@ def load_settings() -> FoundrySettings:
         )
         or "en-US-Ava:DragonHDLatestNeural",
         flux_endpoint=first_env("FOUNDRY_FLUX_ENDPOINT"),
+        hosted_agent_name=first_env(
+            "FOUNDRY_HOSTED_AGENT_NAME", default="hosted-assistant"
+        )
+        or "hosted-assistant",
+        application_insights_resource_id=first_env(
+            "FOUNDRY_APPLICATION_INSIGHTS_RESOURCE_ID",
+            "APPLICATIONINSIGHTS_RESOURCE_ID",
+        ),
     )

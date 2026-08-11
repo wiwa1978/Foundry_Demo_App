@@ -115,6 +115,20 @@ describe("useLiveTranslation", () => {
     expect(result.current.error).toBe("Live Interpreter connection closed.");
   });
 
+  it("reports when the provider stops the interpreter session", async () => {
+    const { result } = renderHook(() => useLiveTranslation());
+
+    await act(async () => result.current.start());
+    act(() =>
+      MockWebSocket.instances[0].emitMessage(
+        JSON.stringify({ type: "session_stopped" }),
+      ),
+    );
+
+    expect(result.current.status).toBe("idle");
+    expect(result.current.error).toContain("stopped listening");
+  });
+
   it("cleans up provider errors and reports unsupported browsers", async () => {
     const media = installMediaSessionMocks();
     const { result } = renderHook(() => useLiveTranslation());

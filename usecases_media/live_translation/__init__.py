@@ -1,0 +1,1 @@
+"""Live translation use case."""

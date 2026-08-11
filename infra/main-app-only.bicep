@@ -69,6 +69,9 @@ param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-hellowo
 @description('Foundry project endpoint.')
 param foundryProjectEndpoint string
 
+@description('Optional code-hosted Foundry agent name.')
+param foundryHostedAgentName string = ''
+
 @description('Optional Foundry OpenAI-compatible endpoint override.')
 param foundryOpenAiEndpoint string = ''
 
@@ -231,6 +234,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'FOUNDRY_RESOURCE_GROUP',       value: sharedResourceGroupName }
             { name: 'FOUNDRY_ACCOUNT_NAME',         value: foundryAccountName }
             { name: 'FOUNDRY_PROJECT_ENDPOINT',     value: foundryProjectEndpoint }
+            { name: 'FOUNDRY_HOSTED_AGENT_NAME',   value: foundryHostedAgentName }
             { name: 'FOUNDRY_OPENAI_ENDPOINT',      value: foundryOpenAiEndpoint }
             { name: 'FOUNDRY_FLUX_ENDPOINT',        value: foundryFluxEndpoint }
             { name: 'FOUNDRY_MODELS',               value: foundryModels }

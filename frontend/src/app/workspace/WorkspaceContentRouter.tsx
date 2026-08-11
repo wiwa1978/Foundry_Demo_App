@@ -1,3 +1,23 @@
+import { ImageComparisonWorkspace } from "@media/image_comparison/frontend";
+import { ImageToImageWorkspace } from "@media/image_to_image/frontend";
+import {
+  LiveTranslationHero,
+  type LiveTranslationMode,
+} from "@media/live_translation/frontend";
+import { RealtimeVoiceHero } from "@media/realtime_voice/frontend";
+import { TranscriptionWorkspace } from "@media/recorded_transcription/frontend";
+import {
+  TraditionalVoiceWorkspace,
+  type TraditionalVoiceRequest,
+} from "@media/stt_chat_tts/frontend";
+import { ComparisonWorkspace } from "@media/text_chat_comparison/frontend";
+import { TextToImageWorkspace } from "@media/text_to_image/frontend";
+import { TranscriptionComparisonWorkspace } from "@media/transcription_comparison/frontend";
+import { VoiceLiveHero } from "@media/voice_live/frontend";
+import {
+  type YouTubeSummaryResult,
+  YouTubeSummaryWorkspace,
+} from "@media/youtube_summary/frontend";
 import {
   Infinity as InfinityIcon,
   LogIn,
@@ -36,25 +56,18 @@ import {
   UseCaseComposer,
 } from "@/app/workspace/WorkspacePrimitives";
 import { Button } from "@/components/ui/button";
-import { ComparisonWorkspace } from "@/features/comparison/ComparisonWorkspace";
+import { AgentResearchWorkspace } from "@/features/agentResearch/AgentResearchWorkspace";
+import type {
+  AgentResearchCitation,
+  AgentResearchRunConfig,
+  AgentResearchStep,
+  AgentResearchTrace,
+} from "@/features/agentResearch/types";
 import { GuardrailComparisonWorkspace } from "@/features/guardrails/GuardrailWorkspaces";
-import {
-  ImageComparisonWorkspace,
-  ImageToImageWorkspace,
-  TextToImageWorkspace,
-} from "@/features/images/ImageWorkspaces";
+import { HostedAgentWorkspace } from "@/features/hostedAgent/HostedAgentWorkspace";
+import type { HostedAgentRunConfig, HostedAgentStep } from "@/features/hostedAgent/types";
 import { ChatMessageHistory } from "@/features/textChat/ChatMessages";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
-import type { LiveTranslationMode } from "@/features/voice/types";
-import type { TraditionalVoiceRequest } from "@/features/voice/useTraditionalVoiceSession";
-import {
-  LiveTranslationHero,
-  RealtimeVoiceHero,
-  TraditionalVoiceWorkspace,
-  TranscriptionComparisonWorkspace,
-  TranscriptionWorkspace,
-  VoiceLiveHero,
-} from "@/features/voice/VoiceWorkspaces";
 import { cn } from "@/lib/utils";
 
 export type WorkspaceContentRoute = {
@@ -78,6 +91,9 @@ export type WorkspaceMetricsViewModel = {
   days: number;
   loading: boolean;
   error: string;
+  trace: AgentResearchTrace | null;
+  traceLoading: boolean;
+  traceError: string;
   setModel: (model: string) => void;
   setDays: (days: number) => void;
   refresh: () => Promise<void>;
@@ -266,6 +282,23 @@ export type WorkspaceGuardrailsViewModel = {
   deploymentPolicyName?: string | null;
 };
 
+export type WorkspaceYouTubeSummaryViewModel = {
+  url: string;
+  language: string;
+  model: string;
+  models: string[];
+  transcriptionModel: string;
+  transcriptionModels: string[];
+  result: YouTubeSummaryResult | null;
+  loading: boolean;
+  error: string;
+  onUrlChange: (value: string) => void;
+  onLanguageChange: (value: string) => void;
+  onModelChange: (value: string) => void;
+  onTranscriptionModelChange: (value: string) => void;
+  onSummarize: () => void;
+};
+
 export type WorkspaceChatViewModel = {
   activeModel: string;
   models: string[];
@@ -286,6 +319,36 @@ export type WorkspaceChatViewModel = {
   onOpenUseCases: () => void;
 };
 
+export type WorkspaceAgentResearchViewModel = {
+  configured: boolean;
+  projectEndpoint: string | null;
+  question: string;
+  answer: string;
+  steps: AgentResearchStep[];
+  citations: AgentResearchCitation[];
+  runConfig: AgentResearchRunConfig | null;
+  isRunning: boolean;
+  error: string;
+  onQuestionChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+};
+
+export type WorkspaceHostedAgentViewModel = {
+  configured: boolean;
+  agentName: string | null;
+  projectEndpoint: string | null;
+  message: string;
+  answer: string;
+  steps: HostedAgentStep[];
+  runConfig: HostedAgentRunConfig | null;
+  isRunning: boolean;
+  error: string;
+  onMessageChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+};
+
 export type WorkspaceContentRouterProps = {
   route: WorkspaceContentRoute;
   access: WorkspaceAccessViewModel;
@@ -298,7 +361,10 @@ export type WorkspaceContentRouterProps = {
   transcriptionComparison: WorkspaceTranscriptionComparisonViewModel;
   realtime: WorkspaceRealtimeViewModel;
   guardrails: WorkspaceGuardrailsViewModel;
+  youtubeSummary: WorkspaceYouTubeSummaryViewModel;
   chat: WorkspaceChatViewModel;
+  agentResearch: WorkspaceAgentResearchViewModel;
+  hostedAgent: WorkspaceHostedAgentViewModel;
 };
 
 export function WorkspaceContentRouter({
@@ -313,7 +379,10 @@ export function WorkspaceContentRouter({
   transcriptionComparison,
   realtime,
   guardrails,
+  youtubeSummary,
   chat,
+  agentResearch,
+  hostedAgent,
 }: WorkspaceContentRouterProps) {
   if (access.locked) {
     return (
@@ -447,6 +516,32 @@ export function WorkspaceContentRouter({
     );
   }
 
+  if (route.workspace === "agentResearch") {
+    return (
+      <AgentResearchWorkspace
+        configured={agentResearch.configured}
+        projectEndpoint={agentResearch.projectEndpoint}
+        question={agentResearch.question}
+        answer={agentResearch.answer}
+        steps={agentResearch.steps}
+        citations={agentResearch.citations}
+        runConfig={agentResearch.runConfig}
+        isRunning={agentResearch.isRunning}
+        error={agentResearch.error}
+        trace={agentResearch.trace}
+        traceLoading={agentResearch.traceLoading}
+        traceError={agentResearch.traceError}
+        onQuestionChange={agentResearch.onQuestionChange}
+        onSubmit={agentResearch.onSubmit}
+        onCancel={agentResearch.onCancel}
+      />
+    );
+  }
+
+  if (route.workspace === "hostedAgent") {
+    return <HostedAgentWorkspace {...hostedAgent} />;
+  }
+
   if (route.workspace === "traditionalVoice") {
     return (
       <TraditionalVoiceWorkspace
@@ -508,6 +603,10 @@ export function WorkspaceContentRouter({
         </div>
       </div>
     );
+  }
+
+  if (route.workspace === "youtubeSummary") {
+    return <YouTubeSummaryWorkspace {...youtubeSummary} />;
   }
 
   if (guardrails.enabled && route.workspace === "chat") {

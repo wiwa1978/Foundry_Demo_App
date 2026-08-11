@@ -185,6 +185,10 @@ vi.mock("@/features/guardrails/GuardrailWorkspaces", () => ({
   ),
 }));
 
+vi.mock("@/features/hostedAgent/HostedAgentWorkspace", () => ({
+  HostedAgentWorkspace: () => <div data-testid="hosted-agent">Hosted agent</div>,
+}));
+
 vi.mock("@/features/images/ImageWorkspaces", () => ({
   TextToImageWorkspace: (props: ActionProps) => (
     <button type="button" data-testid="image" onClick={props.onGenerate}>
@@ -513,6 +517,50 @@ function routerProps(
       policyNames: ["default", "strict"],
       deploymentPolicyName: "default",
     },
+    youtubeSummary: {
+      url: "",
+      language: "en",
+      model: "model-a",
+      models: ["model-a", "model-b"],
+      transcriptionModel: "stt-a",
+      transcriptionModels: ["stt-a"],
+      result: null,
+      loading: false,
+      error: "",
+      onUrlChange: vi.fn(),
+      onLanguageChange: vi.fn(),
+      onModelChange: vi.fn(),
+      onTranscriptionModelChange: vi.fn(),
+      onSummarize: vi.fn(),
+    },
+    agentResearch: {
+      configured: true,
+      projectEndpoint: "https://foundry.example",
+      question: "",
+      answer: "",
+      steps: [],
+      citations: [],
+      runConfig: null,
+      isRunning: false,
+      error: "",
+      onQuestionChange: vi.fn(),
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+    },
+    hostedAgent: {
+      configured: true,
+      agentName: "hosted-assistant",
+      projectEndpoint: "https://foundry.example",
+      message: "",
+      answer: "",
+      steps: [],
+      runConfig: null,
+      isRunning: false,
+      error: "",
+      onMessageChange: vi.fn(),
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+    },
     chat: {
       activeModel: "model-a",
       models: ["model-a", "model-b"],
@@ -774,5 +822,33 @@ describe("WorkspaceContentRouter", () => {
     expect(props.comparison.onReasoningEffortChange).toHaveBeenCalledWith(
       "high",
     );
+  });
+
+  it("renders the agent research workspace route", () => {
+    const props = routerProps();
+
+    render(
+      <WorkspaceContentRouter
+        {...route(props, {
+          workspace: "agentResearch",
+          useCase: "agent_research",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Start your research")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Activity" })).toBeVisible();
+    expect(screen.queryByText("Citations")).not.toBeInTheDocument();
+    expect(screen.queryByText("How it works")).not.toBeInTheDocument();
+  });
+
+  it("renders the code-hosted agent workspace route", () => {
+    const props = routerProps();
+    render(
+      <WorkspaceContentRouter
+        {...route(props, { workspace: "hostedAgent", useCase: "hosted_agent" })}
+      />,
+    );
+    expect(screen.getByTestId("hosted-agent")).toBeVisible();
   });
 });

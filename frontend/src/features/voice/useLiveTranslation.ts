@@ -20,6 +20,8 @@ type LiveTranslationResources = {
   closed: boolean;
 };
 
+const LIVE_INTERPRETER_START_TIMEOUT_MS = 20_000;
+
 export function useLiveTranslation() {
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [error, setError] = useState("");
@@ -143,7 +145,12 @@ export function useLiveTranslation() {
     socket: WebSocket,
   ) {
     return new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(
+        () => rejectWith("Live Interpreter did not connect within 20 seconds."),
+        LIVE_INTERPRETER_START_TIMEOUT_MS,
+      );
       const cleanup = () => {
+        window.clearTimeout(timeout);
         socket.removeEventListener("open", onOpen);
         socket.removeEventListener("error", onError);
         socket.removeEventListener("close", onClose);
@@ -158,8 +165,10 @@ export function useLiveTranslation() {
         reject(new Error(message));
       };
       const onError = () => rejectWith("Live Interpreter connection failed.");
-      const onClose = () =>
-        rejectWith("Live Interpreter closed before it was ready.");
+      const onClose = (event: CloseEvent) =>
+        rejectWith(
+          event.reason || "Live Interpreter closed before it was ready.",
+        );
       const onAbort = () => {
         cleanup();
         reject(new DOMException("The operation was aborted.", "AbortError"));
@@ -248,12 +257,21 @@ export function useLiveTranslation() {
 
       const ready = new Promise<void>((resolve, reject) => {
         let readyReceived = false;
-        const onAbort = () =>
+        const timeout = window.setTimeout(() => {
+          const message =
+            "Live Interpreter did not become ready within 20 seconds. Check the mapped Speech endpoint and credentials.";
+          failSession(generation, resources, message);
+          reject(new Error(message));
+        }, LIVE_INTERPRETER_START_TIMEOUT_MS);
+        const onAbort = () => {
+          window.clearTimeout(timeout);
           reject(new DOMException("The operation was aborted.", "AbortError"));
+        };
         resources.abortController.signal.addEventListener("abort", onAbort, {
           once: true,
         });
-        socket.addEventListener("close", () => {
+        socket.addEventListener("close", (event) => {
+          window.clearTimeout(timeout);
           resources.abortController.signal.removeEventListener(
             "abort",
             onAbort,
@@ -261,7 +279,7 @@ export function useLiveTranslation() {
           if (!isCurrent(generation)) return;
           const message = readyReceived
             ? "Live Interpreter connection closed."
-            : "Live Interpreter closed before it was ready.";
+            : event.reason || "Live Interpreter closed before it was ready.";
           failSession(generation, resources, message);
           reject(new Error(message));
         });
@@ -277,6 +295,7 @@ export function useLiveTranslation() {
             ) as LiveInterpreterServerEvent;
             if (event.type === "ready") {
               readyReceived = true;
+              window.clearTimeout(timeout);
               resources.abortController.signal.removeEventListener(
                 "abort",
                 onAbort,
@@ -291,12 +310,20 @@ export function useLiveTranslation() {
               );
             }
             if (event.type === "error") {
+              window.clearTimeout(timeout);
               const messageText =
                 event.error ?? "Live Interpreter reported an error.";
               failSession(generation, resources, messageText);
               reject(new Error(messageText));
             }
+            if (event.type === "session_stopped") {
+              const messageText =
+                "Live Interpreter stopped listening. Start again or check the mapped Speech resource if this keeps happening.";
+              failSession(generation, resources, messageText);
+              reject(new Error(messageText));
+            }
           } catch (caught) {
+            window.clearTimeout(timeout);
             const messageText =
               caught instanceof Error
                 ? caught.message

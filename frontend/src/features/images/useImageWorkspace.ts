@@ -178,7 +178,6 @@ export function useImageWorkspace({
     const request = { model, prompt: submittedPrompt, width, height };
     const { controller, generation } = beginRequest();
     setSubmittedPrompt(request.prompt);
-    setResult(null);
     setPrompt("");
     setGenerating(true);
     setError("");

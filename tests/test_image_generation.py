@@ -276,6 +276,54 @@ class ImageGenerationTests(unittest.TestCase):
     @patch("app.providers.http.urlopen")
     @patch("app.providers.images.get_azure_credential")
     @patch("app.providers.images.load_settings")
+    def test_generate_image_identifies_safety_system_rejection(
+        self,
+        load_settings: MagicMock,
+        get_credential: MagicMock,
+        urlopen: MagicMock,
+    ) -> None:
+        load_settings.return_value = FoundrySettings(
+            endpoint="https://demo.services.ai.azure.com/api/projects/demo",
+            models=["gpt-image-2"],
+            realtime_endpoint=None,
+            realtime_model="",
+            embedding_model="",
+            transcription_model="",
+            tts_model="",
+            tts_voice="",
+            speech_endpoint=None,
+            speech_key=None,
+            speech_transcription_model="MAI-Transcribe-1.5",
+        )
+        get_credential.return_value.get_token.return_value.token = "test-token"
+        urlopen.side_effect = HTTPError(
+            "https://demo.services.ai.azure.com",
+            400,
+            "Bad Request",
+            {},
+            BytesIO(
+                json.dumps(
+                    {
+                        "error": {
+                            "message": "Your request was rejected by the safety system. "
+                            "If you believe this is an error, contact Azure support."
+                        }
+                    }
+                ).encode()
+            ),
+        )
+
+        with self.assertRaisesRegex(ImagePromptRejectedError, "Revise the prompt"):
+            generate_image(
+                model="gpt-image-2",
+                prompt="blocked prompt",
+                width=1024,
+                height=1024,
+            )
+
+    @patch("app.providers.http.urlopen")
+    @patch("app.providers.images.get_azure_credential")
+    @patch("app.providers.images.load_settings")
     def test_edit_image_uses_openai_multipart_endpoint(
         self,
         load_settings: MagicMock,

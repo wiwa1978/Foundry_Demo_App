@@ -1,6 +1,12 @@
+import { imageToImagePrompts } from "@media/image_to_image/prompts";
+import { textToImagePrompts } from "@media/text_to_image/prompts";
 import {
+  ChevronDown,
+  ChevronUp,
   ChevronsUpDown,
   Download,
+  Eye,
+  EyeOff,
   GitCompareArrows,
   Image,
   LoaderCircle,
@@ -19,8 +25,6 @@ import {
 } from "@/app/workspace/WorkspacePrimitives";
 import { PromptExamples } from "@/components/PromptExamples";
 import { Button } from "@/components/ui/button";
-import { imageToImagePrompts } from "@/features/useCases/imageToImagePrompts";
-import { textToImagePrompts } from "@/features/useCases/textToImagePrompts";
 
 import type { ImageSample } from "./api";
 
@@ -53,9 +57,18 @@ export function TextToImageWorkspace({
   onModelChange,
   onGenerate,
 }: TextToImageWorkspaceProps) {
+  const [promptExpanded, setPromptExpanded] = useState(true);
+  const [imageVisible, setImageVisible] = useState(true);
   const imageUrl = result
     ? `data:${result.mime_type};base64,${result.image_base64}`
     : "";
+
+  useEffect(() => {
+    if (result) {
+      setPromptExpanded(true);
+      setImageVisible(true);
+    }
+  }, [result]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-slate-100/70 dark:bg-[#303033]">
@@ -70,10 +83,10 @@ export function TextToImageWorkspace({
       <div className="flex-1 overflow-auto p-5">
         <div className="mx-auto w-full max-w-5xl">
           <div className="min-h-[360px] w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 dark:border-[#55555a] dark:bg-[#303033]/70 sm:min-h-[520px]">
-            {submittedPrompt ? (
+            {generating && submittedPrompt ? (
               <div className="mx-auto mb-4 max-w-3xl rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-200">
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  Submitted prompt
+                  Generating prompt
                 </div>
                 <p className="whitespace-pre-wrap break-words">
                   {submittedPrompt}
@@ -83,11 +96,51 @@ export function TextToImageWorkspace({
 
             {imageUrl && result ? (
               <div className="w-full">
-                <img
-                  src={imageUrl}
-                  alt={result.prompt || "AI-generated image"}
-                  className="mx-auto max-h-[68vh] w-auto rounded-2xl object-contain shadow-2xl"
-                />
+                <div className="mx-auto mb-4 max-w-3xl rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-200">
+                  <button
+                    type="button"
+                    aria-expanded={promptExpanded}
+                    onClick={() => setPromptExpanded((expanded) => !expanded)}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Submitted prompt
+                    </span>
+                    {promptExpanded ? (
+                      <ChevronUp className="h-4 w-4 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    )}
+                  </button>
+                  {promptExpanded ? (
+                    <p className="mt-1 whitespace-pre-wrap break-words">
+                      {result.prompt}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="mb-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    aria-pressed={!imageVisible}
+                    onClick={() => setImageVisible((visible) => !visible)}
+                  >
+                    {imageVisible ? (
+                      <EyeOff className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Eye className="mr-2 h-4 w-4" />
+                    )}
+                    {imageVisible ? "Hide image" : "Show image"}
+                  </Button>
+                </div>
+                {imageVisible ? (
+                  <img
+                    src={imageUrl}
+                    alt={result.prompt || "AI-generated image"}
+                    className="mx-auto max-h-[68vh] w-auto rounded-2xl object-contain shadow-2xl"
+                  />
+                ) : null}
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
                   <span>
                     {result.model} · {result.width} × {result.height} ·

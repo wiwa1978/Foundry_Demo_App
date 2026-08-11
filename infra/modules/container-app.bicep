@@ -51,6 +51,9 @@ param foundryAccountName string
 @description('Foundry project endpoint.')
 param foundryProjectEndpoint string
 
+@description('Optional code-hosted Foundry agent name.')
+param foundryHostedAgentName string = ''
+
 @description('Optional Foundry OpenAI-compatible endpoint.')
 param foundryOpenAiEndpoint string = ''
 
@@ -343,6 +346,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'FOUNDRY_PROJECT_ENDPOINT'
               value: foundryProjectEndpoint
+            }
+            {
+              name: 'FOUNDRY_HOSTED_AGENT_NAME'
+              value: foundryHostedAgentName
             }
             {
               name: 'FOUNDRY_OPENAI_ENDPOINT'
