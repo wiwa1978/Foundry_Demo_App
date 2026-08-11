@@ -200,9 +200,16 @@ export function ModelSettingsPage({
                                 deploymentPolicy?.policy_name,
                               )}
                             </option>
-                            {selectablePolicies.map((policy) => (
-                              <option key={policy.name} value={policy.name}>
+                            {policies.map((policy) => (
+                              <option
+                                key={policy.name}
+                                value={policy.name}
+                                disabled={!policy.is_selectable}
+                              >
                                 {policy.name}
+                                {policy.is_selectable
+                                  ? ""
+                                  : " (system-managed; deployment only)"}
                               </option>
                             ))}
                           </select>
@@ -212,7 +219,11 @@ export function ModelSettingsPage({
                         Custom policies are retrieved live from Foundry and sent
                         as request-level overrides. They do not need to be
                         assigned to this deployment. The same model settings and
-                        prompt are used for both requests.
+                        prompt are used for both requests. System-managed
+                        Microsoft policies are shown for visibility but cannot
+                        be sent as request-level overrides. Assign one to the
+                        deployment and select the deployment default, or create
+                        a custom policy based on it for side-by-side comparison.
                       </p>
                       {!policiesLoading && !selectablePolicies.length ? (
                         <p className="text-xs text-amber-700 dark:text-amber-300">

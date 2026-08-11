@@ -34,4 +34,3 @@ export const agentResearchUseCase: UseCaseModule = {
   },
   workspace: "agentResearch",
 };
-

@@ -53,6 +53,10 @@ export type ConfigResponse = {
   is_realtime_configured: boolean;
   realtime_endpoint: string | null;
   realtime_model: string | null;
+  is_realtime_transcription_configured?: boolean;
+  realtime_transcription_model?: string | null;
+  is_realtime_translation_configured?: boolean;
+  realtime_translation_model?: string | null;
   embedding_model: string | null;
   is_document_rag_configured: boolean;
   search_endpoint: string | null;
@@ -187,6 +191,13 @@ export type RealtimeSessionResponse = {
   expires_at?: number | null;
   configured_guardrail_policy_name?: string | null;
   guardrail_status?: string;
+};
+
+export type RealtimeTranscriptionSessionResponse = {
+  token: string;
+  webrtc_url: string;
+  model: string;
+  expires_at?: number | string | null;
 };
 
 export type TraditionalSpeechResult = {

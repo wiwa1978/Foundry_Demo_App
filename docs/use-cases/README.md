@@ -13,6 +13,9 @@ Use this index to navigate from a customer demo to the code that implements it.
 | STT -> Chat -> TTS | [Implementation map](../../usecases_media/stt_chat_tts/README.md) |
 | Recorded transcription | [Implementation map](../../usecases_media/recorded_transcription/README.md) |
 | Transcription comparison | [Implementation map](../../usecases_media/transcription_comparison/README.md) |
+| Realtime transcription - WebRTC | [Implementation map](../../usecases_media/realtime_transcription_webrtc/README.md) |
+| Realtime transcription - WebSockets | [Implementation map](../../usecases_media/realtime_transcription_websocket/README.md) |
+| Realtime translation - GPT Realtime | [Implementation map](../../usecases_media/realtime_translation_websocket/README.md) |
 | Realtime voice | [Implementation map](../../usecases_media/realtime_voice/README.md) |
 | Voice Live | [Implementation map](../../usecases_media/voice_live/README.md) |
 | Live translation | [Implementation map](../../usecases_media/live_translation/README.md) |

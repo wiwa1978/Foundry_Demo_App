@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import json
 import threading
 from unittest.mock import patch
 
@@ -27,6 +29,63 @@ class FakeUpstream:
             return '{"type":"ready"}'
         await asyncio.Event().wait()
         raise StopAsyncIteration
+
+
+class FakeTranscriptionUpstream(FakeUpstream):
+    def __init__(self) -> None:
+        super().__init__()
+        self.audio_received = threading.Event()
+
+    async def send(self, message: str | bytes) -> None:
+        await super().send(message)
+        if isinstance(message, str) and "input_audio_buffer.append" in message:
+            self.audio_received.set()
+
+    async def __anext__(self) -> str:
+        if not self._yielded:
+            self._yielded = True
+            return json.dumps(
+                {
+                    "type": "conversation.item.input_audio_transcription.delta",
+                    "item_id": "item-1",
+                    "delta": "Hello",
+                }
+            )
+        await asyncio.Event().wait()
+        raise StopAsyncIteration
+
+
+class FakeTranslationUpstream(FakeUpstream):
+    def __init__(self) -> None:
+        super().__init__()
+        self.audio_received = threading.Event()
+        self.close_received = threading.Event()
+        self.events = [
+            {"type": "session.input_transcript.delta", "delta": "Hello"},
+            {"type": "session.output_transcript.delta", "delta": "Bonjour"},
+            {
+                "type": "session.output_audio.delta",
+                "delta": base64.b64encode(b"audio").decode("ascii"),
+                "sample_rate": 24000,
+                "channels": 1,
+                "format": "pcm16",
+            },
+        ]
+
+    async def send(self, message: str | bytes) -> None:
+        await super().send(message)
+        if isinstance(message, str) and "session.input_audio_buffer.append" in message:
+            self.audio_received.set()
+        if isinstance(message, str) and '"session.close"' in message:
+            self.close_received.set()
+
+    async def __anext__(self) -> str:
+        if self.events:
+            return json.dumps(self.events.pop(0))
+        if self.close_received.is_set():
+            return json.dumps({"type": "session.closed"})
+        await asyncio.sleep(0.01)
+        return await self.__anext__()
 
 
 class FakeConnection:
@@ -80,6 +139,84 @@ def test_voice_live_websocket_relays_messages(monkeypatch):
                 assert upstream.browser_message_received.wait(timeout=1)
 
     assert upstream.sent == ['{"type":"input_audio"}']
+
+
+def test_realtime_transcription_websocket_wraps_pcm_and_relays_transcript(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    upstream = FakeTranscriptionUpstream()
+    connection = {
+        "url": "wss://realtime.example/openai/v1/realtime?intent=transcription",
+        "token": "token",
+        "model": "gpt-realtime-whisper",
+        "session_update": {"type": "session.update", "session": {"type": "transcription"}},
+    }
+    with patch(
+        "usecases_media.shared.voice.backend.websockets.create_realtime_transcription_connection_info",
+        return_value=connection,
+    ), patch(
+        "usecases_media.shared.voice.backend.websockets.websocket_connect",
+        return_value=FakeConnection(upstream),
+    ):
+        with TestClient(create_app()).websocket_connect(
+            "/api/realtime-transcription?language=nl&delay=low&turnDetection=none",
+            headers={"origin": "http://testserver"},
+        ) as websocket:
+            assert websocket.receive_json() == {
+                "type": "ready",
+                "model": "gpt-realtime-whisper",
+                "input_rate": 24000,
+            }
+            assert websocket.receive_json()["delta"] == "Hello"
+            websocket.send_bytes(b"pcm")
+            assert upstream.audio_received.wait(timeout=1)
+
+    assert json.loads(str(upstream.sent[0]))["type"] == "session.update"
+    append = json.loads(str(upstream.sent[1]))
+    assert append == {
+        "type": "input_audio_buffer.append",
+        "audio": base64.b64encode(b"pcm").decode("ascii"),
+    }
+
+
+def test_realtime_translation_websocket_relays_pcm_text_and_audio(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    upstream = FakeTranslationUpstream()
+    connection = {
+        "url": "wss://realtime.example/openai/v1/realtime/translations?model=translate",
+        "token": "token",
+        "model": "gpt-realtime-translate",
+        "transcription_model": "gpt-realtime-whisper",
+        "session_update": {"type": "session.update", "session": {}},
+    }
+    with patch(
+        "usecases_media.shared.voice.backend.websockets.create_realtime_translation_connection_info",
+        return_value=connection,
+    ), patch(
+        "usecases_media.shared.voice.backend.websockets.websocket_connect",
+        return_value=FakeConnection(upstream),
+    ):
+        with TestClient(create_app()).websocket_connect(
+            "/api/realtime-translation?targetLanguage=fr",
+            headers={"origin": "http://testserver"},
+        ) as websocket:
+            assert websocket.receive_json()["model"] == "gpt-realtime-translate"
+            assert websocket.receive_json()["delta"] == "Hello"
+            assert websocket.receive_json()["delta"] == "Bonjour"
+            assert websocket.receive_json()["sample_rate"] == 24000
+            websocket.send_bytes(b"pcm")
+            assert upstream.audio_received.wait(timeout=1)
+            websocket.send_json({"type": "stop"})
+
+    append = next(
+        json.loads(str(message))
+        for message in upstream.sent
+        if "session.input_audio_buffer.append" in str(message)
+    )
+    assert append == {
+        "type": "session.input_audio_buffer.append",
+        "audio": base64.b64encode(b"pcm").decode("ascii"),
+    }
+    assert upstream.close_received.wait(timeout=1)
 
 
 def test_live_interpreter_websocket_starts_writes_audio_and_closes(monkeypatch, tmp_path):

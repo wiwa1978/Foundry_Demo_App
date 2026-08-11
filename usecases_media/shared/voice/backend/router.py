@@ -4,15 +4,23 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.api.dependencies import current_user_scope
-from app.api.schemas import RealtimeSessionRequest, normalize_reasoning_effort
+from app.api.schemas import (
+    RealtimeSessionRequest,
+    RealtimeTranscriptionSessionRequest,
+    normalize_reasoning_effort,
+)
 from app.core.concurrency import run_model_call
 from app.core.errors import ExternalServiceError, InvalidRequestError
 from app.domain.identity import UserScope
-from app.infrastructure.azure.foundry.realtime import create_realtime_client_secret
+from app.infrastructure.azure.foundry.realtime import (
+    create_realtime_client_secret,
+    create_realtime_transcription_client_secret,
+)
 from app.infrastructure.azure.foundry.settings import load_settings
 from app.infrastructure.azure.foundry.speech import transcribe_audio, transcribe_speech_audio
 from usecases_media.shared.voice.backend.schemas import (
     RealtimeSessionResponse,
+    RealtimeTranscriptionSessionResponse,
     TraditionalVoiceResponse,
     TranscriptionResponse,
 )
@@ -47,6 +55,26 @@ async def create_realtime_session(request: RealtimeSessionRequest) -> dict:
     except Exception as exc:
         logger.exception("realtime_session_creation_failed")
         raise ExternalServiceError("Realtime session creation") from exc
+
+
+@router.post(
+    "/api/realtime-transcription/session",
+    response_model=RealtimeTranscriptionSessionResponse,
+    response_model_exclude_unset=True,
+)
+async def create_realtime_transcription_session(
+    request: RealtimeTranscriptionSessionRequest,
+) -> dict:
+    try:
+        return await run_model_call(
+            create_realtime_transcription_client_secret,
+            language=request.language,
+            delay=request.delay,
+            turn_detection=request.turn_detection,
+        )
+    except Exception as exc:
+        logger.exception("realtime_transcription_session_creation_failed")
+        raise ExternalServiceError("Realtime transcription session creation") from exc
 
 
 @router.post(

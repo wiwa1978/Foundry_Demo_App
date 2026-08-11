@@ -1,7 +1,7 @@
 import json
 from typing import Any, TypedDict, cast
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from app.infrastructure.azure.credentials import get_azure_credential
 from app.infrastructure.azure.foundry.http import build_checked_request, open_checked_url
@@ -13,6 +13,21 @@ class VoiceLiveConnectionInfo(TypedDict):
     token: str
     model: str
     voice: str
+
+
+class RealtimeTranscriptionConnectionInfo(TypedDict):
+    url: str
+    token: str
+    model: str
+    session_update: dict[str, Any]
+
+
+class RealtimeTranslationConnectionInfo(TypedDict):
+    url: str
+    token: str
+    model: str
+    transcription_model: str
+    session_update: dict[str, Any]
 
 
 def _normalize_realtime_endpoint(endpoint_value: str) -> str:
@@ -122,6 +137,189 @@ def create_realtime_client_secret(
         "model": realtime_model,
         "voice": output_voice,
         "expires_at": expires_at,
+    }
+
+
+SUPPORTED_TRANSCRIPTION_DELAYS = {"minimal", "low", "medium", "high", "xhigh"}
+SUPPORTED_TRANSCRIPTION_TURN_DETECTION = {"none", "server_vad", "semantic_vad"}
+
+
+def _realtime_transcription_session(
+    model: str,
+    *,
+    language: str | None = None,
+    delay: str | None = None,
+    turn_detection: str = "server_vad",
+) -> dict[str, Any]:
+    normalized_language = language.strip().lower() if language else None
+    if normalized_language and (
+        len(normalized_language) != 2 or not normalized_language.isalpha()
+    ):
+        raise ValueError("Realtime transcription language must be an ISO-639-1 code.")
+    normalized_delay = delay.strip().lower() if delay else None
+    if normalized_delay and normalized_delay not in SUPPORTED_TRANSCRIPTION_DELAYS:
+        raise ValueError("Unsupported realtime transcription delay.")
+    normalized_turn_detection = turn_detection.strip().lower()
+    if normalized_turn_detection not in SUPPORTED_TRANSCRIPTION_TURN_DETECTION:
+        raise ValueError("Unsupported realtime transcription turn detection mode.")
+
+    transcription: dict[str, Any] = {"model": model}
+    if normalized_language:
+        transcription["language"] = normalized_language
+    if normalized_delay:
+        transcription["delay"] = normalized_delay
+    turn_detection_config: dict[str, Any] | None = None
+    if normalized_turn_detection == "server_vad":
+        turn_detection_config = {
+            "type": "server_vad",
+            "threshold": 0.5,
+            "prefix_padding_ms": 300,
+            "silence_duration_ms": 900,
+        }
+    elif normalized_turn_detection == "semantic_vad":
+        turn_detection_config = {"type": "semantic_vad", "eagerness": "low"}
+
+    return {
+        "type": "transcription",
+        "audio": {
+            "input": {
+                "format": {"type": "audio/pcm", "rate": 24000},
+                "transcription": transcription,
+                "turn_detection": turn_detection_config,
+            }
+        },
+    }
+
+
+def create_realtime_transcription_client_secret(
+    *,
+    language: str | None = None,
+    delay: str | None = None,
+    turn_detection: str = "server_vad",
+) -> dict[str, Any]:
+    settings = load_settings()
+    if not settings.is_realtime_transcription_configured:
+        raise RuntimeError(
+            "Realtime transcription is not configured. Set FOUNDRY_REALTIME_ENDPOINT "
+            "and FOUNDRY_REALTIME_TRANSCRIPTION_MODEL."
+        )
+
+    endpoint = _normalize_realtime_endpoint(settings.realtime_endpoint or "")
+    model = settings.realtime_transcription_model.strip()
+    payload = {
+        "session": _realtime_transcription_session(
+            model,
+            language=language,
+            delay=delay,
+            turn_detection=turn_detection,
+        )
+    }
+    bearer_token = get_azure_credential().get_token("https://ai.azure.com/.default").token
+    request = build_checked_request(
+        f"{endpoint}/realtime/client_secrets",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {bearer_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with open_checked_url(request, timeout=30) as response:
+            data = cast(dict[str, Any], json.loads(response.read().decode("utf-8")))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Realtime transcription client secret request failed with {exc.code}: {detail}"
+        ) from exc
+    except URLError as exc:
+        raise RuntimeError(
+            f"Realtime transcription client secret request failed: {exc.reason}"
+        ) from exc
+
+    nested_secret = data.get("client_secret", {})
+    if not isinstance(nested_secret, dict):
+        nested_secret = {}
+    client_secret = data.get("value") or nested_secret.get("value")
+    if not isinstance(client_secret, str) or not client_secret:
+        raise RuntimeError("Realtime transcription response did not include a token.")
+    return {
+        "token": client_secret,
+        # Do not enable webrtcfilter: transcription deltas must reach the browser.
+        "webrtc_url": f"{endpoint}/realtime/calls",
+        "model": model,
+        "expires_at": data.get("expires_at") or nested_secret.get("expires_at"),
+    }
+
+
+def create_realtime_transcription_connection_info(
+    *,
+    language: str | None = None,
+    delay: str | None = None,
+    turn_detection: str = "none",
+) -> RealtimeTranscriptionConnectionInfo:
+    settings = load_settings()
+    if not settings.is_realtime_transcription_configured:
+        raise RuntimeError(
+            "Realtime transcription is not configured. Set FOUNDRY_REALTIME_ENDPOINT "
+            "and FOUNDRY_REALTIME_TRANSCRIPTION_MODEL."
+        )
+    endpoint = _normalize_realtime_endpoint(settings.realtime_endpoint or "")
+    model = settings.realtime_transcription_model.strip()
+    token = get_azure_credential().get_token("https://ai.azure.com/.default").token
+    return {
+        "url": endpoint.replace("https://", "wss://", 1)
+        + "/realtime?intent=transcription",
+        "token": token,
+        "model": model,
+        "session_update": {
+            "type": "session.update",
+            "session": _realtime_transcription_session(
+                model,
+                language=language,
+                delay=delay,
+                turn_detection=turn_detection,
+            ),
+        },
+    }
+
+
+def create_realtime_translation_connection_info(
+    *, target_language: str
+) -> RealtimeTranslationConnectionInfo:
+    settings = load_settings()
+    if not settings.is_realtime_translation_configured:
+        raise RuntimeError(
+            "Realtime translation is not configured. Set FOUNDRY_REALTIME_ENDPOINT, "
+            "FOUNDRY_REALTIME_TRANSLATION_MODEL, and "
+            "FOUNDRY_REALTIME_TRANSCRIPTION_MODEL."
+        )
+    language = target_language.strip().lower()
+    if len(language) != 2 or not language.isalpha():
+        raise ValueError("Realtime translation target must be an ISO-639-1 code.")
+
+    endpoint = _normalize_realtime_endpoint(settings.realtime_endpoint or "")
+    model = settings.realtime_translation_model.strip()
+    transcription_model = settings.realtime_transcription_model.strip()
+    token = get_azure_credential().get_token("https://ai.azure.com/.default").token
+    return {
+        "url": endpoint.replace("https://", "wss://", 1)
+        + f"/realtime/translations?model={quote(model, safe='')}",
+        "token": token,
+        "model": model,
+        "transcription_model": transcription_model,
+        "session_update": {
+            "type": "session.update",
+            "session": {
+                "audio": {
+                    "input": {
+                        "transcription": {"model": transcription_model},
+                        "noise_reduction": {"type": "near_field"},
+                    },
+                    "output": {"language": language},
+                }
+            },
+        },
     }
 
 

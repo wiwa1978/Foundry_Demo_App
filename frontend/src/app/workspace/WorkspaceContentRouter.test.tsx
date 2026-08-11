@@ -186,7 +186,9 @@ vi.mock("@/features/guardrails/GuardrailWorkspaces", () => ({
 }));
 
 vi.mock("@/features/hostedAgent/HostedAgentWorkspace", () => ({
-  HostedAgentWorkspace: () => <div data-testid="hosted-agent">Hosted agent</div>,
+  HostedAgentWorkspace: () => (
+    <div data-testid="hosted-agent">Hosted agent</div>
+  ),
 }));
 
 vi.mock("@/features/images/ImageWorkspaces", () => ({
@@ -270,6 +272,27 @@ vi.mock("@/features/voice/VoiceWorkspaces", () => ({
   RealtimeVoiceHero: (props: { onStart: () => void }) => (
     <button type="button" data-testid="realtime" onClick={props.onStart}>
       Start realtime
+    </button>
+  ),
+  RealtimeTranscriptionHero: (props: {
+    transport: string;
+    onStart: () => void;
+  }) => (
+    <button
+      type="button"
+      data-testid={`realtime-transcription-${props.transport}`}
+      onClick={props.onStart}
+    >
+      Start realtime transcription
+    </button>
+  ),
+  RealtimeTranslationHero: (props: { onStart: () => void }) => (
+    <button
+      type="button"
+      data-testid="realtime-translation"
+      onClick={props.onStart}
+    >
+      Start realtime translation
     </button>
   ),
   VoiceLiveHero: (props: { onStart: () => void }) => (
@@ -484,6 +507,49 @@ function routerProps(
         error: "",
         guardrailStatus: "",
         transcript: [],
+        onStart: vi.fn(),
+        onStop: vi.fn(),
+      },
+      webRtcTranscription: {
+        configured: true,
+        model: "gpt-realtime-whisper",
+        status: "idle",
+        error: "",
+        transcript: "",
+        language: "auto",
+        delay: "default",
+        turnDetection: "server_vad",
+        onLanguageChange: vi.fn(),
+        onDelayChange: vi.fn(),
+        onTurnDetectionChange: vi.fn(),
+        onStart: vi.fn(),
+        onStop: vi.fn(),
+      },
+      webSocketTranscription: {
+        configured: true,
+        model: "gpt-realtime-whisper",
+        status: "idle",
+        error: "",
+        transcript: "",
+        language: "auto",
+        delay: "default",
+        turnDetection: "none",
+        onLanguageChange: vi.fn(),
+        onDelayChange: vi.fn(),
+        onTurnDetectionChange: vi.fn(),
+        onStart: vi.fn(),
+        onStop: vi.fn(),
+      },
+      webSocketTranslation: {
+        configured: true,
+        model: "gpt-realtime-translate",
+        transcriptionModel: "gpt-realtime-whisper",
+        status: "idle",
+        error: "",
+        targetLanguage: "fr",
+        sourceTranscript: "",
+        translatedTranscript: "",
+        onTargetLanguageChange: vi.fn(),
         onStart: vi.fn(),
         onStop: vi.fn(),
       },
@@ -732,6 +798,32 @@ describe("WorkspaceContentRouter", () => {
     );
     await user.click(screen.getByTestId("realtime"));
     expect(props.realtime.session.onStart).toHaveBeenCalledOnce();
+
+    rerender(
+      <WorkspaceContentRouter
+        {...route(props, { workspace: "realtimeTranscriptionWebRtc" })}
+      />,
+    );
+    await user.click(screen.getByTestId("realtime-transcription-WebRTC"));
+    expect(props.realtime.webRtcTranscription.onStart).toHaveBeenCalledOnce();
+
+    rerender(
+      <WorkspaceContentRouter
+        {...route(props, { workspace: "realtimeTranscriptionWebSocket" })}
+      />,
+    );
+    await user.click(screen.getByTestId("realtime-transcription-WebSockets"));
+    expect(
+      props.realtime.webSocketTranscription.onStart,
+    ).toHaveBeenCalledOnce();
+
+    rerender(
+      <WorkspaceContentRouter
+        {...route(props, { workspace: "realtimeTranslationWebSocket" })}
+      />,
+    );
+    await user.click(screen.getByTestId("realtime-translation"));
+    expect(props.realtime.webSocketTranslation.onStart).toHaveBeenCalledOnce();
 
     rerender(
       <WorkspaceContentRouter {...route(props, { workspace: "voiceLive" })} />,

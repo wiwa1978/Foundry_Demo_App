@@ -21,7 +21,7 @@ serve this package, so local development installs the exact official GitHub tag 
 environment running FastAPI:
 
 ```powershell
-python -m pip install --no-deps "git+https://github.com/yt-dlp/yt-dlp.git@2026.03.17"
+python -m pip install --no-deps "git+https://github.com/yt-dlp/yt-dlp.git@2026.07.04"
 ```
 
 Foundry transcription consumes the downloaded M4A directly. Azure Speech additionally requires

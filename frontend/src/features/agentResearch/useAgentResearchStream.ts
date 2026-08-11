@@ -81,7 +81,9 @@ export function useAgentResearchStream({
         ...current,
         traceLoading: false,
         traceError:
-          error instanceof Error ? error.message : "Foundry trace retrieval failed.",
+          error instanceof Error
+            ? error.message
+            : "Foundry trace retrieval failed.",
       }));
     }
   }
@@ -93,7 +95,9 @@ export function useAgentResearchStream({
     setState(initialState);
   }
 
-  function upsertStep(event: Extract<AgentResearchStreamEvent, { type: "step" }>) {
+  function upsertStep(
+    event: Extract<AgentResearchStreamEvent, { type: "step" }>,
+  ) {
     setState((current) => {
       const nextSteps = [...current.steps];
       const index = nextSteps.findIndex((step) => step.id === event.label);
@@ -185,7 +189,11 @@ export function useAgentResearchStream({
                 isRunning: false,
               }));
               if (event.response_id && event.tracing_enabled) {
-                void loadTrace(event.response_id, runSequence, controller.signal);
+                void loadTrace(
+                  event.response_id,
+                  runSequence,
+                  controller.signal,
+                );
               }
               return;
             case "error":
@@ -207,7 +215,8 @@ export function useAgentResearchStream({
       setState((current) => ({
         ...current,
         isRunning: false,
-        error: error instanceof Error ? error.message : "Research agent failed.",
+        error:
+          error instanceof Error ? error.message : "Research agent failed.",
       }));
     } finally {
       if (runSequence === runSequenceRef.current) {

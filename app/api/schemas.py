@@ -117,3 +117,16 @@ class RealtimeSessionRequest(InternalRequestModel):
         value = value.strip()
         return value or None
 
+
+class RealtimeTranscriptionSessionRequest(InternalRequestModel):
+    language: str | None = Field(default=None, max_length=2)
+    delay: str | None = Field(default=None, max_length=10)
+    turn_detection: str = Field(default="server_vad", max_length=20)
+
+    @field_validator("language", "delay", "turn_detection")
+    @classmethod
+    def trim_transcription_options(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip().lower()
+        return value or None

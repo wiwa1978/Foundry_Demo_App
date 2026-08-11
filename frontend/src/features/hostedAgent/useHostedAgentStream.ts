@@ -27,7 +27,11 @@ const initialState: State = {
   error: "",
 };
 
-export function useHostedAgentStream({ fetchClient }: { fetchClient: FetchClient }) {
+export function useHostedAgentStream({
+  fetchClient,
+}: {
+  fetchClient: FetchClient;
+}) {
   const [state, setState] = useState(initialState);
   const controllerRef = useRef<AbortController | null>(null);
   const runSequenceRef = useRef(0);
@@ -40,7 +44,9 @@ export function useHostedAgentStream({ fetchClient }: { fetchClient: FetchClient
     setState(initialState);
   }
 
-  function upsertStep(event: Extract<HostedAgentStreamEvent, { type: "step" }>) {
+  function upsertStep(
+    event: Extract<HostedAgentStreamEvent, { type: "step" }>,
+  ) {
     setState((current) => {
       const step = {
         id: event.label,
@@ -91,7 +97,10 @@ export function useHostedAgentStream({ fetchClient }: { fetchClient: FetchClient
             }));
           } else if (event.type === "step") upsertStep(event);
           else if (event.type === "delta") {
-            setState((current) => ({ ...current, answer: current.answer + event.delta }));
+            setState((current) => ({
+              ...current,
+              answer: current.answer + event.delta,
+            }));
           } else if (event.type === "completed") {
             setState((current) => ({
               ...current,
@@ -99,7 +108,11 @@ export function useHostedAgentStream({ fetchClient }: { fetchClient: FetchClient
               isRunning: false,
             }));
           } else {
-            setState((current) => ({ ...current, error: event.error, isRunning: false }));
+            setState((current) => ({
+              ...current,
+              error: event.error,
+              isRunning: false,
+            }));
           }
         },
       });
@@ -120,7 +133,8 @@ export function useHostedAgentStream({ fetchClient }: { fetchClient: FetchClient
 
   return {
     ...state,
-    setMessage: (message: string) => setState((current) => ({ ...current, message })),
+    setMessage: (message: string) =>
+      setState((current) => ({ ...current, message })),
     submit,
     cancel: () => controllerRef.current?.abort(),
     reset,

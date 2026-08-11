@@ -75,4 +75,3 @@ export type AgentResearchStreamEvent =
     };
 
 export type AgentResearchCategory = UseCaseCategory;
-

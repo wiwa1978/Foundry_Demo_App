@@ -3,6 +3,9 @@ import { documentQaUseCase } from "@media/document_qa/module";
 import { imageComparisonUseCase } from "@media/image_comparison/module";
 import { imageToImageUseCase } from "@media/image_to_image/module";
 import { liveTranslationUseCase } from "@media/live_translation/module";
+import { realtimeTranscriptionWebRtcUseCase } from "@media/realtime_transcription_webrtc/module";
+import { realtimeTranscriptionWebSocketUseCase } from "@media/realtime_transcription_websocket/module";
+import { realtimeTranslationWebSocketUseCase } from "@media/realtime_translation_websocket/module";
 import { realtimeVoiceUseCase } from "@media/realtime_voice/module";
 import { transcribeUseCase } from "@media/recorded_transcription/module";
 import { traditionalVoiceUseCase } from "@media/stt_chat_tts/module";
@@ -30,6 +33,9 @@ export const useCaseModules = [
   traditionalVoiceUseCase,
   transcribeUseCase,
   transcriptionComparisonUseCase,
+  realtimeTranscriptionWebRtcUseCase,
+  realtimeTranscriptionWebSocketUseCase,
+  realtimeTranslationWebSocketUseCase,
   liveTranslationUseCase,
   realtimeVoiceUseCase,
   voiceLiveUseCase,

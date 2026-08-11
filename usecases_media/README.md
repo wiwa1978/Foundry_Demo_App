@@ -17,6 +17,9 @@ Voice and image implementations remain single-source under `shared/voice/backend
 | Audio | STT -> Chat -> TTS | [`stt_chat_tts`](stt_chat_tts/README.md) |
 | Audio | Recorded Audio Transcription | [`recorded_transcription`](recorded_transcription/README.md) |
 | Audio | Side by Side - Recorded Audio Transcription | [`transcription_comparison`](transcription_comparison/README.md) |
+| Audio | Realtime transcription - WebRTC | [`realtime_transcription_webrtc`](realtime_transcription_webrtc/README.md) |
+| Audio | Realtime transcription - WebSockets | [`realtime_transcription_websocket`](realtime_transcription_websocket/README.md) |
+| Audio | Realtime translation - GPT Realtime | [`realtime_translation_websocket`](realtime_translation_websocket/README.md) |
 | Audio | Realtime Speech in / Speech out | [`realtime_voice`](realtime_voice/README.md) |
 | Audio | Voice Live travel concierge | [`voice_live`](voice_live/README.md) |
 | Audio | Live translation | [`live_translation`](live_translation/README.md) |

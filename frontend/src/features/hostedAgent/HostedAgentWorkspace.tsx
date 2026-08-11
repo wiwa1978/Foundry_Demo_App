@@ -38,6 +38,6 @@ export function HostedAgentWorkspace(props: Props) {
       questionPlaceholder="Ask the hosted agent a question..."
       questionAriaLabel="Hosted agent question"
       activityDescription="Hosted endpoint and code invocation details"
-      />
+    />
   );
 }

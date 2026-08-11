@@ -108,7 +108,7 @@ def download_youtube_audio(video_id: str) -> bytes:
         import yt_dlp  # noqa: F401
     except ImportError as exc:
         raise InvalidRequestError(
-            "Audio fallback is not installed locally. Install the yt-dlp 2026.03.17 "
+            "Audio fallback is not installed locally. Install the yt-dlp 2026.07.04 "
             "GitHub tag in the Python environment running FastAPI."
         ) from exc
     canonical_url = f"https://www.youtube.com/watch?v={video_id}"

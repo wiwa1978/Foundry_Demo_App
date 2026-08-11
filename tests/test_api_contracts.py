@@ -138,8 +138,8 @@ def test_every_json_operation_has_an_explicit_openapi_response_schema():
         if (path, method) not in excluded
     ]
 
-    assert len(operations) == 44
-    assert len(eligible) == 32
+    assert len(operations) == 45
+    assert len(eligible) == 33
     for path, method, operation in eligible:
         response = operation["responses"]["200"]
         assert response["content"]["application/json"]["schema"], (method, path)

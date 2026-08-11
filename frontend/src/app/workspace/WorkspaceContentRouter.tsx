@@ -4,6 +4,9 @@ import {
   LiveTranslationHero,
   type LiveTranslationMode,
 } from "@media/live_translation/frontend";
+import { RealtimeTranscriptionHero as RealtimeTranscriptionWebRtcHero } from "@media/realtime_transcription_webrtc/frontend";
+import { RealtimeTranscriptionHero as RealtimeTranscriptionWebSocketHero } from "@media/realtime_transcription_websocket/frontend";
+import { RealtimeTranslationHero } from "@media/realtime_translation_websocket/frontend";
 import { RealtimeVoiceHero } from "@media/realtime_voice/frontend";
 import { TranscriptionWorkspace } from "@media/recorded_transcription/frontend";
 import {
@@ -40,6 +43,8 @@ import type {
   ModelModality,
   ModelSettings,
   RealtimeStatus,
+  RealtimeTranscriptionDelay,
+  RealtimeTranscriptionTurnDetection,
   RealtimeTranscriptEntry,
   StatusMessage,
   TraditionalVoiceResult,
@@ -65,7 +70,10 @@ import type {
 } from "@/features/agentResearch/types";
 import { GuardrailComparisonWorkspace } from "@/features/guardrails/GuardrailWorkspaces";
 import { HostedAgentWorkspace } from "@/features/hostedAgent/HostedAgentWorkspace";
-import type { HostedAgentRunConfig, HostedAgentStep } from "@/features/hostedAgent/types";
+import type {
+  HostedAgentRunConfig,
+  HostedAgentStep,
+} from "@/features/hostedAgent/types";
 import { ChatMessageHistory } from "@/features/textChat/ChatMessages";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
 import { cn } from "@/lib/utils";
@@ -241,6 +249,36 @@ export type WorkspaceRealtimeSessionViewModel = {
   onStop: () => void;
 };
 
+export type WorkspaceRealtimeTranscriptionViewModel = {
+  configured: boolean;
+  model: string;
+  status: RealtimeStatus;
+  error: string;
+  transcript: string;
+  language: string;
+  delay: RealtimeTranscriptionDelay;
+  turnDetection: RealtimeTranscriptionTurnDetection;
+  onLanguageChange: (value: string) => void;
+  onDelayChange: (value: RealtimeTranscriptionDelay) => void;
+  onTurnDetectionChange: (value: RealtimeTranscriptionTurnDetection) => void;
+  onStart: () => void;
+  onStop: () => void;
+};
+
+export type WorkspaceRealtimeTranslationViewModel = {
+  configured: boolean;
+  model: string;
+  transcriptionModel: string;
+  status: RealtimeStatus;
+  error: string;
+  targetLanguage: string;
+  sourceTranscript: string;
+  translatedTranscript: string;
+  onTargetLanguageChange: (value: string) => void;
+  onStart: () => void;
+  onStop: () => void;
+};
+
 export type WorkspaceVoiceLiveViewModel = {
   configured: boolean;
   model: string;
@@ -269,6 +307,9 @@ export type WorkspaceLiveTranslationViewModel = {
 
 export type WorkspaceRealtimeViewModel = {
   session: WorkspaceRealtimeSessionViewModel;
+  webRtcTranscription: WorkspaceRealtimeTranscriptionViewModel;
+  webSocketTranscription: WorkspaceRealtimeTranscriptionViewModel;
+  webSocketTranslation: WorkspaceRealtimeTranslationViewModel;
   voiceLive: WorkspaceVoiceLiveViewModel;
   liveTranslation: WorkspaceLiveTranslationViewModel;
 };
@@ -580,6 +621,34 @@ export function WorkspaceContentRouter({
       <div className="flex-1 overflow-auto p-5">
         <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center">
           <RealtimeVoiceHero {...realtime.session} />
+        </div>
+      </div>
+    );
+  }
+
+  if (route.workspace === "realtimeTranscriptionWebRtc") {
+    return (
+      <RealtimeTranscriptionWebRtcHero
+        {...realtime.webRtcTranscription}
+        transport="WebRTC"
+      />
+    );
+  }
+
+  if (route.workspace === "realtimeTranscriptionWebSocket") {
+    return (
+      <RealtimeTranscriptionWebSocketHero
+        {...realtime.webSocketTranscription}
+        transport="WebSockets"
+      />
+    );
+  }
+
+  if (route.workspace === "realtimeTranslationWebSocket") {
+    return (
+      <div className="flex-1 overflow-auto p-5">
+        <div className="mx-auto flex min-h-full max-w-5xl items-center justify-center">
+          <RealtimeTranslationHero {...realtime.webSocketTranslation} />
         </div>
       </div>
     );

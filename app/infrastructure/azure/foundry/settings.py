@@ -23,6 +23,8 @@ class FoundrySettings:
     flux_endpoint: str | None = None
     hosted_agent_name: str | None = None
     application_insights_resource_id: str | None = None
+    realtime_transcription_model: str = "gpt-realtime-whisper"
+    realtime_translation_model: str = "gpt-realtime-translate"
 
     @property
     def is_configured(self) -> bool:
@@ -31,6 +33,18 @@ class FoundrySettings:
     @property
     def is_realtime_configured(self) -> bool:
         return bool(self.realtime_endpoint and self.realtime_model)
+
+    @property
+    def is_realtime_transcription_configured(self) -> bool:
+        return bool(self.realtime_endpoint and self.realtime_transcription_model)
+
+    @property
+    def is_realtime_translation_configured(self) -> bool:
+        return bool(
+            self.realtime_endpoint
+            and self.realtime_translation_model
+            and self.realtime_transcription_model
+        )
 
     @property
     def is_traditional_voice_configured(self) -> bool:
@@ -134,4 +148,14 @@ def load_settings() -> FoundrySettings:
             "FOUNDRY_APPLICATION_INSIGHTS_RESOURCE_ID",
             "APPLICATIONINSIGHTS_RESOURCE_ID",
         ),
+        realtime_transcription_model=first_env(
+            "FOUNDRY_REALTIME_TRANSCRIPTION_MODEL",
+            default="gpt-realtime-whisper",
+        )
+        or "gpt-realtime-whisper",
+        realtime_translation_model=first_env(
+            "FOUNDRY_REALTIME_TRANSLATION_MODEL",
+            default="gpt-realtime-translate",
+        )
+        or "gpt-realtime-translate",
     )

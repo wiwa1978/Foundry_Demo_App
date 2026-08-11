@@ -6,6 +6,8 @@ export type {
   LiveInterpreterServerEvent,
   RealtimeServerEvent,
   RealtimeStatus,
+  RealtimeTranscriptionDelay,
+  RealtimeTranscriptionTurnDetection,
   RealtimeTranscriptEntry,
   TraditionalVoiceStatus,
   VoiceLiveServerEvent,

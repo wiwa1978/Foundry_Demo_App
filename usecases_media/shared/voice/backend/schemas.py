@@ -21,6 +21,13 @@ class RealtimeSessionResponse(BaseModel):
     guardrail_status: str
 
 
+class RealtimeTranscriptionSessionResponse(BaseModel):
+    token: str
+    webrtc_url: str
+    model: str
+    expires_at: int | float | str | None = None
+
+
 class TranscriptionResponse(BaseModel):
     model: str
     text: str

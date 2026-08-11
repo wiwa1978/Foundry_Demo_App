@@ -1,4 +1,9 @@
-export type RealtimeStatus = "idle" | "connecting" | "live";
+export type RealtimeStatus = "idle" | "connecting" | "live" | "stopping";
+export type RealtimeTranscriptionTransport = "webrtc" | "websocket";
+export type RealtimeTranscriptionDelay =
+  "default" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type RealtimeTranscriptionTurnDetection =
+  "none" | "server_vad" | "semantic_vad";
 export type LiveTranslationMode = "standard" | "personal";
 
 export type TraditionalVoiceStatus =
@@ -45,6 +50,9 @@ export type RealtimeServerEvent = {
   type?: string;
   transcript?: string;
   delta?: string;
+  item_id?: string;
+  model?: string;
+  sequence?: number;
   error?: {
     message?: string;
   };
@@ -66,4 +74,17 @@ export type LiveInterpreterServerEvent = {
   detected_language?: string | null;
   target_language?: string;
   error?: string;
+};
+
+export type RealtimeTranslationServerEvent = {
+  type: string;
+  delta?: string;
+  transcript?: string;
+  translation?: string;
+  model?: string;
+  transcription_model?: string;
+  sample_rate?: number;
+  channels?: number;
+  format?: string;
+  error?: { message?: string };
 };

@@ -5,6 +5,9 @@ import {
 } from "@media/document_qa/frontend";
 import { useImageWorkspace } from "@media/image_comparison/frontend";
 import { useLiveTranslation } from "@media/live_translation/frontend";
+import { useRealtimeTranscription as useWebRtcTranscription } from "@media/realtime_transcription_webrtc/frontend";
+import { useRealtimeTranscription as useWebSocketTranscription } from "@media/realtime_transcription_websocket/frontend";
+import { useRealtimeTranslation } from "@media/realtime_translation_websocket/frontend";
 import { useRealtimeVoice } from "@media/realtime_voice/frontend";
 import { useTranscriptionSession } from "@media/recorded_transcription/frontend";
 import { useTraditionalVoiceSession } from "@media/stt_chat_tts/frontend";
@@ -241,6 +244,15 @@ export default function AppWorkspace() {
     fetchClient: apiTrace.tracedFetch,
     model: config?.realtime_model ?? "gpt-realtime-2.1",
   });
+  const realtimeTranscriptionWebRtc = useWebRtcTranscription({
+    fetchClient: apiTrace.tracedFetch,
+    transport: "webrtc",
+  });
+  const realtimeTranscriptionWebSocket = useWebSocketTranscription({
+    fetchClient: apiTrace.tracedFetch,
+    transport: "websocket",
+  });
+  const realtimeTranslation = useRealtimeTranslation();
   const voiceLive = useVoiceLive({
     model: config?.voice_live_model ?? "gpt-realtime",
     voice: config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural",
@@ -373,6 +385,24 @@ export default function AppWorkspace() {
       realtime.status !== "idle"
     ) {
       realtime.stop();
+    }
+    if (
+      nextUseCase.workspace !== "realtimeTranscriptionWebRtc" &&
+      realtimeTranscriptionWebRtc.status !== "idle"
+    ) {
+      realtimeTranscriptionWebRtc.stop();
+    }
+    if (
+      nextUseCase.workspace !== "realtimeTranscriptionWebSocket" &&
+      realtimeTranscriptionWebSocket.status !== "idle"
+    ) {
+      realtimeTranscriptionWebSocket.stop();
+    }
+    if (
+      nextUseCase.workspace !== "realtimeTranslationWebSocket" &&
+      realtimeTranslation.status !== "idle"
+    ) {
+      realtimeTranslation.stop();
     }
     if (nextUseCase.workspace !== "voiceLive" && voiceLive.status !== "idle") {
       voiceLive.stop();
@@ -747,6 +777,58 @@ export default function AppWorkspace() {
         onStart: () => void realtime.start(),
         onStop: realtime.stop,
       },
+      webRtcTranscription: {
+        configured: config?.is_realtime_transcription_configured ?? false,
+        model:
+          realtimeTranscriptionWebRtc.model ??
+          config?.realtime_transcription_model ??
+          "gpt-realtime-whisper",
+        status: realtimeTranscriptionWebRtc.status,
+        error: realtimeTranscriptionWebRtc.error,
+        transcript: realtimeTranscriptionWebRtc.transcript,
+        language: realtimeTranscriptionWebRtc.language,
+        delay: realtimeTranscriptionWebRtc.delay,
+        turnDetection: realtimeTranscriptionWebRtc.turnDetection,
+        onLanguageChange: realtimeTranscriptionWebRtc.setLanguage,
+        onDelayChange: realtimeTranscriptionWebRtc.setDelay,
+        onTurnDetectionChange: realtimeTranscriptionWebRtc.setTurnDetection,
+        onStart: () => void realtimeTranscriptionWebRtc.start(),
+        onStop: realtimeTranscriptionWebRtc.stop,
+      },
+      webSocketTranscription: {
+        configured: config?.is_realtime_transcription_configured ?? false,
+        model:
+          realtimeTranscriptionWebSocket.model ??
+          config?.realtime_transcription_model ??
+          "gpt-realtime-whisper",
+        status: realtimeTranscriptionWebSocket.status,
+        error: realtimeTranscriptionWebSocket.error,
+        transcript: realtimeTranscriptionWebSocket.transcript,
+        language: realtimeTranscriptionWebSocket.language,
+        delay: realtimeTranscriptionWebSocket.delay,
+        turnDetection: realtimeTranscriptionWebSocket.turnDetection,
+        onLanguageChange: realtimeTranscriptionWebSocket.setLanguage,
+        onDelayChange: realtimeTranscriptionWebSocket.setDelay,
+        onTurnDetectionChange: realtimeTranscriptionWebSocket.setTurnDetection,
+        onStart: () => void realtimeTranscriptionWebSocket.start(),
+        onStop: realtimeTranscriptionWebSocket.stop,
+      },
+      webSocketTranslation: {
+        configured: config?.is_realtime_translation_configured ?? false,
+        model:
+          realtimeTranslation.model ??
+          config?.realtime_translation_model ??
+          "gpt-realtime-translate",
+        transcriptionModel: realtimeTranslation.transcriptionModel,
+        status: realtimeTranslation.status,
+        error: realtimeTranslation.error,
+        targetLanguage: realtimeTranslation.targetLanguage,
+        sourceTranscript: realtimeTranslation.sourceTranscript,
+        translatedTranscript: realtimeTranslation.translatedTranscript,
+        onTargetLanguageChange: realtimeTranslation.setTargetLanguage,
+        onStart: () => void realtimeTranslation.start(),
+        onStop: realtimeTranslation.stop,
+      },
       voiceLive: {
         configured: config?.is_voice_live_configured ?? false,
         model: config?.voice_live_model ?? "gpt-realtime",
@@ -1043,9 +1125,9 @@ export default function AppWorkspace() {
                               : activeUseCaseDetails.workspace === "comparison"
                                 ? `Comparing ${selected.length} model endpoint${selected.length === 1 ? "" : "s"}`
                                 : activeUseCaseDetails.workspace ===
-                                        "agentResearch" ||
-                                      activeUseCaseDetails.workspace ===
-                                        "hostedAgent"
+                                      "agentResearch" ||
+                                    activeUseCaseDetails.workspace ===
+                                      "hostedAgent"
                                   ? activeUseCaseDetails.description
                                   : activeUseCaseDetails.workspace ===
                                       "transcriptionComparison"
@@ -1058,6 +1140,12 @@ export default function AppWorkspace() {
                                             "transcribe" ||
                                           activeUseCaseDetails.workspace ===
                                             "realtimeVoice" ||
+                                          activeUseCaseDetails.workspace ===
+                                            "realtimeTranscriptionWebRtc" ||
+                                          activeUseCaseDetails.workspace ===
+                                            "realtimeTranscriptionWebSocket" ||
+                                          activeUseCaseDetails.workspace ===
+                                            "realtimeTranslationWebSocket" ||
                                           activeUseCaseDetails.workspace ===
                                             "voiceLive" ||
                                           activeUseCaseDetails.workspace ===

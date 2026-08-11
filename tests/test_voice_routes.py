@@ -27,6 +27,26 @@ def test_realtime_session_contract(monkeypatch):
     }
 
 
+def test_realtime_transcription_session_contract(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    session = {
+        "token": "secret",
+        "webrtc_url": "https://example.test/realtime/calls",
+        "model": "gpt-realtime-whisper",
+    }
+    with patch(
+        "usecases_media.shared.voice.backend.router.create_realtime_transcription_client_secret",
+        return_value=session,
+    ):
+        response = TestClient(create_app()).post(
+            "/api/realtime-transcription/session",
+            json={"language": "nl", "delay": "low", "turn_detection": "semantic_vad"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == session
+
+
 def test_transcription_upload_limit(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     monkeypatch.setattr("usecases_media.shared.voice.backend.router.MAX_AUDIO_BYTES", 4)

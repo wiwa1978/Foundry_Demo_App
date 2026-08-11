@@ -41,18 +41,24 @@ describe("UseCaseMarketplace", () => {
     await user.click(screen.getByRole("button", { name: /agents/i }));
 
     expect(
-      screen.getByRole("button", { name: /research assistant agent.*prompt agent/i }),
+      screen.getByRole("button", {
+        name: /research assistant agent.*prompt agent/i,
+      }),
     ).toBeInTheDocument();
     expect(screen.getByText("Prompt Agent")).toBeInTheDocument();
     expect(screen.getByText("Hosted Agent")).toBeInTheDocument();
     expect(screen.getByText("Microsoft Agent Framework")).toBeInTheDocument();
-    expect(screen.getByText(/Microsoft Agent Framework code/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Microsoft Agent Framework code/),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /text chat/i }),
     ).not.toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: /research assistant agent.*prompt agent/i }),
+      screen.getByRole("button", {
+        name: /research assistant agent.*prompt agent/i,
+      }),
     );
     expect(onSelect).toHaveBeenCalledWith("agent_research");
   });

@@ -230,7 +230,7 @@ def test_audio_download_reports_missing_local_dependency():
         return original_import(name, *args, **kwargs)
 
     with patch("builtins.__import__", side_effect=missing_yt_dlp):
-        with pytest.raises(InvalidRequestError, match="yt-dlp 2026.03.17"):
+        with pytest.raises(InvalidRequestError, match="yt-dlp 2026.07.04"):
             download_youtube_audio("dQw4w9WgXcQ")
 
 

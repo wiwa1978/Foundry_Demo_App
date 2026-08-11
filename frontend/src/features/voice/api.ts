@@ -2,6 +2,7 @@ import { readPublicApiError } from "@/api/errors";
 import type {
   FetchClient,
   RealtimeSessionResponse,
+  RealtimeTranscriptionSessionResponse,
   TraditionalVoiceResult,
   TranscriptionResult,
 } from "@/api/types";
@@ -32,6 +33,40 @@ export async function createRealtimeSession(
       await readPublicApiError(response, "Failed to create realtime session."),
     );
   return (await response.json()) as RealtimeSessionResponse;
+}
+
+export async function createRealtimeTranscriptionSession(
+  fetchClient: FetchClient,
+  request: {
+    language: string | null;
+    delay: string | null;
+    turn_detection: string;
+  },
+  signal?: AbortSignal,
+) {
+  const response = await fetchClient(
+    "/api/realtime-transcription/session",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    },
+    {
+      label: "Create realtime transcription session",
+      request,
+      responseKind: "json",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await readPublicApiError(
+        response,
+        "Failed to create realtime transcription session.",
+      ),
+    );
+  }
+  return (await response.json()) as RealtimeTranscriptionSessionResponse;
 }
 
 export async function transcribeRecording(
@@ -118,7 +153,7 @@ export async function runTraditionalVoice(
 }
 
 export async function exchangeRealtimeSdp(
-  session: RealtimeSessionResponse,
+  session: RealtimeSessionResponse | RealtimeTranscriptionSessionResponse,
   offer: string,
   fetchImplementation: typeof fetch = globalThis.fetch,
   signal?: AbortSignal,
@@ -146,4 +181,30 @@ export function voiceLiveUrl() {
 export function liveInterpreterUrl() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/api/live-interpreter`;
+}
+
+export function realtimeTranscriptionWebSocketUrl(options?: {
+  language?: string | null;
+  delay?: string | null;
+  turnDetection?: string;
+}) {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const url = new URL(
+    `${protocol}//${window.location.host}/api/realtime-transcription`,
+  );
+  if (options?.language) url.searchParams.set("language", options.language);
+  if (options?.delay) url.searchParams.set("delay", options.delay);
+  if (options?.turnDetection) {
+    url.searchParams.set("turnDetection", options.turnDetection);
+  }
+  return url.toString();
+}
+
+export function realtimeTranslationWebSocketUrl(targetLanguage: string) {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const url = new URL(
+    `${protocol}//${window.location.host}/api/realtime-translation`,
+  );
+  url.searchParams.set("targetLanguage", targetLanguage);
+  return url.toString();
 }

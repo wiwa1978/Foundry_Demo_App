@@ -37,6 +37,8 @@ import { downloadText } from "@/features/voice/audioUtils";
 import type {
   LiveTranslationMode,
   RealtimeStatus,
+  RealtimeTranscriptionDelay,
+  RealtimeTranscriptionTurnDetection,
   RealtimeTranscriptEntry,
 } from "@/features/voice/types";
 import { cn } from "@/lib/utils";
@@ -915,6 +917,309 @@ export function RealtimeVoiceHero({
   );
 }
 
+export function RealtimeTranscriptionHero({
+  configured,
+  model,
+  transport,
+  status,
+  error,
+  transcript,
+  language,
+  delay,
+  turnDetection,
+  onLanguageChange,
+  onDelayChange,
+  onTurnDetectionChange,
+  onStart,
+  onStop,
+}: {
+  configured: boolean;
+  model: string;
+  transport: "WebRTC" | "WebSockets";
+  status: RealtimeStatus;
+  error: string;
+  transcript: string;
+  language: string;
+  delay: RealtimeTranscriptionDelay;
+  turnDetection: RealtimeTranscriptionTurnDetection;
+  onLanguageChange: (value: string) => void;
+  onDelayChange: (value: RealtimeTranscriptionDelay) => void;
+  onTurnDetectionChange: (value: RealtimeTranscriptionTurnDetection) => void;
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  const isActive = status !== "idle";
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex-1 overflow-auto p-5">
+        {transcript ? (
+          <div className="mx-auto grid max-w-4xl gap-3">
+            <div className="ml-auto w-full max-w-2xl rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm dark:border-[#606066] dark:bg-[#45454a]">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-[#606066]">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Live transcript
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {status === "live" ? "Listening" : "Waiting"}
+                </span>
+              </div>
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
+                {transcript}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <div className="max-w-lg rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
+              <DictationHero active={isActive} />
+              <div className="flex flex-wrap justify-center gap-2">
+                <Badge variant="outline">Foundry Realtime</Badge>
+                <Badge variant="outline">{transport}</Badge>
+              </div>
+              <h3 className="mt-3 text-2xl font-semibold tracking-tight">
+                Realtime transcription
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                Stream microphone audio over {transport} and transcribe it with{" "}
+                <span className="font-medium text-slate-700 dark:text-slate-200">
+                  {formatModelName(model)}
+                </span>
+                .
+              </p>
+              {isActive ? (
+                <div className="mt-5 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                  {status === "connecting" ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  {status === "connecting"
+                    ? "Connecting..."
+                    : status === "stopping"
+                      ? "Finalizing..."
+                      : "Listening..."}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t bg-slate-50 px-4 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
+        <div className="palette-focus mx-auto flex max-w-5xl flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_4px_rgba(15,23,42,0.16)] dark:border-[#606066] dark:bg-[#2f2f33] dark:shadow-none lg:flex-row lg:items-end">
+          <label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Language hint
+            <select
+              value={language}
+              disabled={isActive}
+              onChange={(event) => onLanguageChange(event.target.value)}
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+            >
+              <option value="auto">Auto detect</option>
+              <option value="en">English</option>
+              <option value="nl">Dutch</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="es">Spanish</option>
+              <option value="it">Italian</option>
+              <option value="pt">Portuguese</option>
+            </select>
+          </label>
+          <label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Transcription delay
+            <select
+              value={delay}
+              disabled={isActive}
+              onChange={(event) =>
+                onDelayChange(event.target.value as RealtimeTranscriptionDelay)
+              }
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+            >
+              <option value="default">Service default</option>
+              <option value="minimal">Minimal</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="xhigh">Extra high</option>
+            </select>
+          </label>
+          <label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Turn detection
+            <select
+              value={turnDetection}
+              disabled={isActive}
+              onChange={(event) =>
+                onTurnDetectionChange(
+                  event.target.value as RealtimeTranscriptionTurnDetection,
+                )
+              }
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+            >
+              {transport === "WebSockets" ? (
+                <option value="none">App silence commits</option>
+              ) : null}
+              <option value="server_vad">Server VAD</option>
+              <option value="semantic_vad">Semantic VAD</option>
+            </select>
+          </label>
+          <Button
+            type="button"
+            onClick={isActive ? onStop : onStart}
+            disabled={!configured && !isActive}
+            variant={isActive ? "destructive" : "default"}
+          >
+            {isActive ? (
+              <MicOff className="h-4 w-4" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
+            {status === "connecting"
+              ? "Connecting..."
+              : status === "stopping"
+                ? "Finalizing..."
+                : status === "live"
+                  ? "Stop transcription"
+                  : "Start transcription"}
+          </Button>
+        </div>
+        {!configured ? (
+          <p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">
+            Configure FOUNDRY_REALTIME_ENDPOINT and the existing
+            gpt-realtime-whisper deployment.
+          </p>
+        ) : null}
+        {error ? (
+          <p className="mt-2 text-center text-xs text-red-600 dark:text-red-300">
+            {error}
+          </p>
+        ) : null}
+        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+          Microphone audio is streamed over {transport} and processed by{" "}
+          {formatModelName(model)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function RealtimeTranslationHero({
+  configured,
+  model,
+  transcriptionModel,
+  status,
+  error,
+  targetLanguage,
+  sourceTranscript,
+  translatedTranscript,
+  onTargetLanguageChange,
+  onStart,
+  onStop,
+}: {
+  configured: boolean;
+  model: string;
+  transcriptionModel: string;
+  status: RealtimeStatus;
+  error: string;
+  targetLanguage: string;
+  sourceTranscript: string;
+  translatedTranscript: string;
+  onTargetLanguageChange: (value: string) => void;
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  const isActive = status !== "idle";
+  return (
+    <div className="w-full overflow-hidden rounded-3xl border border-fuchsia-200 bg-gradient-to-br from-white via-fuchsia-50/60 to-indigo-50 p-6 shadow-sm dark:border-fuchsia-500/30 dark:from-[#39393d] dark:via-fuchsia-950/20 dark:to-indigo-950/20">
+      <div className="text-center">
+        <DictationHero active={isActive} />
+        <div className="flex flex-wrap justify-center gap-2">
+          <Badge>{model}</Badge>
+          <Badge variant="outline">{transcriptionModel}</Badge>
+          <Badge variant="outline">WebSockets</Badge>
+          <Badge variant="outline">Translated audio</Badge>
+        </div>
+        <h3 className="mt-4 text-2xl font-semibold tracking-tight">
+          Realtime speech translation
+        </h3>
+        <p className="mx-auto mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+          <span className="font-medium">{model}</span> translates the continuous
+          stream while <span className="font-medium">{transcriptionModel}</span>
+          provides the source transcript. Use headphones to avoid microphone
+          feedback from translated speech.
+        </p>
+        <div className="mx-auto mt-5 max-w-xs text-left">
+          <label className="grid gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+            Target language
+            <select
+              value={targetLanguage}
+              disabled={isActive}
+              onChange={(event) => onTargetLanguageChange(event.target.value)}
+              className="h-10 rounded-lg border bg-white px-3 text-sm dark:border-[#606066] dark:bg-[#29292c]"
+            >
+              <option value="nl">Dutch</option>
+              <option value="en">English</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="es">Spanish</option>
+              <option value="it">Italian</option>
+              <option value="pt">Portuguese</option>
+            </select>
+          </label>
+        </div>
+        <div className="mt-5 flex justify-center">
+          <Button
+            type="button"
+            onClick={isActive ? onStop : onStart}
+            disabled={!configured && !isActive}
+            variant={isActive ? "destructive" : "default"}
+            className="rounded-full px-5"
+          >
+            {isActive ? (
+              <MicOff className="h-4 w-4" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
+            {status === "connecting"
+              ? "Connecting..."
+              : status === "stopping"
+                ? "Finalizing..."
+                : status === "live"
+                  ? "Stop translation"
+                  : "Start translation"}
+          </Button>
+        </div>
+        {!configured ? (
+          <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
+            Configure the existing gpt-realtime-translate and
+            gpt-realtime-whisper deployments.
+          </p>
+        ) : null}
+        {error ? (
+          <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
+            {error}
+          </p>
+        ) : null}
+      </div>
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="min-h-48 rounded-2xl border bg-white/80 p-5 dark:border-[#606066] dark:bg-[#29292c]/80">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Source transcript
+          </p>
+          <p className="mt-4 whitespace-pre-wrap text-lg leading-8">
+            {sourceTranscript || "Waiting for source speech..."}
+          </p>
+        </div>
+        <div className="min-h-48 rounded-2xl border border-fuchsia-100 bg-white/80 p-5 dark:border-fuchsia-900/50 dark:bg-[#29292c]/80">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-700 dark:text-fuchsia-300">
+            Translation
+          </p>
+          <p className="mt-4 whitespace-pre-wrap text-lg leading-8">
+            {translatedTranscript || "Waiting for translated text and audio..."}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DictationHero({ active }: { active: boolean }) {
   return (
     <div
@@ -1174,8 +1479,8 @@ export function LiveTranslationHero({
           className="mt-4 text-sm text-slate-600 dark:text-slate-300"
           role="status"
         >
-          Listening... Speak a complete phrase. Its translation will appear
-          here and play through your speakers.
+          Listening... Speak a complete phrase. Its translation will appear here
+          and play through your speakers.
         </p>
       ) : null}
       {transcript.length ? (

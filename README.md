@@ -133,6 +133,8 @@ expires after eight hours.
 | `FOUNDRY_EMBEDDING_DIMENSIONS` | Optional embedding dimension override when reusing a pre-created index. When omitted, the app uses the dimensions returned by Foundry when the first document is uploaded. |
 | `FOUNDRY_REALTIME_ENDPOINT` | Optional OpenAI-compatible endpoint for the Realtime voice demo, usually `https://<resource>.services.ai.azure.com/openai/v1`. Defaults to `FOUNDRY_PROJECT_ENDPOINT` when omitted by deriving `/openai/v1` from the project endpoint. `AZURE_OPENAI_ENDPOINT` is also accepted. |
 | `FOUNDRY_REALTIME_MODEL` | Optional realtime deployment name used by the voice demo. Defaults to a realtime model in `FOUNDRY_MODELS`, or `gpt-realtime-2.1`. |
+| `FOUNDRY_REALTIME_TRANSCRIPTION_MODEL` | Existing realtime transcription deployment used by the WebRTC and WebSocket demos. Defaults to `gpt-realtime-whisper`. |
+| `FOUNDRY_REALTIME_TRANSLATION_MODEL` | Existing dedicated realtime translation deployment. Defaults to `gpt-realtime-translate`. |
 | `FOUNDRY_TRANSCRIPTION_MODEL` | Optional OpenAI-compatible transcription deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-transcribe`. |
 | `FOUNDRY_TTS_MODEL` | Optional text-to-speech deployment for the traditional voice pipeline. Defaults to `gpt-audio-mini`. |
 | `FOUNDRY_TTS_VOICE` | Optional TTS voice name for the traditional voice pipeline. Defaults to `alloy`. |

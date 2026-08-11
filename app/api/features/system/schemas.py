@@ -15,6 +15,10 @@ class ConfigResponse(BaseModel):
     is_realtime_configured: bool
     realtime_endpoint: str | None
     realtime_model: str | None
+    is_realtime_transcription_configured: bool
+    realtime_transcription_model: str | None
+    is_realtime_translation_configured: bool
+    realtime_translation_model: str | None
     embedding_model: str
     is_document_rag_configured: bool
     search_endpoint: str | None

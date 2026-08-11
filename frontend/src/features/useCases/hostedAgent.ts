@@ -7,7 +7,8 @@ export const hostedAgentUseCase: UseCaseModule = {
   typeLabel: "Hosted Agent",
   frameworkLabel: "Microsoft Agent Framework",
   shortTitle: "Hosted agent",
-  description: "Run custom Microsoft Agent Framework code registered and hosted by Foundry Agent Service.",
+  description:
+    "Run custom Microsoft Agent Framework code registered and hosted by Foundry Agent Service.",
   badge: "Code + Host",
   icon: "chat",
   modalities: ["text"],
