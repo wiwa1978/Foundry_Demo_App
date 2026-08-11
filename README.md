@@ -1,4 +1,4 @@
-# Foundry Chat App
+# Foundry Chat App 123
 
 A lightweight local app for chatting with and comparing Microsoft Foundry model deployments. The backend is FastAPI using the Microsoft Foundry SDK with Microsoft Entra ID, and the frontend is React, Tailwind CSS, and shadcn-style local components.
 
