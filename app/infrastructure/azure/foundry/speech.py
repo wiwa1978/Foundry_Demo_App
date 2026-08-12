@@ -20,15 +20,11 @@ def transcribe_audio(
 ) -> dict[str, Any]:
     settings = load_settings()
     if not settings.endpoint:
-        raise RuntimeError(
-            "Foundry transcription is not configured. Set FOUNDRY_PROJECT_ENDPOINT."
-        )
+        raise RuntimeError("Foundry transcription is not configured. Set FOUNDRY_PROJECT_ENDPOINT.")
 
     transcription_model = (model or settings.transcription_model).strip()
     if not transcription_model:
-        raise RuntimeError(
-            "Set FOUNDRY_TRANSCRIPTION_MODEL to your transcription deployment name."
-        )
+        raise RuntimeError("Set FOUNDRY_TRANSCRIPTION_MODEL to your transcription deployment name.")
     if not audio:
         raise RuntimeError("Recorded audio was empty.")
 

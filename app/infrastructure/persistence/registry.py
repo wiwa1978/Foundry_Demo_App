@@ -2,12 +2,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 
+from app.application.ports.conversations import ConversationRepository
+from app.application.ports.model_settings import ModelSettingsRepository
+from app.application.ports.use_case_settings import UseCaseResourceSettingsRepository
 from app.core.config import persistence_backend
-from app.infrastructure.persistence.contracts import (
-    ConversationRepository,
-    ModelSettingsRepository,
-    UseCaseResourceSettingsRepository,
-)
 
 
 @dataclass(frozen=True)

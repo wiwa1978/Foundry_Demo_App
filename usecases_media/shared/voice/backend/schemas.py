@@ -6,7 +6,7 @@ from app.api.features.conversations.schemas import (
     UsageResponse,
 )
 from app.api.features.shared_schemas import ProviderMetadata, ProviderTrace
-from app.infrastructure.persistence.models import GuardrailVariant
+from app.domain.models import GuardrailVariant
 from usecases_media.text_chat.backend.schemas import ModelResultResponse, ProviderResultResponse
 
 

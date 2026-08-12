@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 
 from app.api.features.shared_schemas import ProviderMetadata
-from app.infrastructure.persistence.models import GuardrailVariant, MessageRole
+from app.domain.models import GuardrailVariant, MessageRole
 
 
 class UsageResponse(BaseModel):

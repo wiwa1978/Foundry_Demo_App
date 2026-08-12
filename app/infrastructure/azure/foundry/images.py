@@ -28,9 +28,7 @@ class ImagePromptRejectedError(RuntimeError):
 def generate_image(*, model: str, prompt: str, width: int, height: int) -> ImageResult:
     settings = load_settings()
     if not settings.is_configured:
-        raise RuntimeError(
-            "Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env."
-        )
+        raise RuntimeError("Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env.")
 
     normalized_model = model.strip().lower()
     is_mai_model = "mai-image" in normalized_model
@@ -135,9 +133,7 @@ def _flux_base_url(endpoint_value: str) -> str:
 def _flux_model_path(normalized_model: str) -> str:
     if any(token in normalized_model for token in ("flux.2-pro", "flux-2-pro", "flux.2_pro")):
         return "flux-2-pro"
-    if any(
-        token in normalized_model for token in ("flux.2-flex", "flux-2-flex", "flux.2_flex")
-    ):
+    if any(token in normalized_model for token in ("flux.2-flex", "flux-2-flex", "flux.2_flex")):
         return "flux-2-flex"
     if "kontext" in normalized_model:
         return "flux-kontext-pro"
@@ -194,9 +190,7 @@ def edit_image(
 ) -> ImageResult:
     settings = load_settings()
     if not settings.is_configured:
-        raise RuntimeError(
-            "Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env."
-        )
+        raise RuntimeError("Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env.")
 
     size = _openai_image_size(width, height)
     boundary = f"foundry-chat-{uuid.uuid4().hex}"
@@ -205,9 +199,7 @@ def edit_image(
     for name, value in fields.items():
         parts.append(
             (
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
-                f"{value}\r\n"
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'
             ).encode()
         )
     parts.extend(
@@ -246,19 +238,21 @@ def edit_image(
             pass
         raise RuntimeError(f"OpenAI image edit failed ({exc.code}): {detail}") from exc
     except URLError as exc:
-        raise RuntimeError(
-            f"Could not reach the OpenAI image edit endpoint: {exc.reason}"
-        ) from exc
+        raise RuntimeError(f"Could not reach the OpenAI image edit endpoint: {exc.reason}") from exc
 
     data = result.get("data", [])
-    edited_image = next(
-        (
-            item
-            for item in data
-            if isinstance(item, dict) and isinstance(item.get("b64_json"), str)
-        ),
-        None,
-    ) if isinstance(data, list) else None
+    edited_image = (
+        next(
+            (
+                item
+                for item in data
+                if isinstance(item, dict) and isinstance(item.get("b64_json"), str)
+            ),
+            None,
+        )
+        if isinstance(data, list)
+        else None
+    )
     if edited_image is None:
         raise RuntimeError("OpenAI image edit returned no image data.")
     image_base64 = edited_image["b64_json"]

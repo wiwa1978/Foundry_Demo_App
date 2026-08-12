@@ -10,9 +10,7 @@ from usecases_media.shared.voice.backend.live_interpreter import (
 
 class LiveInterpreterEndpointTests(unittest.TestCase):
     def test_builds_v2_websocket_endpoint_from_resource_root(self) -> None:
-        endpoint = build_live_interpreter_endpoint(
-            "https://example.cognitiveservices.azure.com/"
-        )
+        endpoint = build_live_interpreter_endpoint("https://example.cognitiveservices.azure.com/")
 
         self.assertEqual(
             endpoint,

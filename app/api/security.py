@@ -90,11 +90,15 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
     if principal is None:
         return _container_apps_header_user(connection)
     claims = principal.get("claims")
-    claim_lookup = {
-        str(claim.get("typ")): str(claim.get("val"))
-        for claim in claims
-        if isinstance(claim, dict) and claim.get("typ") and claim.get("val")
-    } if isinstance(claims, list) else {}
+    claim_lookup = (
+        {
+            str(claim.get("typ")): str(claim.get("val"))
+            for claim in claims
+            if isinstance(claim, dict) and claim.get("typ") and claim.get("val")
+        }
+        if isinstance(claims, list)
+        else {}
+    )
     user_id = str(principal.get("userId") or "").strip() or _claim_value(
         claim_lookup,
         "oid",
@@ -125,12 +129,15 @@ def authenticated_user(connection: HTTPConnection) -> dict[str, Any] | None:
         "identity_provider": principal.get("identityProvider")
         or principal.get("auth_typ")
         or connection.headers.get("x-ms-client-principal-idp"),
-        "email": _normalized_email(_claim_value(
-            claim_lookup,
-            "preferred_username",
-            "email",
-            "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
-        ) or user_details),
+        "email": _normalized_email(
+            _claim_value(
+                claim_lookup,
+                "preferred_username",
+                "email",
+                "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+            )
+            or user_details
+        ),
         "tenant_id": tenant_id,
     }
 
@@ -199,6 +206,12 @@ def _claim_value(claims: dict[str, str], *names: str) -> str | None:
 def _normalized_email(value: Any) -> str | None:
     email = str(value or "").strip().casefold()
     local, separator, domain = email.partition("@")
-    if separator and local and domain and "@" not in domain and not any(char.isspace() for char in email):
+    if (
+        separator
+        and local
+        and domain
+        and "@" not in domain
+        and not any(char.isspace() for char in email)
+    ):
         return email
     return None

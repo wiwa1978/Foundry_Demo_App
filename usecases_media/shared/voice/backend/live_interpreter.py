@@ -8,9 +8,7 @@ from app.infrastructure.azure.credentials import get_azure_credential
 from app.infrastructure.azure.foundry.settings import FoundrySettings
 
 TARGET_LANGUAGE_PATTERN = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z]{2,8})?$")
-SUPPORTED_TARGET_LANGUAGES = {
-    "ar", "de", "en", "es", "fr", "it", "ja", "ko", "nl", "pt", "zh-Hans"
-}
+SUPPORTED_TARGET_LANGUAGES = {"ar", "de", "en", "es", "fr", "it", "ja", "ko", "nl", "pt", "zh-Hans"}
 STANDARD_NEURAL_VOICES = {
     "ar": "ar-SA-ZariyahNeural",
     "de": "de-DE-KatjaNeural",
@@ -75,9 +73,7 @@ class LiveInterpreterSession:
             )
         translation_config.add_target_language(target_language)
         translation_config.voice_name = (
-            "personal-voice"
-            if mode == "personal"
-            else STANDARD_NEURAL_VOICES[target_language]
+            "personal-voice" if mode == "personal" else STANDARD_NEURAL_VOICES[target_language]
         )
         if mode == "standard":
             translation_config.speech_recognition_language = source_language.strip()
@@ -162,7 +158,8 @@ class LiveInterpreterSession:
             "json",
             {
                 "type": "error",
-                "error": details.error_details or f"Live Interpreter was canceled: {details.reason}",
+                "error": details.error_details
+                or f"Live Interpreter was canceled: {details.reason}",
             },
         )
 

@@ -12,7 +12,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from websockets.asyncio.client import connect as websocket_connect
 
 from app.api.security import AuthMode, auth_mode, authenticated_user, websocket_origin_allowed
-from app.application.use_case_settings import LIVE_TRANSLATION_USE_CASE, resolve_use_case_binding
+from app.application.use_case_settings import LIVE_TRANSLATION_USE_CASE
 from app.core.concurrency import run_model_call
 from app.infrastructure.azure.foundry.realtime import (
     create_realtime_transcription_connection_info,
@@ -75,11 +75,7 @@ def _assign_sequence(state: TranscriptionProxyState, item_id: str | None) -> int
         return None
     if item_id in state.item_sequences:
         return state.item_sequences[item_id]
-    sequence = (
-        state.pending_sequences.popleft()
-        if state.pending_sequences
-        else state.next_sequence
-    )
+    sequence = state.pending_sequences.popleft() if state.pending_sequences else state.next_sequence
     if sequence == state.next_sequence:
         state.next_sequence += 1
     state.item_sequences[item_id] = sequence
@@ -330,9 +326,7 @@ async def realtime_transcription_proxy(websocket: WebSocket) -> None:
                 {
                     "type": "error",
                     "error": {
-                        "message": _public_provider_error(
-                            "Realtime transcription session", exc
-                        )
+                        "message": _public_provider_error("Realtime transcription session", exc)
                     },
                 }
             )
@@ -445,9 +439,7 @@ async def realtime_translation_proxy(websocket: WebSocket) -> None:
                 {
                     "type": "error",
                     "error": {
-                        "message": _public_provider_error(
-                            "Realtime translation session", exc
-                        )
+                        "message": _public_provider_error("Realtime translation session", exc)
                     },
                 }
             )
@@ -467,11 +459,15 @@ async def live_interpreter(websocket: WebSocket) -> None:
         start_message = await websocket.receive_json()
         if start_message.get("type") != "start":
             raise ValueError("The first message must start a Live Interpreter session.")
-        binding = resolve_use_case_binding(LIVE_TRANSLATION_USE_CASE)
+        services = websocket.app.state.services
+        binding = services.use_case_settings.resolve(LIVE_TRANSLATION_USE_CASE)
         if binding is None:
             raise RuntimeError("Map Live translation to a configured Foundry binding first.")
         session = LiveInterpreterSession(
-            settings=load_settings(),
+            settings=load_settings(
+                services.models.list(),
+                live_interpreter_configured=True,
+            ),
             binding=binding,
             mode=str(start_message.get("mode", "standard")),
             source_language=str(start_message.get("source_language", "")),

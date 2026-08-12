@@ -38,8 +38,14 @@ SAMPLES = (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed image-to-image samples in private Blob Storage.")
-    parser.add_argument("--account-url", required=True, help="Blob endpoint, for example https://name.blob.core.windows.net")
+    parser = argparse.ArgumentParser(
+        description="Seed image-to-image samples in private Blob Storage."
+    )
+    parser.add_argument(
+        "--account-url",
+        required=True,
+        help="Blob endpoint, for example https://name.blob.core.windows.net",
+    )
     parser.add_argument("--container", default="foundry-rag-documents")
     args = parser.parse_args()
 

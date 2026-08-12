@@ -2,11 +2,9 @@ from unittest.mock import patch
 
 import pytest
 
-from app.infrastructure.persistence.contracts import (
-    ConversationRepository,
-    ModelSettingsRepository,
-    UseCaseResourceSettingsRepository,
-)
+from app.application.ports.conversations import ConversationRepository
+from app.application.ports.model_settings import ModelSettingsRepository
+from app.application.ports.use_case_settings import UseCaseResourceSettingsRepository
 from app.infrastructure.persistence.cosmos import (
     CosmosConversationRepository,
     CosmosModelSettingsRepository,
@@ -56,8 +54,16 @@ def test_selects_cosmos_repositories(monkeypatch):
 @pytest.mark.parametrize(
     ("conversation_repository", "model_settings_repository", "use_case_settings_repository"),
     [
-        (SQLiteConversationRepository(), SQLiteModelSettingsRepository(), SQLiteUseCaseResourceSettingsRepository()),
-        (CosmosConversationRepository(), CosmosModelSettingsRepository(), CosmosUseCaseResourceSettingsRepository()),
+        (
+            SQLiteConversationRepository(),
+            SQLiteModelSettingsRepository(),
+            SQLiteUseCaseResourceSettingsRepository(),
+        ),
+        (
+            CosmosConversationRepository(),
+            CosmosModelSettingsRepository(),
+            CosmosUseCaseResourceSettingsRepository(),
+        ),
     ],
 )
 def test_adapters_implement_repository_contracts(

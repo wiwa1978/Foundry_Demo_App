@@ -7,11 +7,12 @@ from azure.cosmos.exceptions import (
     CosmosResourceNotFoundError,
 )
 
+from app.application.ports.conversations import ConversationPageKey, UsageRecord
 from app.core.config import env_bool, env_text
 from app.core.errors import InvalidRequestError
 from app.domain.identity import UserScope
+from app.domain.models import Conversation, ConversationMessage, ModelSettings, UseCaseBinding
 from app.infrastructure.azure.credentials import get_azure_credential
-from app.infrastructure.persistence.contracts import ConversationPageKey, UsageRecord
 from app.infrastructure.persistence.models import (
     CONVERSATION_TYPE,
     MESSAGE_TYPE,
@@ -19,10 +20,6 @@ from app.infrastructure.persistence.models import (
     MODEL_SETTINGS_TYPE,
     USE_CASE_SETTINGS_PARTITION,
     USE_CASE_SETTINGS_TYPE,
-    Conversation,
-    ConversationMessage,
-    ModelSettings,
-    UseCaseBinding,
     conversation_from_record,
     message_from_record,
     model_document_id,
@@ -361,10 +358,7 @@ class CosmosConversationRepository:
 class CosmosModelSettingsRepository:
     def list_models(self) -> list[str]:
         rows = get_container().query_items(
-            query=(
-                "SELECT c.model FROM c WHERE c.document_type = @document_type "
-                "ORDER BY c.model"
-            ),
+            query=("SELECT c.model FROM c WHERE c.document_type = @document_type ORDER BY c.model"),
             parameters=[{"name": "@document_type", "value": MODEL_SETTINGS_TYPE}],
             partition_key=MODEL_SETTINGS_PARTITION,
         )

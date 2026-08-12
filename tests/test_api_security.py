@@ -106,7 +106,7 @@ def test_container_apps_mode_requires_encoded_principal(monkeypatch):
     from app.application.conversations import ConversationPage
 
     with patch(
-        "app.api.features.conversations.router.list_conversation_page",
+        "app.application.conversations.ConversationService.list_page",
         return_value=ConversationPage(conversations=[], next_cursor=None),
     ):
         accepted = client.get(

@@ -1,29 +1,26 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.application.chat import (
-    guardrail_error_details,
-    guardrail_variants,
-    public_provider_error,
+from app.application.chat_errors import guardrail_error_details, public_provider_error
+from app.application.chat_guardrails import guardrail_variants
+from app.application.conversation_messages import build_model_history
+from app.application.foundry_deployments import (
+    get_deployment_guardrail_policy,
+    list_foundry_deployments,
 )
-from app.application.conversations import build_model_history
-from app.application.foundry_admin import (
+from app.application.foundry_guardrails import (
     SYSTEM_GUARDRAIL_POLICY_COPIES,
     create_system_guardrail_policy_copies,
-    get_deployment_guardrail_policy,
     guardrail_policy_exists,
-    list_foundry_deployments,
     list_guardrail_policies,
 )
-from app.application.models import (
-    DEPLOYMENT_DEFAULT_GUARDRAIL,
-    ModelSettings,
-    _document_to_settings,
-)
 from app.domain.identity import UserScope
+from app.domain.models import DEPLOYMENT_DEFAULT_GUARDRAIL, ModelSettings
 from app.infrastructure.azure.foundry.chat import complete_chat
+from app.infrastructure.persistence.models import settings_from_record
 
 USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
+MANAGEMENT_GATEWAY = MagicMock()
 
 
 class ProviderError(Exception):
@@ -73,8 +70,8 @@ def test_other_provider_errors_remain_generic():
     )
 
 
-@patch("app.application.foundry_admin._create_management_client")
-@patch("app.application.foundry_admin.load_admin_config")
+@patch("app.application.foundry_guardrails.create_management_client")
+@patch("app.application.foundry_guardrails.load_admin_config")
 def test_lists_only_custom_policies_as_selectable(mock_config, mock_client):
     mock_config.return_value = SimpleNamespace(
         is_configured=True,
@@ -89,7 +86,7 @@ def test_lists_only_custom_policies_as_selectable(mock_config, mock_client):
     ]
     mock_client.return_value = client
 
-    policies = list_guardrail_policies()
+    policies = list_guardrail_policies(MANAGEMENT_GATEWAY)
 
     assert [policy["name"] for policy in policies] == [
         "Microsoft.DefaultV2",
@@ -99,8 +96,8 @@ def test_lists_only_custom_policies_as_selectable(mock_config, mock_client):
     assert policies[1]["is_selectable"] is True
 
 
-@patch("app.application.foundry_admin._create_management_client")
-@patch("app.application.foundry_admin.load_admin_config")
+@patch("app.application.foundry_guardrails.create_management_client")
+@patch("app.application.foundry_guardrails.load_admin_config")
 def test_creates_selectable_copies_of_system_policies(mock_config, mock_client):
     mock_config.return_value = SimpleNamespace(
         is_configured=True,
@@ -127,7 +124,7 @@ def test_creates_selectable_copies_of_system_policies(mock_config, mock_client):
     ]
     mock_client.return_value = client
 
-    policies = create_system_guardrail_policy_copies()
+    policies = create_system_guardrail_policy_copies(MANAGEMENT_GATEWAY)
 
     assert [policy["name"] for policy in policies] == [
         "FoundryChat-Microsoft-Default",
@@ -155,8 +152,8 @@ def test_creates_selectable_copies_of_system_policies(mock_config, mock_client):
     }
 
 
-@patch("app.application.foundry_admin._create_management_client")
-@patch("app.application.foundry_admin.load_admin_config")
+@patch("app.application.foundry_guardrails.create_management_client")
+@patch("app.application.foundry_guardrails.load_admin_config")
 def test_policy_copy_creation_preserves_existing_copies(mock_config, mock_client):
     mock_config.return_value = SimpleNamespace(
         is_configured=True,
@@ -171,13 +168,13 @@ def test_policy_copy_creation_preserves_existing_copies(mock_config, mock_client
     client.rai_policies.list.return_value = existing
     mock_client.return_value = client
 
-    policies = create_system_guardrail_policy_copies()
+    policies = create_system_guardrail_policy_copies(MANAGEMENT_GATEWAY)
 
     assert len(policies) == 4
     client.rai_policies.create_or_update.assert_not_called()
 
 
-@patch("app.application.foundry_admin.list_guardrail_policies")
+@patch("app.application.foundry_guardrails.list_guardrail_policies")
 def test_policy_validation_rejects_system_policy(mock_list):
     mock_list.return_value = [
         {"name": "Microsoft.DefaultV2", "is_selectable": False},
@@ -185,13 +182,13 @@ def test_policy_validation_rejects_system_policy(mock_list):
         {"name": "FoundryChat-Microsoft-DefaultV2", "is_selectable": True},
     ]
 
-    assert guardrail_policy_exists("strict-demo") is True
-    assert guardrail_policy_exists("Microsoft.DefaultV2") is False
-    assert guardrail_policy_exists("FoundryChat-Microsoft-DefaultV2") is True
+    assert guardrail_policy_exists(MANAGEMENT_GATEWAY, "strict-demo") is True
+    assert guardrail_policy_exists(MANAGEMENT_GATEWAY, "Microsoft.DefaultV2") is False
+    assert guardrail_policy_exists(MANAGEMENT_GATEWAY, "FoundryChat-Microsoft-DefaultV2") is True
 
 
-@patch("app.application.foundry_admin._create_management_client")
-@patch("app.application.foundry_admin.load_admin_config")
+@patch("app.application.foundry_deployments.create_management_client")
+@patch("app.application.foundry_deployments.load_admin_config")
 def test_lists_usable_foundry_deployments(mock_config, mock_client):
     mock_config.return_value = SimpleNamespace(
         is_configured=True,
@@ -225,7 +222,7 @@ def test_lists_usable_foundry_deployments(mock_config, mock_client):
     ]
     mock_client.return_value = client
 
-    deployments = list_foundry_deployments()
+    deployments = list_foundry_deployments(MANAGEMENT_GATEWAY)
 
     assert [deployment["name"] for deployment in deployments] == ["gpt-a", "gpt-b"]
     assert deployments[1]["model_name"] == "gpt-5"
@@ -235,8 +232,8 @@ def test_lists_usable_foundry_deployments(mock_config, mock_client):
     )
 
 
-@patch("app.application.foundry_admin._create_management_client")
-@patch("app.application.foundry_admin.load_admin_config")
+@patch("app.application.foundry_deployments.create_management_client")
+@patch("app.application.foundry_deployments.load_admin_config")
 def test_reads_policy_assigned_to_deployment(mock_config, mock_client):
     mock_config.return_value = SimpleNamespace(
         is_configured=True,
@@ -251,7 +248,7 @@ def test_reads_policy_assigned_to_deployment(mock_config, mock_client):
     )
     mock_client.return_value = client
 
-    policy = get_deployment_guardrail_policy("gpt-demo")
+    policy = get_deployment_guardrail_policy(MANAGEMENT_GATEWAY, "gpt-demo")
 
     assert policy == {
         "deployment_name": "gpt-demo",
@@ -306,8 +303,7 @@ def test_guarded_chat_sends_policy_header(mock_settings, mock_client_context):
     assert result["guardrail_results"]["content_filter_results"]
 
 
-@patch("app.application.conversations.get_conversation_messages")
-def test_history_keeps_guardrail_variants_separate(mock_messages):
+def test_history_keeps_guardrail_variants_separate():
     def message(role, content, variant=None):
         return SimpleNamespace(
             role=role,
@@ -318,16 +314,17 @@ def test_history_keeps_guardrail_variants_separate(mock_messages):
             guardrail_policy_name=None,
         )
 
-    mock_messages.return_value = [
+    repository = MagicMock()
+    repository.list_messages.return_value = [
         message("user", "question"),
         message("assistant", "default answer", "baseline"),
         message("assistant", "guarded answer", "guarded"),
         message("assistant", "legacy answer"),
     ]
 
-    baseline = build_model_history(USER_SCOPE, "conversation", "gpt-demo", "baseline")
-    guarded = build_model_history(USER_SCOPE, "conversation", "gpt-demo", "guarded")
-    standard = build_model_history(USER_SCOPE, "conversation", "gpt-demo")
+    baseline = build_model_history(repository, USER_SCOPE, "conversation", "gpt-demo", "baseline")
+    guarded = build_model_history(repository, USER_SCOPE, "conversation", "gpt-demo", "guarded")
+    standard = build_model_history(repository, USER_SCOPE, "conversation", "gpt-demo")
 
     assert [item["content"] for item in baseline] == [
         "question",
@@ -360,7 +357,7 @@ def test_guardrail_variants_use_two_selected_policies():
 
 
 def test_legacy_guardrail_setting_migrates_to_default_vs_custom():
-    settings = _document_to_settings(
+    settings = settings_from_record(
         {
             "model": "gpt-demo",
             "api_surface": "responses",
@@ -381,8 +378,7 @@ def test_legacy_guardrail_setting_migrates_to_default_vs_custom():
     )
 
 
-@patch("app.application.conversations.get_conversation_messages")
-def test_history_follows_policy_name_when_slots_change(mock_messages):
+def test_history_follows_policy_name_when_slots_change():
     def message(role, content, variant=None, policy_name=None):
         return SimpleNamespace(
             role=role,
@@ -393,13 +389,15 @@ def test_history_follows_policy_name_when_slots_change(mock_messages):
             guardrail_policy_name=policy_name,
         )
 
-    mock_messages.return_value = [
+    repository = MagicMock()
+    repository.list_messages.return_value = [
         message("user", "question"),
         message("assistant", "strict answer", "policy_1", "strict-demo"),
         message("assistant", "lenient answer", "policy_2", "lenient-demo"),
     ]
 
     strict = build_model_history(
+        repository,
         USER_SCOPE,
         "conversation",
         "gpt-demo",

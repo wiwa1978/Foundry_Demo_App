@@ -11,11 +11,11 @@ import type {
 import type { ChatMessage } from "@/features/textChat/types";
 import type { TraditionalVoiceRequest } from "@/features/voice/useTraditionalVoiceSession";
 
-import {
-  WorkspaceContentRouter,
-  type WorkspaceContentRouterProps,
-  type WorkspaceContentRoute,
-} from "./WorkspaceContentRouter";
+import type {
+  WorkspaceContentRouterProps,
+  WorkspaceContentRoute,
+} from "./routes/contracts";
+import { WorkspaceContentRouter } from "./WorkspaceContentRouter";
 
 type ActionProps = {
   onSubmit?: () => void;
@@ -347,6 +347,7 @@ function routerProps(
       view: "chat",
       workspace: "chat",
       useCase: "text_chat",
+      renderer: "chat",
       enableComposerDictation: true,
     },
     access: {
@@ -659,7 +660,20 @@ function route(
   props: WorkspaceContentRouterProps,
   update: Partial<WorkspaceContentRoute>,
 ): WorkspaceContentRouterProps {
-  return { ...props, route: { ...props.route, ...update } };
+  const workspace = update.workspace ?? props.route.workspace;
+  const renderer =
+    workspace === "agentResearch" || workspace === "hostedAgent"
+      ? "agent"
+      : workspace === "image" ||
+          workspace === "imageEdit" ||
+          workspace === "imageComparison"
+        ? "image"
+        : workspace === "chat" ||
+            workspace === "comparison" ||
+            workspace === "youtubeSummary"
+          ? "chat"
+          : "voice";
+  return { ...props, route: { ...props.route, renderer, ...update } };
 }
 
 describe("WorkspaceContentRouter", () => {

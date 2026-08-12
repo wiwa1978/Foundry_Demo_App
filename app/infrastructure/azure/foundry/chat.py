@@ -179,9 +179,7 @@ def complete_chat(
 ) -> dict[str, Any]:
     settings = load_settings()
     if not settings.is_configured:
-        raise RuntimeError(
-            "Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env."
-        )
+        raise RuntimeError("Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env.")
 
     started = time.perf_counter()
     foundry_request = build_foundry_request_trace(
@@ -197,9 +195,7 @@ def complete_chat(
         history=history,
         guardrail_policy_name=guardrail_policy_name,
     )
-    extra_headers = (
-        {"x-policy-id": guardrail_policy_name} if guardrail_policy_name else None
-    )
+    extra_headers = {"x-policy-id": guardrail_policy_name} if guardrail_policy_name else None
     response: Any
     with create_openai_client(settings) as openai_client:
         request = foundry_request["payload"]
@@ -246,9 +242,7 @@ def create_embeddings(
 ) -> dict[str, Any]:
     settings = load_settings()
     if not settings.is_configured:
-        raise RuntimeError(
-            "Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env."
-        )
+        raise RuntimeError("Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env.")
     normalized_inputs = [item.strip() for item in inputs if item.strip()]
     if not normalized_inputs:
         raise RuntimeError("Embedding input cannot be empty.")
@@ -304,9 +298,7 @@ def stream_chat(
 ) -> Iterator[dict[str, Any]]:
     settings = load_settings()
     if not settings.is_configured:
-        raise RuntimeError(
-            "Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env."
-        )
+        raise RuntimeError("Foundry is not configured. Set FOUNDRY_PROJECT_ENDPOINT in .env.")
 
     started = time.perf_counter()
     chunks: list[str] = []
@@ -327,9 +319,7 @@ def stream_chat(
     )
     yield {"type": "foundry_request", "request": redact_foundry_trace(foundry_request)}
 
-    extra_headers = (
-        {"x-policy-id": guardrail_policy_name} if guardrail_policy_name else None
-    )
+    extra_headers = {"x-policy-id": guardrail_policy_name} if guardrail_policy_name else None
     with create_openai_client(settings) as openai_client:
         request = foundry_request["payload"]
         stream: Any

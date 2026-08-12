@@ -29,4 +29,4 @@ def test_local_auth_callback_sets_session_cookie_and_clears_flow_cookie(monkeypa
     assert response.headers["location"] == "/"
     assert session is not None
     assert session["user_id"] == "user-1"
-    assert f"{AUTH_FLOW_COOKIE}=\"\"" in response.headers.get_list("set-cookie")[-2]
+    assert f'{AUTH_FLOW_COOKIE}=""' in response.headers.get_list("set-cookie")[-2]

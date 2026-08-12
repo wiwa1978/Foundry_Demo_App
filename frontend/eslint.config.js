@@ -56,6 +56,39 @@ export default tseslint.config(
     },
   },
   {
+    files: ["src/features/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@/app/AppWorkspace",
+              message: "Feature code must not depend on the application shell.",
+            },
+          ],
+          patterns: ["**/AppWorkspace"],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/app/AppWorkspace.tsx"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/api/*", "@media/*/api"],
+              message: "Feature API calls belong in feature controllers.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["vite.config.ts", "tailwind.config.ts", "eslint.config.js"],
     languageOptions: {
       globals: globals.node,

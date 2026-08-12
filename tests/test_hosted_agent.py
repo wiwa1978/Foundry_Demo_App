@@ -24,9 +24,7 @@ async def test_stream_invokes_routed_hosted_agent_endpoint():
             "usecases_agents.research_assistant_hosted.backend.service.load_settings",
             return_value=settings,
         ),
-        patch(
-            "usecases_agents.research_assistant_hosted.backend.service.get_azure_credential"
-        ),
+        patch("usecases_agents.research_assistant_hosted.backend.service.get_azure_credential"),
         patch(
             "usecases_agents.research_assistant_hosted.backend.service.AIProjectClient",
             return_value=project_client,
@@ -34,10 +32,6 @@ async def test_stream_invokes_routed_hosted_agent_endpoint():
     ):
         events = [event async for event in stream_hosted_agent("Question")]
 
-    project_client.get_openai_client.assert_called_once_with(
-        agent_name="hosted-assistant"
-    )
-    openai_client.responses.create.assert_called_once_with(
-        input="Question", stream=True
-    )
+    project_client.get_openai_client.assert_called_once_with(agent_name="hosted-assistant")
+    openai_client.responses.create.assert_called_once_with(input="Question", stream=True)
     assert events[-1] == {"type": "completed", "answer": "Hello"}

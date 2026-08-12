@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from app.application.models import get_model_settings
+from app.application.ports.foundry_chat import FoundryChatGateway
 from app.core.concurrency import run_model_call
 from app.core.errors import ExternalServiceError, InvalidRequestError, ServiceAuthorizationError
-from app.infrastructure.azure.foundry.gateway import DefaultFoundryChatGateway, FoundryChatGateway
+from app.domain.models import ModelSettings
 from app.infrastructure.azure.foundry.settings import load_settings
 from app.infrastructure.azure.foundry.speech import transcribe_audio, transcribe_speech_audio
 
@@ -266,7 +266,8 @@ async def summarize_youtube_video(
     transcription_model: str | None,
     language: str,
     reasoning_effort: str | None,
-    gateway: FoundryChatGateway | None = None,
+    gateway: FoundryChatGateway,
+    model_settings: ModelSettings,
 ) -> dict:
     started = time.perf_counter()
     video_id = extract_video_id(url)
@@ -311,8 +312,8 @@ async def summarize_youtube_video(
             len(captions.text),
         )
 
-    selected_gateway = gateway or DefaultFoundryChatGateway()
-    settings = get_model_settings(model)
+    selected_gateway = gateway
+    settings = model_settings
     requests: list[dict] = transcription_requests
     responses: list[dict] = transcription_responses
     usage: dict[str, int] = {}

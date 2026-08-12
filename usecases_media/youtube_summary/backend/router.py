@@ -1,7 +1,11 @@
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.dependencies import chat_service as get_chat_service
+from app.application.chat import ChatService
+from app.application.models import get_model_settings
 from app.core.errors import ApplicationError, ExternalServiceError
 from usecases_media.youtube_summary.backend.schemas import (
     YouTubeSummaryRequest,
@@ -14,7 +18,10 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/api/youtube/summarize", response_model=YouTubeSummaryResponse)
-async def summarize(request: YouTubeSummaryRequest) -> dict:
+async def summarize(
+    request: YouTubeSummaryRequest,
+    service: Annotated[ChatService, Depends(get_chat_service)],
+) -> dict:
     try:
         return await summarize_youtube_video(
             url=request.url,
@@ -22,6 +29,8 @@ async def summarize(request: YouTubeSummaryRequest) -> dict:
             transcription_model=request.transcription_model,
             language=request.language,
             reasoning_effort=request.reasoning_effort,
+            gateway=service.gateway,
+            model_settings=get_model_settings(service.models, request.model),
         )
     except ApplicationError as exc:
         logger.warning(

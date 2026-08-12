@@ -10,6 +10,11 @@ from app.api.middleware import require_authenticated_api_user
 from app.api.security import AuthMode, admin_principals, auth_mode
 from app.api.static import mount_static_assets
 from app.api.static import router as static_router
+from app.composition import (
+    build_application_services,
+    build_document_qa_service,
+    build_traditional_voice_service,
+)
 from app.core.config import load_environment, load_runtime_settings
 from app.core.errors import (
     ApplicationError,
@@ -74,6 +79,11 @@ def create_app() -> FastAPI:
     from usecases_media.youtube_summary.backend.router import router as youtube_summary_router
 
     application = FastAPI(title="Foundry Chat App", lifespan=lifespan)
+    application.state.services = build_application_services()
+    application.state.document_qa_service = build_document_qa_service(application.state.services)
+    application.state.traditional_voice_service = build_traditional_voice_service(
+        application.state.services
+    )
     mount_static_assets(application)
     application.middleware("http")(require_authenticated_api_user)
     application.middleware("http")(request_context_middleware)

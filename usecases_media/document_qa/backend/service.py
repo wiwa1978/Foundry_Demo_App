@@ -4,26 +4,22 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any
 
-from app.api.schemas import DocumentQuestionRequest
-from app.application.chat import (
-    GuardrailOption,
-    bounded_stream_chat,
-    chat_service,
-    guardrail_error_details,
-    public_provider_error,
-)
+from app.application.chat import ChatService
+from app.application.chat_errors import guardrail_error_details, public_provider_error
+from app.application.chat_guardrails import GuardrailOption
+from app.application.contracts.chat import ChatCommand
+from app.application.conversation_messages import append_message
 from app.application.conversations import (
-    append_message,
     conversation_to_dict,
     get_conversation,
     get_or_create_conversation,
     message_to_dict,
 )
-from app.application.models import ModelSettings, get_model_settings
+from app.application.models import get_model_settings
 from app.core.errors import ApplicationError, ExternalServiceError
 from app.domain.identity import UserScope
-from app.infrastructure.persistence.models import Conversation, ConversationMessage
-from usecases_media.document_qa.backend.gateway import AzureDocumentGateway, DocumentGateway
+from app.domain.models import Conversation, ConversationMessage, ModelSettings
+from usecases_media.document_qa.backend.gateway import DocumentGateway
 from usecases_media.document_qa.backend.store import chunk_to_dict, document_to_dict
 
 logger = logging.getLogger(__name__)
@@ -42,8 +38,9 @@ class PreparedDocumentQuestion:
 
 
 class DocumentQaService:
-    def __init__(self, gateway: DocumentGateway | None = None) -> None:
-        self.gateway = gateway or AzureDocumentGateway()
+    def __init__(self, chat: ChatService, gateway: DocumentGateway) -> None:
+        self.chat = chat
+        self.gateway = gateway
 
     def list_documents(self, scope: UserScope) -> list[dict[str, Any]]:
         try:
@@ -74,10 +71,11 @@ class DocumentQaService:
 
     def prepare(
         self,
-        request: DocumentQuestionRequest,
+        request: ChatCommand,
         scope: UserScope,
     ) -> PreparedDocumentQuestion:
         conversation = get_or_create_conversation(
+            self.chat.conversations,
             scope,
             request.conversation_id,
             request.prompt,
@@ -90,10 +88,11 @@ class DocumentQaService:
         except Exception as exc:
             raise ExternalServiceError("Document question") from exc
         grounded_prompt = self.gateway.grounded_prompt(request.prompt, retrieval["chunks"])
-        model_settings = get_model_settings(request.model)
-        variants = chat_service.guardrail_variants(model_settings, request.guardrail_comparison)
-        histories = chat_service.guardrail_histories(scope, conversation.id, request.model, variants)
+        model_settings = get_model_settings(self.chat.models, request.model)
+        variants = self.chat.guardrail_variants(model_settings, request.guardrail_comparison)
+        histories = self.chat.guardrail_histories(scope, conversation.id, request.model, variants)
         user_message = append_message(
+            self.chat.conversations,
             scope=scope,
             conversation_id=conversation.id,
             role="user",
@@ -112,7 +111,7 @@ class DocumentQaService:
 
     def stream(
         self,
-        request: DocumentQuestionRequest,
+        request: ChatCommand,
         scope: UserScope,
         prepared: PreparedDocumentQuestion,
     ) -> Iterator[dict]:
@@ -121,7 +120,8 @@ class DocumentQaService:
             "model": request.model,
             "api_surface": prepared.model_settings.api_surface,
             "conversation": conversation_to_dict(
-                get_conversation(scope, prepared.conversation.id) or prepared.conversation
+                get_conversation(self.chat.conversations, scope, prepared.conversation.id)
+                or prepared.conversation
             ),
             "user_message": message_to_dict(prepared.user_message),
             "guardrail_comparison": request.guardrail_comparison,
@@ -136,7 +136,7 @@ class DocumentQaService:
             with ThreadPoolExecutor(max_workers=2) as executor:
                 futures = [
                     executor.submit(
-                        chat_service.run_and_store_variant,
+                        self.chat.run_and_store_variant,
                         scope=scope,
                         conversation_id=prepared.conversation.id,
                         model_settings=prepared.model_settings,
@@ -154,20 +154,23 @@ class DocumentQaService:
                         "type": "variant_completed",
                         "result": future.result(),
                         "conversation": conversation_to_dict(
-                            get_conversation(scope, prepared.conversation.id)
+                            get_conversation(
+                                self.chat.conversations, scope, prepared.conversation.id
+                            )
                             or prepared.conversation
                         ),
                     }
             yield {
                 "type": "comparison_completed",
                 "conversation": conversation_to_dict(
-                    get_conversation(scope, prepared.conversation.id) or prepared.conversation
+                    get_conversation(self.chat.conversations, scope, prepared.conversation.id)
+                    or prepared.conversation
                 ),
             }
             return
 
         try:
-            for event in bounded_stream_chat(
+            for event in self.chat.bounded_stream(
                 model=request.model,
                 prompt=prepared.grounded_prompt,
                 api_surface=prepared.model_settings.api_surface,
@@ -183,6 +186,7 @@ class DocumentQaService:
                     yield event
                 elif event["type"] == "completed":
                     assistant_message = append_message(
+                        self.chat.conversations,
                         scope=scope,
                         conversation_id=prepared.conversation.id,
                         role="assistant",
@@ -196,7 +200,9 @@ class DocumentQaService:
                     yield {
                         "type": "completed",
                         "conversation": conversation_to_dict(
-                            get_conversation(scope, prepared.conversation.id)
+                            get_conversation(
+                                self.chat.conversations, scope, prepared.conversation.id
+                            )
                             or prepared.conversation
                         ),
                         "assistant_message": message_to_dict(assistant_message),
@@ -206,6 +212,7 @@ class DocumentQaService:
             guardrail_results = guardrail_error_details(exc)
             public_error = public_provider_error("Document answer stream", exc)
             assistant_message = append_message(
+                self.chat.conversations,
                 scope=scope,
                 conversation_id=prepared.conversation.id,
                 role="assistant",
@@ -219,10 +226,8 @@ class DocumentQaService:
                 "type": "error",
                 "error": public_error,
                 "conversation": conversation_to_dict(
-                    get_conversation(scope, prepared.conversation.id) or prepared.conversation
+                    get_conversation(self.chat.conversations, scope, prepared.conversation.id)
+                    or prepared.conversation
                 ),
                 "assistant_message": message_to_dict(assistant_message),
             }
-
-
-document_qa_service = DocumentQaService()

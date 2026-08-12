@@ -60,9 +60,7 @@ def test_trace_query_returns_bounded_safe_span_metadata():
             "usecases_agents.research_assistant_prompt.backend.tracing.load_settings",
             return_value=settings,
         ),
-        patch(
-            "usecases_agents.research_assistant_prompt.backend.tracing.get_azure_credential"
-        ),
+        patch("usecases_agents.research_assistant_prompt.backend.tracing.get_azure_credential"),
         patch(
             "usecases_agents.research_assistant_prompt.backend.tracing.LogsQueryClient",
             return_value=query_client,

@@ -150,12 +150,15 @@ def test_realtime_transcription_websocket_wraps_pcm_and_relays_transcript(monkey
         "model": "gpt-realtime-whisper",
         "session_update": {"type": "session.update", "session": {"type": "transcription"}},
     }
-    with patch(
-        "usecases_media.shared.voice.backend.websockets.create_realtime_transcription_connection_info",
-        return_value=connection,
-    ), patch(
-        "usecases_media.shared.voice.backend.websockets.websocket_connect",
-        return_value=FakeConnection(upstream),
+    with (
+        patch(
+            "usecases_media.shared.voice.backend.websockets.create_realtime_transcription_connection_info",
+            return_value=connection,
+        ),
+        patch(
+            "usecases_media.shared.voice.backend.websockets.websocket_connect",
+            return_value=FakeConnection(upstream),
+        ),
     ):
         with TestClient(create_app()).websocket_connect(
             "/api/realtime-transcription?language=nl&delay=low&turnDetection=none",
@@ -188,12 +191,15 @@ def test_realtime_translation_websocket_relays_pcm_text_and_audio(monkeypatch):
         "transcription_model": "gpt-realtime-whisper",
         "session_update": {"type": "session.update", "session": {}},
     }
-    with patch(
-        "usecases_media.shared.voice.backend.websockets.create_realtime_translation_connection_info",
-        return_value=connection,
-    ), patch(
-        "usecases_media.shared.voice.backend.websockets.websocket_connect",
-        return_value=FakeConnection(upstream),
+    with (
+        patch(
+            "usecases_media.shared.voice.backend.websockets.create_realtime_translation_connection_info",
+            return_value=connection,
+        ),
+        patch(
+            "usecases_media.shared.voice.backend.websockets.websocket_connect",
+            return_value=FakeConnection(upstream),
+        ),
     ):
         with TestClient(create_app()).websocket_connect(
             "/api/realtime-translation?targetLanguage=fr",
@@ -229,9 +235,14 @@ def test_live_interpreter_websocket_starts_writes_audio_and_closes(monkeypatch, 
         "https://speech-east.services.ai.azure.com/api/projects/demo",
     )
     from app.application.use_case_settings import save_use_case_binding
-    from app.infrastructure.persistence.registry import initialize_persistence
+    from app.infrastructure.persistence.registry import get_repositories, initialize_persistence
+
     initialize_persistence()
-    save_use_case_binding("live_translation", "REGION2")
+    save_use_case_binding(
+        get_repositories().use_case_settings,
+        "live_translation",
+        "REGION2",
+    )
     session = FakeInterpreterSession()
     try:
         with patch(

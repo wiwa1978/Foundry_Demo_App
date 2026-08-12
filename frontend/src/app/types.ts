@@ -46,6 +46,7 @@ export type UseCaseWorkspace =
   | "transcriptionComparison"
   | "youtubeSummary";
 export type UseCaseModality = "text" | "image" | "audio" | "video";
+export type WorkspaceRenderer = "chat" | "agent" | "voice" | "image";
 export type UseCaseCategory = "media" | "agents";
 
 export type UseCaseModule = {

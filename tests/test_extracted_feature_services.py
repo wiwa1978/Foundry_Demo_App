@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.api.features.admin.schemas import AdminDeploymentRequest
 from app.api.features.admin.service import create_deployment
 from app.api.features.models.service import discover_models
-from app.application.models import ModelSettings
+from app.domain.models import ModelSettings
 from app.infrastructure.azure.foundry.settings import FoundrySettings
-from usecases_media.shared.voice.backend.service import traditional_voice_service
+from usecases_media.shared.voice.backend.service import TraditionalVoiceService
 
 
 def _settings() -> FoundrySettings:
@@ -33,16 +33,13 @@ def test_model_discovery_classifies_deployments_and_preserves_configured_models(
         {"name": "speech-in", "model_name": "whisper"},
         {"name": "speech-out", "model_name": "gpt-4o-mini-tts"},
     ]
+    administration = MagicMock()
+    administration.list_deployments.return_value = deployments
+    models = MagicMock()
+    models.list.return_value = ["configured-chat"]
+    models.get.side_effect = lambda model: ModelSettings(model=model)
     with patch("app.api.features.models.service.load_settings", return_value=_settings()):
-        with patch(
-            "app.api.features.models.service.list_foundry_deployments",
-            return_value=deployments,
-        ):
-            with patch(
-                "app.api.features.models.service.get_model_settings",
-                side_effect=lambda model: ModelSettings(model=model),
-            ):
-                result = discover_models()
+        result = discover_models(administration, models)
 
     assert result["models"] == ["chat", "speech-in", "speech-out", "configured-chat"]
     assert result["traditional_transcription_models"] == ["speech-in"]
@@ -51,12 +48,12 @@ def test_model_discovery_classifies_deployments_and_preserves_configured_models(
 
 
 def test_model_discovery_sanitizes_provider_failures():
+    administration = MagicMock()
+    administration.list_deployments.side_effect = RuntimeError("provider secret")
+    models = MagicMock()
+    models.list.return_value = ["configured-chat"]
     with patch("app.api.features.models.service.load_settings", return_value=_settings()):
-        with patch(
-            "app.api.features.models.service.list_foundry_deployments",
-            side_effect=RuntimeError("provider secret"),
-        ):
-            result = discover_models()
+        result = discover_models(administration, models)
 
     assert result["deployments"] == []
     assert result["discovery_error"] == "Model discovery failed. Try again later."
@@ -71,10 +68,11 @@ def test_admin_deployment_service_registers_created_deployment():
         modalities=["text", "voice"],
     )
     run_model_call = AsyncMock(return_value={"status": "accepted"})
-    saved = ModelSettings(model="demo", modalities=("text", "voice"))
+    administration = MagicMock()
+    models = MagicMock()
+    models.save.return_value = ModelSettings(model="demo", modalities=("text", "voice"))
     with patch("app.api.features.admin.service.run_model_call", run_model_call):
-        with patch("app.api.features.admin.service.save_model_settings", return_value=saved):
-            result = asyncio.run(create_deployment(payload))
+        result = asyncio.run(create_deployment(administration, models, payload))
 
     assert run_model_call.await_args is not None
     request = run_model_call.await_args.args[1]
@@ -97,8 +95,15 @@ def test_traditional_voice_service_combines_transcription_chat_and_speech():
         "content": "Hi there",
         "assistant_message": {"id": "assistant-1"},
     }
+    chat = MagicMock()
+    chat.guardrail_variants.return_value = [(None, None)]
+    chat.guardrail_histories.return_value = {None: []}
+    chat.run_and_store_variant.return_value = variant_result
+    service = TraditionalVoiceService(chat)
     with ExitStack() as stack:
-        stack.enter_context(patch("usecases_media.shared.voice.backend.service.run_model_call", model_calls))
+        stack.enter_context(
+            patch("usecases_media.shared.voice.backend.service.run_model_call", model_calls)
+        )
         stack.enter_context(
             patch(
                 "usecases_media.shared.voice.backend.service.get_or_create_conversation",
@@ -106,31 +111,22 @@ def test_traditional_voice_service_combines_transcription_chat_and_speech():
             )
         )
         stack.enter_context(
-            patch("usecases_media.shared.voice.backend.service.get_model_settings", return_value=model_settings)
-        )
-        stack.enter_context(
             patch(
-                "usecases_media.shared.voice.backend.service.chat_service.guardrail_variants",
-                return_value=[(None, None)],
+                "usecases_media.shared.voice.backend.service.get_model_settings",
+                return_value=model_settings,
             )
         )
         stack.enter_context(
             patch(
-                "usecases_media.shared.voice.backend.service.chat_service.guardrail_histories",
-                return_value={None: []},
+                "usecases_media.shared.voice.backend.service.append_message",
+                return_value=MagicMock(),
             )
         )
         stack.enter_context(
             patch(
-                "usecases_media.shared.voice.backend.service.chat_service.run_and_store_variant",
-                return_value=variant_result,
+                "usecases_media.shared.voice.backend.service.get_conversation",
+                return_value=None,
             )
-        )
-        stack.enter_context(
-            patch("usecases_media.shared.voice.backend.service.append_message", return_value=MagicMock())
-        )
-        stack.enter_context(
-            patch("usecases_media.shared.voice.backend.service.get_conversation", return_value=None)
         )
         stack.enter_context(
             patch(
@@ -145,22 +141,22 @@ def test_traditional_voice_service_combines_transcription_chat_and_speech():
             )
         )
         result = asyncio.run(
-            traditional_voice_service.process(
+            service.process(
                 scope=MagicMock(),
                 audio=b"audio",
                 filename="recording.webm",
                 content_type="audio/webm",
                 model="chat-model",
-                transcription_model=None,
-                tts_model=None,
-                tts_voice=None,
+                transcription_model="transcribe",
+                tts_model="tts",
+                tts_voice="alloy",
                 conversation_id=None,
                 reasoning_effort=None,
                 use_case="traditional_voice",
             )
         )
 
-    assert result["transcription"]["text"] == "Hello"
-    assert result["speech"]["audio_base64"] == "bXAz"
-    assert result["chat"]["content"] == "Hi there"
+    assert result["transcript"] == "Hello"
+    assert result["content"] == "Hi there"
+    assert result["speech"]["audio_mime_type"] == "audio/mpeg"
     assert model_calls.await_count == 2

@@ -16,7 +16,7 @@ async def test_stream_invokes_published_agent_reference():
     citation = SimpleNamespace(url="https://example.com", title="Example")
     completed_response = SimpleNamespace(
         id="resp_test123",
-        output=[SimpleNamespace(content=[SimpleNamespace(annotations=[citation])])]
+        output=[SimpleNamespace(content=[SimpleNamespace(annotations=[citation])])],
     )
     stream = [
         SimpleNamespace(type="response.output_text.delta", delta="Hello"),
@@ -36,9 +36,7 @@ async def test_stream_invokes_published_agent_reference():
             "usecases_agents.research_assistant_prompt.backend.service.load_settings",
             return_value=settings,
         ),
-        patch(
-            "usecases_agents.research_assistant_prompt.backend.service.get_azure_credential"
-        ),
+        patch("usecases_agents.research_assistant_prompt.backend.service.get_azure_credential"),
         patch(
             "usecases_agents.research_assistant_prompt.backend.service.AIProjectClient",
             return_value=project_client,
@@ -87,9 +85,7 @@ async def test_stream_surfaces_agent_permission_error():
             "usecases_agents.research_assistant_prompt.backend.service.load_settings",
             return_value=settings,
         ),
-        patch(
-            "usecases_agents.research_assistant_prompt.backend.service.get_azure_credential"
-        ),
+        patch("usecases_agents.research_assistant_prompt.backend.service.get_azure_credential"),
         patch(
             "usecases_agents.research_assistant_prompt.backend.service.AIProjectClient",
             return_value=project_client,

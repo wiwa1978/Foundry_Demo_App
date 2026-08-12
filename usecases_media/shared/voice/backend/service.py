@@ -3,9 +3,9 @@ import base64
 import logging
 from typing import Any
 
-from app.application.chat import chat_service
+from app.application.chat import ChatService
+from app.application.conversation_messages import append_message
 from app.application.conversations import (
-    append_message,
     conversation_to_dict,
     get_conversation,
     get_or_create_conversation,
@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 
 class TraditionalVoiceService:
+    def __init__(self, chat: ChatService) -> None:
+        self.chat = chat
+
     async def process(
         self,
         *,
@@ -50,11 +53,14 @@ class TraditionalVoiceService:
         if not transcript:
             raise ExternalServiceError("Audio transcription")
 
-        conversation = get_or_create_conversation(scope, conversation_id, transcript, use_case)
-        model_settings = get_model_settings(model)
-        variants = chat_service.guardrail_variants(model_settings, False)
-        histories = chat_service.guardrail_histories(scope, conversation.id, model, variants)
+        conversation = get_or_create_conversation(
+            self.chat.conversations, scope, conversation_id, transcript, use_case
+        )
+        model_settings = get_model_settings(self.chat.models, model)
+        variants = self.chat.guardrail_variants(model_settings, False)
+        histories = self.chat.guardrail_histories(scope, conversation.id, model, variants)
         user_message = append_message(
+            self.chat.conversations,
             scope=scope,
             conversation_id=conversation.id,
             role="user",
@@ -63,7 +69,7 @@ class TraditionalVoiceService:
         variant_results = await asyncio.gather(
             *(
                 asyncio.to_thread(
-                    chat_service.run_and_store_variant,
+                    self.chat.run_and_store_variant,
                     scope=scope,
                     conversation_id=conversation.id,
                     model_settings=model_settings,
@@ -87,9 +93,10 @@ class TraditionalVoiceService:
         payload: dict[str, Any] = {
             "model": model,
             "transcription": transcription,
+            "transcript": transcript,
             "results": results_with_speech,
             "conversation": conversation_to_dict(
-                get_conversation(scope, conversation.id) or conversation
+                get_conversation(self.chat.conversations, scope, conversation.id) or conversation
             ),
             "user_message": message_to_dict(user_message),
         }
@@ -129,6 +136,3 @@ class TraditionalVoiceService:
                 "audio_base64": base64.b64encode(speech["audio"]).decode("ascii"),
             },
         }
-
-
-traditional_voice_service = TraditionalVoiceService()

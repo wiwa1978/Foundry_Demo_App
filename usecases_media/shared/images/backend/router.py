@@ -4,12 +4,13 @@ from typing import Annotated
 
 from azure.core.exceptions import HttpResponseError, ResourceNotFoundError, ServiceRequestError
 from azure.storage.blob import BlobServiceClient
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
+from app.api.dependencies import model_service as get_model_service
 from app.api.schemas import ImageGenerationRequest
-from app.application.models import get_model_settings
+from app.application.models import ModelService
 from app.core.concurrency import run_model_call
 from app.core.errors import ExternalServiceError, InvalidRequestError
 from app.infrastructure.azure.credentials import get_azure_credential
@@ -41,14 +42,17 @@ def _sample_container_client():
 
 
 def _list_samples() -> list[dict[str, str]]:
-    if not os.getenv("AZURE_STORAGE_ACCOUNT_URL", "").strip() or not os.getenv(
-        "AZURE_STORAGE_CONTAINER_NAME", ""
-    ).strip():
+    if (
+        not os.getenv("AZURE_STORAGE_ACCOUNT_URL", "").strip()
+        or not os.getenv("AZURE_STORAGE_CONTAINER_NAME", "").strip()
+    ):
         return []
     service, container = _sample_container_client()
     try:
         samples = []
-        for blob in container.list_blobs(name_starts_with=IMAGE_SAMPLE_PREFIX, include=["metadata"]):
+        for blob in container.list_blobs(
+            name_starts_with=IMAGE_SAMPLE_PREFIX, include=["metadata"]
+        ):
             if not blob.name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
                 continue
             metadata = blob.metadata or {}
@@ -56,7 +60,9 @@ def _list_samples() -> list[dict[str, str]]:
             samples.append(
                 {
                     "id": sample_id,
-                    "name": metadata.get("title", sample_id.rsplit(".", 1)[0].replace("-", " ").title()),
+                    "name": metadata.get(
+                        "title", sample_id.rsplit(".", 1)[0].replace("-", " ").title()
+                    ),
                     "attribution": metadata.get("attribution", ""),
                     "source_url": metadata.get("source_url", ""),
                     "image_url": f"/api/images/samples/{sample_id}",
@@ -96,18 +102,21 @@ async def list_image_samples() -> list[dict[str, str]]:
 @router.get("/api/images/samples/{sample_id}")
 async def get_image_sample(sample_id: str) -> Response:
     data, content_type = await run_in_threadpool(_download_sample, sample_id)
-    return Response(data, media_type=content_type, headers={"Cache-Control": "private, max-age=3600"})
+    return Response(
+        data, media_type=content_type, headers={"Cache-Control": "private, max-age=3600"}
+    )
 
 
 @router.post("/api/images/generate", response_model=ImageResponse)
-async def generate(request: ImageGenerationRequest) -> dict:
-    configured_for_images = "image" in get_model_settings(request.model).modalities
+async def generate(
+    request: ImageGenerationRequest,
+    models: Annotated[ModelService, Depends(get_model_service)],
+) -> dict:
+    configured_for_images = "image" in models.get(request.model).modalities
     if not configured_for_images and not any(
         token in request.model.lower() for token in ("mai-image", "flux")
     ):
-        raise InvalidRequestError(
-            f"{request.model} is not configured with the image capability."
-        )
+        raise InvalidRequestError(f"{request.model} is not configured with the image capability.")
     try:
         return dict(
             await run_model_call(
@@ -138,9 +147,7 @@ async def edit(
     if not model or not prompt:
         raise InvalidRequestError("Model and prompt cannot be blank.")
     if width * height > 1_048_576:
-        raise InvalidRequestError(
-            "Image dimensions cannot exceed 1,048,576 total pixels."
-        )
+        raise InvalidRequestError("Image dimensions cannot exceed 1,048,576 total pixels.")
     if "gpt-image" not in model.lower():
         raise InvalidRequestError(f"{model} does not support image editing.")
     if image.content_type not in {"image/png", "image/jpeg", "image/webp"}:

@@ -8,7 +8,7 @@ from app.core.config import load_environment
 
 load_environment()
 
-from app.application.use_case_settings import resolve_use_case_binding
+from app.composition import build_application_services
 from app.infrastructure.azure.foundry.settings import load_settings
 from app.infrastructure.persistence.registry import initialize_persistence
 from usecases_media.shared.voice.backend.live_interpreter import LiveInterpreterSession
@@ -16,11 +16,15 @@ from usecases_media.shared.voice.backend.live_interpreter import LiveInterpreter
 
 async def main() -> None:
     initialize_persistence()
-    binding = resolve_use_case_binding("live_translation")
+    services = build_application_services()
+    binding = services.use_case_settings.resolve("live_translation")
     if binding is None:
         raise RuntimeError("Live translation binding is not configured.")
     session = LiveInterpreterSession(
-        settings=load_settings(),
+        settings=load_settings(
+            services.models.list(),
+            live_interpreter_configured=True,
+        ),
         binding=binding,
         mode="standard",
         source_language="en-US",

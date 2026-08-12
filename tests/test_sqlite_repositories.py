@@ -4,25 +4,24 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from app.application.conversation_messages import append_message
 from app.application.conversations import (
-    append_message,
     create_conversation,
     delete_conversation,
     get_conversation_messages,
     list_conversation_page,
     list_conversations,
 )
-from app.application.models import (
-    ModelSettings,
-    get_model_settings,
-    list_models,
-    save_model_settings,
-)
+from app.application.models import get_model_settings, list_models, save_model_settings
 from app.application.use_case_settings import get_use_case_binding, save_use_case_binding
 from app.core.errors import InvalidRequestError
 from app.domain.identity import UserScope
-from app.infrastructure.persistence.models import Conversation, ConversationMessage
-from app.infrastructure.persistence.registry import initialize_persistence, reset_repositories
+from app.domain.models import Conversation, ConversationMessage, ModelSettings
+from app.infrastructure.persistence.registry import (
+    get_repositories,
+    initialize_persistence,
+    reset_repositories,
+)
 from app.infrastructure.persistence.sqlite import SCHEMA_VERSION, SQLiteConversationRepository
 
 USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
@@ -42,6 +41,10 @@ class SqliteRepositoryTests(unittest.TestCase):
         self.environment.start()
         reset_repositories()
         initialize_persistence()
+        repositories = get_repositories()
+        self.conversations = repositories.conversations
+        self.models = repositories.model_settings
+        self.use_cases = repositories.use_case_settings
 
     def tearDown(self) -> None:
         reset_repositories()
@@ -49,8 +52,9 @@ class SqliteRepositoryTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_conversation_and_guardrail_message_round_trip(self) -> None:
-        conversation = create_conversation(USER_SCOPE, " Local chat ")
+        conversation = create_conversation(self.conversations, USER_SCOPE, " Local chat ")
         append_message(
+            self.conversations,
             scope=USER_SCOPE,
             conversation_id=conversation.id,
             role="assistant",
@@ -62,29 +66,37 @@ class SqliteRepositoryTests(unittest.TestCase):
             guardrail_results={"blocked": False},
         )
 
-        messages = get_conversation_messages(USER_SCOPE, conversation.id)
+        messages = get_conversation_messages(self.conversations, USER_SCOPE, conversation.id)
         self.assertEqual(messages[0].usage, {"total_tokens": 3})
         self.assertEqual(messages[0].guardrail_policy_name, "strict")
         self.assertEqual(messages[0].guardrail_results, {"blocked": False})
-        self.assertEqual(list_conversations(USER_SCOPE)[0].title, "Local chat")
-        self.assertEqual(list_conversations(OTHER_SCOPE), [])
-        self.assertEqual(get_conversation_messages(OTHER_SCOPE, conversation.id), [])
-        self.assertFalse(delete_conversation(OTHER_SCOPE, conversation.id))
-        self.assertTrue(delete_conversation(USER_SCOPE, conversation.id))
+        self.assertEqual(list_conversations(self.conversations, USER_SCOPE)[0].title, "Local chat")
+        self.assertEqual(list_conversations(self.conversations, OTHER_SCOPE), [])
+        self.assertEqual(
+            get_conversation_messages(self.conversations, OTHER_SCOPE, conversation.id), []
+        )
+        self.assertFalse(delete_conversation(self.conversations, OTHER_SCOPE, conversation.id))
+        self.assertTrue(delete_conversation(self.conversations, USER_SCOPE, conversation.id))
 
     def test_model_settings_round_trip(self) -> None:
         saved = save_model_settings(
+            self.models,
             ModelSettings(
                 model="gpt-test",
                 modalities=("text", "voice"),
                 guardrail_policy_names=("deployment_default", "strict"),
-            )
+            ),
         )
 
-        loaded = get_model_settings(saved.model)
+        loaded = get_model_settings(self.models, saved.model)
         self.assertEqual(loaded.modalities, ("text", "voice"))
         self.assertEqual(loaded.guardrail_policy_names, ("deployment_default", "strict"))
-        self.assertEqual(list_models(), ["gpt-test"])
+        self.assertEqual(
+            list_models(
+                self.models,
+            ),
+            ["gpt-test"],
+        )
 
     def test_live_translation_binding_round_trip(self) -> None:
         with patch.dict(
@@ -95,39 +107,41 @@ class SqliteRepositoryTests(unittest.TestCase):
                 )
             },
         ):
-            saved = save_use_case_binding("live_translation", "region2")
+            saved = save_use_case_binding(self.use_cases, "live_translation", "region2")
 
-        loaded = get_use_case_binding("live_translation")
+        loaded = get_use_case_binding(self.use_cases, "live_translation")
         self.assertEqual(saved.binding, "REGION2")
         self.assertEqual(loaded, saved)
 
     def test_conversations_are_filtered_by_use_case(self) -> None:
-        legacy_chat = create_conversation(USER_SCOPE, "Chat")
-        document_chat = create_conversation(USER_SCOPE, "Documents", use_case="document_qa")
+        legacy_chat = create_conversation(self.conversations, USER_SCOPE, "Chat")
+        document_chat = create_conversation(
+            self.conversations, USER_SCOPE, "Documents", use_case="document_qa"
+        )
 
         self.assertEqual(
-            [item.id for item in list_conversations(USER_SCOPE, "text_chat")],
+            [item.id for item in list_conversations(self.conversations, USER_SCOPE, "text_chat")],
             [legacy_chat.id],
         )
         self.assertEqual(
-            [item.id for item in list_conversations(USER_SCOPE, "document_qa")],
+            [item.id for item in list_conversations(self.conversations, USER_SCOPE, "document_qa")],
             [document_chat.id],
         )
 
     def test_mai_image_model_defaults_to_image_capability(self) -> None:
-        settings = get_model_settings("MAI-Image-2.5")
+        settings = get_model_settings(self.models, "MAI-Image-2.5")
 
         self.assertEqual(settings.modalities, ("image",))
 
     def test_flux_model_defaults_to_image_capability(self) -> None:
-        settings = get_model_settings("FLUX.2-pro")
+        settings = get_model_settings(self.models, "FLUX.2-pro")
 
         self.assertEqual(settings.modalities, ("image",))
 
     def test_flux_stale_text_capability_is_corrected(self) -> None:
-        save_model_settings(ModelSettings(model="FLUX.2-pro", modalities=("text",)))
+        save_model_settings(self.models, ModelSettings(model="FLUX.2-pro", modalities=("text",)))
 
-        settings = get_model_settings("FLUX.2-pro")
+        settings = get_model_settings(self.models, "FLUX.2-pro")
 
         self.assertEqual(settings.modalities, ("image",))
 
@@ -147,13 +161,15 @@ class SqliteRepositoryTests(unittest.TestCase):
         for conversation in conversations:
             repository.create_conversation(USER_SCOPE, conversation)
 
-        first_page = list_conversation_page(USER_SCOPE, limit=2)
+        first_page = list_conversation_page(self.conversations, USER_SCOPE, limit=2)
         second_page = list_conversation_page(
+            self.conversations,
             USER_SCOPE,
             limit=2,
             cursor=first_page.next_cursor,
         )
         third_page = list_conversation_page(
+            self.conversations,
             USER_SCOPE,
             limit=2,
             cursor=second_page.next_cursor,
@@ -175,10 +191,10 @@ class SqliteRepositoryTests(unittest.TestCase):
 
     def test_invalid_conversation_cursor_is_rejected(self) -> None:
         with self.assertRaisesRegex(InvalidRequestError, "Invalid conversation cursor"):
-            list_conversation_page(USER_SCOPE, cursor="not-a-cursor")
+            list_conversation_page(self.conversations, USER_SCOPE, cursor="not-a-cursor")
 
     def test_schema_mismatch_resets_app_tables(self) -> None:
-        conversation = create_conversation(USER_SCOPE, "Will be reset")
+        conversation = create_conversation(self.conversations, USER_SCOPE, "Will be reset")
         database_path = os.environ["SQLITE_DATABASE_PATH"]
         connection = sqlite3.connect(database_path)
         try:
@@ -190,7 +206,7 @@ class SqliteRepositoryTests(unittest.TestCase):
         with self.assertLogs("app.infrastructure.persistence.sqlite", level="WARNING") as logs:
             initialize_persistence()
 
-        self.assertEqual(list_conversations(USER_SCOPE), [])
+        self.assertEqual(list_conversations(self.conversations, USER_SCOPE), [])
         self.assertIn("development_mvp_reset=true", " ".join(logs.output))
         connection = sqlite3.connect(database_path)
         try:

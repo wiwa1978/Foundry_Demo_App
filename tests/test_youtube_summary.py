@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from app.core.errors import InvalidRequestError, ServiceAuthorizationError
+from app.domain.models import ModelSettings
 from usecases_media.youtube_summary.backend.service import (
     CaptionTranscript,
     chunk_transcript,
@@ -12,6 +13,15 @@ from usecases_media.youtube_summary.backend.service import (
     extract_video_id,
     normalize_caption_text,
     summarize_youtube_video,
+)
+
+SUMMARY_SETTINGS = ModelSettings(
+    model="summary-model",
+    api_surface="responses",
+    temperature=0.2,
+    top_p=1,
+    max_tokens=1000,
+    repetition_penalty=1,
 )
 
 
@@ -83,19 +93,10 @@ def test_summary_uses_isolated_caption_prompts_and_configured_model():
         language="en",
         source="generated_captions",
     )
-    with (
-        patch(
-            "usecases_media.youtube_summary.backend.service.fetch_caption_transcript",
-            return_value=captions,
-        ),
-        patch("usecases_media.youtube_summary.backend.service.get_model_settings") as settings,
+    with patch(
+        "usecases_media.youtube_summary.backend.service.fetch_caption_transcript",
+        return_value=captions,
     ):
-        settings.return_value.model = "summary-model"
-        settings.return_value.api_surface = "responses"
-        settings.return_value.temperature = 0.2
-        settings.return_value.top_p = 1
-        settings.return_value.max_tokens = 1000
-        settings.return_value.repetition_penalty = 1
         result = asyncio.run(
             summarize_youtube_video(
                 url="https://youtu.be/dQw4w9WgXcQ",
@@ -104,6 +105,7 @@ def test_summary_uses_isolated_caption_prompts_and_configured_model():
                 language="en",
                 reasoning_effort="low",
                 gateway=gateway,
+                model_settings=SUMMARY_SETTINGS,
             )
         )
 
@@ -121,19 +123,10 @@ def test_summary_reports_missing_foundry_data_plane_role():
         language="en",
         source="generated_captions",
     )
-    with (
-        patch(
-            "usecases_media.youtube_summary.backend.service.fetch_caption_transcript",
-            return_value=captions,
-        ),
-        patch("usecases_media.youtube_summary.backend.service.get_model_settings") as settings,
+    with patch(
+        "usecases_media.youtube_summary.backend.service.fetch_caption_transcript",
+        return_value=captions,
     ):
-        settings.return_value.model = "summary-model"
-        settings.return_value.api_surface = "responses"
-        settings.return_value.temperature = 0.2
-        settings.return_value.top_p = 1
-        settings.return_value.max_tokens = 1000
-        settings.return_value.repetition_penalty = 1
         with pytest.raises(ServiceAuthorizationError, match="OpenAI User role"):
             asyncio.run(
                 summarize_youtube_video(
@@ -143,6 +136,7 @@ def test_summary_reports_missing_foundry_data_plane_role():
                     language="en",
                     reasoning_effort=None,
                     gateway=ForbiddenGateway(),
+                    model_settings=SUMMARY_SETTINGS,
                 )
             )
 
@@ -164,14 +158,7 @@ def test_summary_falls_back_to_audio_transcription():
             "usecases_media.youtube_summary.backend.service.fetch_audio_transcript",
             return_value=(audio_transcript, [{"path": "/audio/transcriptions"}], []),
         ) as audio_fallback,
-        patch("usecases_media.youtube_summary.backend.service.get_model_settings") as settings,
     ):
-        settings.return_value.model = "summary-model"
-        settings.return_value.api_surface = "responses"
-        settings.return_value.temperature = 0.2
-        settings.return_value.top_p = 1
-        settings.return_value.max_tokens = 1000
-        settings.return_value.repetition_penalty = 1
         result = asyncio.run(
             summarize_youtube_video(
                 url="https://youtu.be/dQw4w9WgXcQ",
@@ -180,6 +167,7 @@ def test_summary_falls_back_to_audio_transcription():
                 language="en",
                 reasoning_effort=None,
                 gateway=gateway,
+                model_settings=SUMMARY_SETTINGS,
             )
         )
 
@@ -203,6 +191,7 @@ def test_summary_explains_missing_transcription_model_when_captions_fail():
                     language="en",
                     reasoning_effort=None,
                     gateway=FakeGateway(),
+                    model_settings=SUMMARY_SETTINGS,
                 )
             )
 
@@ -211,7 +200,9 @@ def test_audio_download_uses_canonical_url_and_enforces_duration(tmp_path):
     probe = subprocess_result('{"duration": 1801}')
     with (
         patch.dict("sys.modules", {"yt_dlp": object()}),
-        patch("usecases_media.youtube_summary.backend.service.subprocess.run", return_value=probe) as run,
+        patch(
+            "usecases_media.youtube_summary.backend.service.subprocess.run", return_value=probe
+        ) as run,
     ):
         with pytest.raises(InvalidRequestError, match="up to 30 minutes"):
             download_youtube_audio("dQw4w9WgXcQ")

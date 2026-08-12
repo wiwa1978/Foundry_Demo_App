@@ -2,7 +2,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.infrastructure.persistence.models import MODEL_MODALITIES
+from app.domain.models import MODEL_MODALITIES
 
 MAX_INSTRUCTIONS_LENGTH = 20_000
 MAX_MODEL_NAME_LENGTH = 200
@@ -21,8 +21,7 @@ def _normalize_modalities(value: list[str]) -> list[str]:
     unsupported = sorted(set(modalities) - MODEL_MODALITIES)
     if unsupported:
         raise ValueError(
-            "Model capabilities must be one or more of: "
-            f"{', '.join(sorted(MODEL_MODALITIES))}."
+            f"Model capabilities must be one or more of: {', '.join(sorted(MODEL_MODALITIES))}."
         )
     return modalities
 
@@ -75,6 +74,7 @@ class ModelRegistrationRequest(InternalRequestModel):
         if not value:
             raise ValueError("Model deployment name cannot be blank.")
         return value
+
 
 ModelModality = Literal["text", "image", "voice"]
 ApiSurface = Literal["responses", "chat_completions"]

@@ -10,9 +10,7 @@ from app.infrastructure.azure.foundry.speech import synthesize_speech
 
 class FoundryAudioTests(unittest.TestCase):
     def test_audio_endpoint_uses_azure_openai_resource_host(self) -> None:
-        endpoint = azure_openai_endpoint(
-            "https://demo.services.ai.azure.com/api/projects/example"
-        )
+        endpoint = azure_openai_endpoint("https://demo.services.ai.azure.com/api/projects/example")
 
         self.assertEqual(endpoint, "https://demo.openai.azure.com")
 

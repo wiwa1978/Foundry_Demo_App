@@ -1,16 +1,16 @@
 import asyncio
 import json
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from app.api.dependencies import chat_service as get_chat_service
 from app.api.dependencies import current_user_scope
 from app.api.schemas import CompareRequest
-from app.application.chat import chat_service
+from app.application.chat import ChatService
+from app.application.conversation_messages import append_message, build_model_history
 from app.application.conversations import (
-    append_message,
-    build_model_history,
     conversation_to_dict,
     get_conversation,
     get_or_create_conversation,
@@ -24,27 +24,41 @@ from usecases_media.text_chat_comparison.backend.schemas import ComparisonRespon
 router = APIRouter(tags=["Comparison"])
 
 
-def _sse(payload: dict) -> str:
+def _sse(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
-def _prepare_comparison(request: CompareRequest, scope: UserScope) -> dict:
+def _prepare_comparison(
+    service: ChatService,
+    request: CompareRequest,
+    scope: UserScope,
+) -> dict[str, Any]:
     conversation = get_or_create_conversation(
-        scope, request.conversation_id, request.prompt, request.use_case
+        service.conversations,
+        scope,
+        request.conversation_id,
+        request.prompt,
+        request.use_case,
     )
-    settings = {model: get_model_settings(model) for model in request.models}
+    settings = {model: get_model_settings(service.models, model) for model in request.models}
     variants = {
-        model: chat_service.guardrail_variants(model_settings, False)
+        model: service.guardrail_variants(model_settings, False)
         for model, model_settings in settings.items()
     }
     histories = {
         (model, variant): build_model_history(
-            scope, conversation.id, model, variant, policy_name
+            service.conversations,
+            scope,
+            conversation.id,
+            model,
+            variant,
+            policy_name,
         )
         for model, options in variants.items()
         for variant, policy_name in options
     }
     user_message = append_message(
+        service.conversations,
         scope=scope,
         conversation_id=conversation.id,
         role="user",
@@ -60,13 +74,17 @@ def _prepare_comparison(request: CompareRequest, scope: UserScope) -> dict:
 
 
 async def _run_model(
-    request: CompareRequest, scope: UserScope, prepared: dict, model: str
-) -> dict:
+    service: ChatService,
+    request: CompareRequest,
+    scope: UserScope,
+    prepared: dict[str, Any],
+    model: str,
+) -> dict[str, Any]:
     model_settings = prepared["settings"][model]
     results = await asyncio.gather(
         *(
             asyncio.to_thread(
-                chat_service.run_and_store_variant,
+                service.run_and_store_variant,
                 scope=scope,
                 conversation_id=prepared["conversation"].id,
                 model_settings=model_settings,
@@ -80,7 +98,9 @@ async def _run_model(
             for variant, policy_name in prepared["variants"][model]
         )
     )
-    return results[0] if len(results) == 1 else {
+    if len(results) == 1:
+        return results[0]
+    return {
         "model": model,
         "guardrail_comparison": True,
         "guardrail_policy_names": list(model_settings.guardrail_policy_names),
@@ -96,20 +116,21 @@ async def _run_model(
 async def compare(
     request: CompareRequest,
     scope: Annotated[UserScope, Depends(current_user_scope)],
-) -> dict:
-    prepared = _prepare_comparison(request, scope)
+    service: Annotated[ChatService, Depends(get_chat_service)],
+) -> dict[str, Any]:
+    prepared = _prepare_comparison(service, request, scope)
     conversation = prepared["conversation"]
     results = await asyncio.gather(
-        *(_run_model(request, scope, prepared, model) for model in request.models)
+        *(_run_model(service, request, scope, prepared, model) for model in request.models)
     )
     if any(
-        result.get("error")
-        or any(variant.get("error") for variant in result.get("variants", []))
+        result.get("error") or any(variant.get("error") for variant in result.get("variants", []))
         for result in results
     ):
         raise ExternalServiceError("Model comparison")
+    stored = get_conversation(service.conversations, scope, conversation.id)
     return {
-        "conversation": conversation_to_dict(get_conversation(scope, conversation.id) or conversation),
+        "conversation": conversation_to_dict(stored or conversation),
         "user_message": message_to_dict(prepared["user_message"]),
         "results": results,
     }
@@ -119,8 +140,9 @@ async def compare(
 def compare_stream(
     request: CompareRequest,
     scope: Annotated[UserScope, Depends(current_user_scope)],
+    service: Annotated[ChatService, Depends(get_chat_service)],
 ) -> StreamingResponse:
-    prepared = _prepare_comparison(request, scope)
+    prepared = _prepare_comparison(service, request, scope)
     conversation = prepared["conversation"]
 
     async def events():
@@ -131,18 +153,17 @@ def compare_stream(
         }
 
         async def run(model: str):
-            return model, await _run_model(request, scope, prepared, model)
+            return model, await _run_model(service, request, scope, prepared, model)
 
         tasks = [asyncio.create_task(run(model)) for model in request.models]
         for completed in asyncio.as_completed(tasks):
             model, result = await completed
             yield {"type": "model_completed", "model": model, "result": result}
 
+        stored = get_conversation(service.conversations, scope, conversation.id)
         yield {
             "type": "completed",
-            "conversation": conversation_to_dict(
-                get_conversation(scope, conversation.id) or conversation
-            ),
+            "conversation": conversation_to_dict(stored or conversation),
         }
 
     async def encoded_events():

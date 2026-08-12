@@ -62,9 +62,7 @@ async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResp
 
 
 def audit_event(event: str, *, request: Request | None = None, **fields: Any) -> None:
-    safe_fields = " ".join(
-        f"{key}={_safe_value(value)}" for key, value in sorted(fields.items())
-    )
+    safe_fields = " ".join(f"{key}={_safe_value(value)}" for key, value in sorted(fields.items()))
     request_id = getattr(request.state, "request_id", None) if request else None
     audit_logger.info("event=%s request_id=%s %s", event, request_id or "none", safe_fields)
 

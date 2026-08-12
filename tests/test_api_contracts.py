@@ -29,7 +29,7 @@ def test_auth_me_returns_public_unauthenticated_contract(monkeypatch):
     }
 
 
-@patch("app.api.features.conversations.router.list_conversation_page")
+@patch("app.application.conversations.ConversationService.list_page")
 def test_conversation_list_contract(mock_list_page, monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     from app.application.conversations import ConversationPage
@@ -98,7 +98,7 @@ def test_invalid_request_error_has_stable_code_and_request_id(monkeypatch):
     assert response.headers["x-request-id"] == "contract-request-400"
 
 
-@patch("app.api.features.conversations.router.get_conversation", return_value=None)
+@patch("app.application.conversations.ConversationService.get", return_value=None)
 def test_not_found_error_has_stable_code(_mock_get_conversation, monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     response = client.get("/api/conversations/missing")

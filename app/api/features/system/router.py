@@ -1,11 +1,15 @@
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
+from app.api.dependencies import model_service as get_model_service
+from app.api.dependencies import use_case_settings_service as get_use_case_settings_service
 from app.api.features.system.schemas import ConfigResponse, HealthResponse, ReadinessResponse
 from app.api.security import AuthMode, auth_mode
-from app.application.use_case_settings import LIVE_TRANSLATION_USE_CASE, resolve_use_case_binding
+from app.application.models import ModelService
+from app.application.use_case_settings import LIVE_TRANSLATION_USE_CASE, UseCaseSettingsService
 from app.infrastructure.azure.foundry.settings import load_settings
 from app.infrastructure.persistence.registry import check_persistence
 from usecases_media.document_qa.backend.store import load_rag_search_settings
@@ -19,8 +23,15 @@ logger = logging.getLogger(__name__)
     response_model=ConfigResponse,
     response_model_exclude_unset=True,
 )
-def get_config() -> dict:
-    settings = load_settings()
+def get_config(
+    models: Annotated[ModelService, Depends(get_model_service)],
+    use_cases: Annotated[UseCaseSettingsService, Depends(get_use_case_settings_service)],
+) -> dict:
+    live_interpreter_configured = use_cases.resolve(LIVE_TRANSLATION_USE_CASE) is not None
+    settings = load_settings(
+        models.list(),
+        live_interpreter_configured=live_interpreter_configured,
+    )
     rag_settings = load_rag_search_settings()
     return {
         "entra_auth_enabled": auth_mode() is not AuthMode.DISABLED,
@@ -53,10 +64,7 @@ def get_config() -> dict:
         "is_voice_live_configured": settings.is_voice_live_configured,
         "voice_live_model": settings.voice_live_model,
         "voice_live_voice": settings.voice_live_voice,
-        "is_live_interpreter_configured": resolve_use_case_binding(
-            LIVE_TRANSLATION_USE_CASE
-        )
-        is not None,
+        "is_live_interpreter_configured": settings.is_live_interpreter_configured,
     }
 
 

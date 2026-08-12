@@ -20,8 +20,7 @@ class ImageGenerationTests(unittest.TestCase):
         "os.environ",
         {"FOUNDRY_FLUX_ENDPOINT": "https://flux-demo.services.ai.azure.com"},
     )
-    @patch("app.infrastructure.azure.foundry.settings.list_models", return_value=[])
-    def test_load_settings_reads_flux_endpoint(self, _list_models: MagicMock) -> None:
+    def test_load_settings_reads_flux_endpoint(self) -> None:
         self.assertEqual(
             load_settings().flux_endpoint,
             "https://flux-demo.services.ai.azure.com",
@@ -59,9 +58,7 @@ class ImageGenerationTests(unittest.TestCase):
         )
         get_credential.return_value.get_token.return_value.token = "test-token"
         response = MagicMock()
-        response.read.return_value = json.dumps(
-            {"data": [{"b64_json": "aW1hZ2U="}]}
-        ).encode()
+        response.read.return_value = json.dumps({"data": [{"b64_json": "aW1hZ2U="}]}).encode()
         urlopen.return_value.__enter__.return_value = response
 
         result = generate_image(
@@ -107,9 +104,7 @@ class ImageGenerationTests(unittest.TestCase):
         )
         get_credential.return_value.get_token.return_value.token = "test-token"
         response = MagicMock()
-        response.read.return_value = json.dumps(
-            {"data": [{"b64_json": "aW1hZ2U="}]}
-        ).encode()
+        response.read.return_value = json.dumps({"data": [{"b64_json": "aW1hZ2U="}]}).encode()
         urlopen.return_value.__enter__.return_value = response
 
         result = generate_image(
@@ -349,9 +344,7 @@ class ImageGenerationTests(unittest.TestCase):
         )
         get_credential.return_value.get_token.return_value.token = "test-token"
         response = MagicMock()
-        response.read.return_value = json.dumps(
-            {"data": [{"b64_json": "ZWRpdGVk"}]}
-        ).encode()
+        response.read.return_value = json.dumps({"data": [{"b64_json": "ZWRpdGVk"}]}).encode()
         urlopen.return_value.__enter__.return_value = response
 
         result = edit_image(

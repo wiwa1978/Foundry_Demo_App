@@ -26,9 +26,7 @@ SENSITIVE_TRACE_KEYS = {
 
 
 def usage_to_dict(usage: Any) -> UsageTrace:
-    input_tokens = getattr(usage, "input_tokens", None) or getattr(
-        usage, "prompt_tokens", None
-    )
+    input_tokens = getattr(usage, "input_tokens", None) or getattr(usage, "prompt_tokens", None)
     output_tokens = getattr(usage, "output_tokens", None) or getattr(
         usage, "completion_tokens", None
     )
@@ -95,9 +93,7 @@ def build_foundry_stream_response_trace(
 def redact_foundry_trace(value: Any) -> Any:
     if isinstance(value, dict):
         return {
-            key: "[redacted]"
-            if key.lower() in SENSITIVE_TRACE_KEYS
-            else redact_foundry_trace(item)
+            key: "[redacted]" if key.lower() in SENSITIVE_TRACE_KEYS else redact_foundry_trace(item)
             for key, item in value.items()
         }
     if isinstance(value, list):
@@ -127,8 +123,6 @@ def _extract_guardrail_results(payload: Any) -> TraceData | None:
 
 def _extract_stream_guardrail_results(events: list[Any]) -> TraceData | None:
     event_results = [
-        result
-        for event in events
-        if (result := _extract_guardrail_results(event)) is not None
+        result for event in events if (result := _extract_guardrail_results(event)) is not None
     ]
     return {"events": event_results} if event_results else None

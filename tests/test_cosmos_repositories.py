@@ -7,18 +7,19 @@ from azure.cosmos.exceptions import (
     CosmosResourceNotFoundError,
 )
 
+from app.application.conversation_messages import append_message
 from app.application.conversations import (
-    append_message,
     create_conversation,
     delete_conversation,
     get_conversation,
     list_conversations,
 )
-from app.application.models import ModelSettings, get_model_settings, save_model_settings
+from app.application.models import get_model_settings, save_model_settings
 from app.core.errors import InvalidRequestError
 from app.domain.identity import UserScope
+from app.domain.models import ModelSettings
 from app.infrastructure.persistence.cosmos import CONTAINER_SCHEMA_VERSION, get_container
-from app.infrastructure.persistence.registry import reset_repositories
+from app.infrastructure.persistence.registry import get_repositories, reset_repositories
 
 USER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-1")
 OTHER_SCOPE = UserScope(tenant_id="tenant-1", user_id="user-2")
@@ -29,14 +30,19 @@ class ConversationStoreTests(unittest.TestCase):
         self.environment = patch.dict(os.environ, {"PERSISTENCE_BACKEND": "cosmos"})
         self.environment.start()
         reset_repositories()
+        repositories = get_repositories()
+        self.conversations = repositories.conversations
+        self.models = repositories.model_settings
 
     def tearDown(self) -> None:
         reset_repositories()
         self.environment.stop()
 
     @patch("app.infrastructure.persistence.cosmos.get_container")
-    def test_create_conversation_uses_conversation_partition(self, get_container: MagicMock) -> None:
-        conversation = create_conversation(USER_SCOPE, "  A   useful chat  ")
+    def test_create_conversation_uses_conversation_partition(
+        self, get_container: MagicMock
+    ) -> None:
+        conversation = create_conversation(self.conversations, USER_SCOPE, "  A   useful chat  ")
 
         document = get_container.return_value.create_item.call_args.args[0]
         self.assertEqual(document["conversation_id"], conversation.id)
@@ -51,6 +57,7 @@ class ConversationStoreTests(unittest.TestCase):
     @patch("app.infrastructure.persistence.cosmos.get_container")
     def test_append_message_updates_conversation_atomically(self, get_container: MagicMock) -> None:
         message = append_message(
+            self.conversations,
             scope=USER_SCOPE,
             conversation_id="conversation-1",
             role="assistant",
@@ -87,6 +94,7 @@ class ConversationStoreTests(unittest.TestCase):
 
         with self.assertRaisesRegex(InvalidRequestError, "being deleted"):
             append_message(
+                self.conversations,
                 scope=USER_SCOPE,
                 conversation_id="conversation-1",
                 role="user",
@@ -101,7 +109,7 @@ class ConversationStoreTests(unittest.TestCase):
     @patch("app.infrastructure.persistence.cosmos.get_container")
     def test_get_missing_conversation_returns_none(self, get_container: MagicMock) -> None:
         get_container.return_value.read_item.side_effect = CosmosResourceNotFoundError()
-        self.assertIsNone(get_conversation(USER_SCOPE, "missing"))
+        self.assertIsNone(get_conversation(self.conversations, USER_SCOPE, "missing"))
 
     @patch("app.infrastructure.persistence.cosmos.get_container")
     def test_get_conversation_rejects_cross_user_document(
@@ -121,7 +129,7 @@ class ConversationStoreTests(unittest.TestCase):
             "updated_at": "2026-01-01T00:00:00+00:00",
         }
 
-        self.assertIsNone(get_conversation(OTHER_SCOPE, "conversation-1"))
+        self.assertIsNone(get_conversation(self.conversations, OTHER_SCOPE, "conversation-1"))
         self.assertEqual(
             get_container.return_value.read_item.call_args.kwargs["partition_key"],
             OTHER_SCOPE.owner_key,
@@ -143,7 +151,7 @@ class ConversationStoreTests(unittest.TestCase):
             }
         ]
 
-        conversations = list_conversations(USER_SCOPE)
+        conversations = list_conversations(self.conversations, USER_SCOPE)
 
         self.assertEqual(conversations[0].id, "conversation-1")
         self.assertEqual(
@@ -171,20 +179,17 @@ class ConversationStoreTests(unittest.TestCase):
         }
         container.query_items.return_value = [f"message-{index}" for index in range(205)]
 
-        self.assertTrue(delete_conversation(USER_SCOPE, "conversation-1"))
+        self.assertTrue(delete_conversation(self.conversations, USER_SCOPE, "conversation-1"))
 
         self.assertEqual(container.query_items.call_count, 1)
         container.patch_item.assert_called_once_with(
             item="tenant-1:user-1:conversation-1",
             partition_key=USER_SCOPE.owner_key,
-            patch_operations=[
-                {"op": "replace", "path": "/state", "value": "deleting"}
-            ],
+            patch_operations=[{"op": "replace", "path": "/state", "value": "deleting"}],
             filter_predicate='FROM c WHERE c.state = "active"',
         )
         batches = [
-            call.kwargs["batch_operations"]
-            for call in container.execute_item_batch.call_args_list
+            call.kwargs["batch_operations"] for call in container.execute_item_batch.call_args_list
         ]
         self.assertEqual([len(batch) for batch in batches], [100, 100, 6])
         self.assertTrue(batches[-1][-1][1][0].endswith("conversation-1"))
@@ -205,7 +210,7 @@ class ConversationStoreTests(unittest.TestCase):
         }
         container.query_items.return_value = []
 
-        self.assertTrue(delete_conversation(USER_SCOPE, "conversation-1"))
+        self.assertTrue(delete_conversation(self.conversations, USER_SCOPE, "conversation-1"))
 
         container.patch_item.assert_not_called()
         operations = container.execute_item_batch.call_args.kwargs["batch_operations"]
@@ -244,6 +249,7 @@ class ModelSettingsStoreTests(unittest.TestCase):
         self.environment = patch.dict(os.environ, {"PERSISTENCE_BACKEND": "cosmos"})
         self.environment.start()
         reset_repositories()
+        self.models = get_repositories().model_settings
 
     def tearDown(self) -> None:
         reset_repositories()
@@ -252,13 +258,15 @@ class ModelSettingsStoreTests(unittest.TestCase):
     @patch("app.infrastructure.persistence.cosmos.get_container")
     def test_missing_settings_return_model_defaults(self, get_container: MagicMock) -> None:
         get_container.return_value.read_item.side_effect = CosmosResourceNotFoundError()
-        settings = get_model_settings("Kimi-K2.5")
+        settings = get_model_settings(self.models, "Kimi-K2.5")
         self.assertEqual(settings.api_surface, "chat_completions")
         self.assertEqual(settings.modalities, ("text",))
 
     @patch("app.infrastructure.persistence.cosmos.get_container")
     def test_save_settings_uses_model_settings_partition(self, get_container: MagicMock) -> None:
-        settings = save_model_settings(ModelSettings(model="gpt-test", modalities=("text", "voice")))
+        settings = save_model_settings(
+            self.models, ModelSettings(model="gpt-test", modalities=("text", "voice"))
+        )
         document = get_container.return_value.upsert_item.call_args.args[0]
         self.assertEqual(document["partition_key"], "model-settings")
         self.assertEqual(document["document_type"], "model_settings")

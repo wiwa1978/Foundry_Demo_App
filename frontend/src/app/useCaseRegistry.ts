@@ -16,10 +16,37 @@ import { transcriptionComparisonUseCase } from "@media/transcription_comparison/
 import { voiceLiveUseCase } from "@media/voice_live/module";
 import { youtubeSummaryUseCase } from "@media/youtube_summary/module";
 
+import type {
+  UseCaseModule,
+  UseCaseWorkspace,
+  WorkspaceRenderer,
+} from "@/app/types";
 import { agentResearchUseCase } from "@/features/useCases/agentResearch";
 import { hostedAgentUseCase } from "@/features/useCases/hostedAgent";
 
-export const useCaseModules = [
+export type RegisteredUseCase = UseCaseModule & { renderer: WorkspaceRenderer };
+
+const rendererByWorkspace = {
+  chat: "chat",
+  agentResearch: "agent",
+  hostedAgent: "agent",
+  comparison: "chat",
+  image: "image",
+  imageEdit: "image",
+  imageComparison: "image",
+  traditionalVoice: "voice",
+  realtimeVoice: "voice",
+  realtimeTranscriptionWebRtc: "voice",
+  realtimeTranscriptionWebSocket: "voice",
+  realtimeTranslationWebSocket: "voice",
+  voiceLive: "voice",
+  liveTranslation: "voice",
+  transcribe: "voice",
+  transcriptionComparison: "voice",
+  youtubeSummary: "chat",
+} as const satisfies Record<UseCaseWorkspace, WorkspaceRenderer>;
+
+const definitions = [
   textChatUseCase,
   agentResearchUseCase,
   hostedAgentUseCase,
@@ -40,3 +67,26 @@ export const useCaseModules = [
   realtimeVoiceUseCase,
   voiceLiveUseCase,
 ] as const;
+
+export function registerUseCases(
+  modules: readonly UseCaseModule[],
+): RegisteredUseCase[] {
+  const ids = new Set<string>();
+  return modules.map((module) => {
+    if (ids.has(module.id)) {
+      throw new Error(`Duplicate use-case registration: ${module.id}`);
+    }
+    if (
+      !module.title.trim() ||
+      !module.modalities.length ||
+      !module.implementation.length ||
+      !module.codeSnippet.code.trim()
+    ) {
+      throw new Error(`Incomplete use-case registration: ${module.id}`);
+    }
+    ids.add(module.id);
+    return { ...module, renderer: rendererByWorkspace[module.workspace] };
+  });
+}
+
+export const useCaseModules = registerUseCases(definitions);

@@ -34,7 +34,10 @@ def test_text_chat_stream_contract_and_persistence(monkeypatch, tmp_path):
             },
         ]
     )
-    with patch("app.application.chat.chat_service.gateway.stream", return_value=provider_events):
+    with patch(
+        "app.infrastructure.azure.foundry.gateway.DefaultFoundryChatGateway.stream",
+        return_value=provider_events,
+    ):
         with TestClient(create_app()) as client:
             response = client.post(
                 "/api/chat/stream",
@@ -65,7 +68,10 @@ def test_text_chat_stream_failure_is_sanitized(monkeypatch, tmp_path):
         raise RuntimeError("provider secret")
         yield
 
-    with patch("app.application.chat.chat_service.gateway.stream", side_effect=fail_stream):
+    with patch(
+        "app.infrastructure.azure.foundry.gateway.DefaultFoundryChatGateway.stream",
+        side_effect=fail_stream,
+    ):
         with TestClient(create_app()) as client:
             response = client.post(
                 "/api/chat/stream",
@@ -95,8 +101,14 @@ def test_text_chat_non_streaming_keeps_flattened_result(monkeypatch, tmp_path):
         "foundry_request": {},
         "foundry_response": {},
     }
-    with patch("app.application.chat.chat_service.gateway.build_request_trace", return_value={}):
-        with patch("app.application.chat.chat_service.gateway.complete", return_value=result):
+    with patch(
+        "app.infrastructure.azure.foundry.gateway.DefaultFoundryChatGateway.build_request_trace",
+        return_value={},
+    ):
+        with patch(
+            "app.infrastructure.azure.foundry.gateway.DefaultFoundryChatGateway.complete",
+            return_value=result,
+        ):
             with TestClient(create_app()) as client:
                 response = client.post(
                     "/api/chat",

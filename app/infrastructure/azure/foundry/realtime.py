@@ -152,9 +152,7 @@ def _realtime_transcription_session(
     turn_detection: str = "server_vad",
 ) -> dict[str, Any]:
     normalized_language = language.strip().lower() if language else None
-    if normalized_language and (
-        len(normalized_language) != 2 or not normalized_language.isalpha()
-    ):
+    if normalized_language and (len(normalized_language) != 2 or not normalized_language.isalpha()):
         raise ValueError("Realtime transcription language must be an ISO-639-1 code.")
     normalized_delay = delay.strip().lower() if delay else None
     if normalized_delay and normalized_delay not in SUPPORTED_TRANSCRIPTION_DELAYS:
@@ -268,8 +266,7 @@ def create_realtime_transcription_connection_info(
     model = settings.realtime_transcription_model.strip()
     token = get_azure_credential().get_token("https://ai.azure.com/.default").token
     return {
-        "url": endpoint.replace("https://", "wss://", 1)
-        + "/realtime?intent=transcription",
+        "url": endpoint.replace("https://", "wss://", 1) + "/realtime?intent=transcription",
         "token": token,
         "model": model,
         "session_update": {

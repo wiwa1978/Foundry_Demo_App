@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from app.api.dependencies import current_user_scope
 from app.api.features.shared_schemas import DeletedResponse
 from app.api.schemas import DocumentQuestionRequest
+from app.application.contracts.chat import ChatCommand, ReasoningEffort
 from app.core.errors import NotFoundError
 from app.core.observability import audit_event
 from app.domain.identity import UserScope
@@ -16,21 +17,32 @@ from usecases_media.document_qa.backend.limits import (
     MAX_DOCUMENT_BYTES,
     MAX_DOCUMENT_FILES,
 )
-from usecases_media.document_qa.backend.schemas import DocumentListResponse, DocumentUploadResponse
-from usecases_media.document_qa.backend.service import document_qa_service
+from usecases_media.document_qa.backend.schemas import (
+    DocumentListResponse,
+    DocumentUploadResponse,
+)
+from usecases_media.document_qa.backend.service import DocumentQaService
 
 router = APIRouter(tags=["Document Q&A"])
 
 
+def get_document_qa_service(request: Request) -> DocumentQaService:
+    return request.app.state.document_qa_service
+
+
 @router.get("/api/documents", response_model=DocumentListResponse)
-def get_documents(scope: Annotated[UserScope, Depends(current_user_scope)]) -> dict:
-    return {"documents": document_qa_service.list_documents(scope)}
+def get_documents(
+    scope: Annotated[UserScope, Depends(current_user_scope)],
+    service: Annotated[DocumentQaService, Depends(get_document_qa_service)],
+) -> dict:
+    return {"documents": service.list_documents(scope)}
 
 
 @router.post("/api/documents", response_model=DocumentUploadResponse)
 async def post_documents(
     scope: Annotated[UserScope, Depends(current_user_scope)],
     request: Request,
+    service: Annotated[DocumentQaService, Depends(get_document_qa_service)],
     files: list[UploadFile] = File(...),
 ) -> dict:
     if not files:
@@ -55,7 +67,7 @@ async def post_documents(
     documents, traces = [], []
     for file, data in uploads:
         result = await asyncio.to_thread(
-            document_qa_service.add_document,
+            service.add_document,
             scope,
             file.filename or "uploaded-document",
             file.content_type,
@@ -72,8 +84,9 @@ def delete_document(
     document_id: str,
     scope: Annotated[UserScope, Depends(current_user_scope)],
     request: Request,
+    service: Annotated[DocumentQaService, Depends(get_document_qa_service)],
 ) -> dict:
-    if not document_qa_service.delete_document(scope, document_id):
+    if not service.delete_document(scope, document_id):
         raise NotFoundError("Document not found.")
     audit_event("document_deleted", request=request, document_id=document_id)
     return {"deleted": True}
@@ -83,12 +96,18 @@ def delete_document(
 def ask_document(
     request: DocumentQuestionRequest,
     scope: Annotated[UserScope, Depends(current_user_scope)],
+    service: Annotated[DocumentQaService, Depends(get_document_qa_service)],
 ) -> StreamingResponse:
-    prepared = document_qa_service.prepare(request, scope)
+    command = ChatCommand(
+        model=request.model,
+        prompt=request.prompt,
+        conversation_id=request.conversation_id,
+        reasoning_effort=cast(ReasoningEffort | None, request.reasoning_effort),
+        guardrail_comparison=request.guardrail_comparison,
+        use_case=request.use_case,
+    )
+    prepared = service.prepare(command, scope)
     return StreamingResponse(
-        (
-            f"data: {json.dumps(event)}\n\n"
-            for event in document_qa_service.stream(request, scope, prepared)
-        ),
+        (f"data: {json.dumps(event)}\n\n" for event in service.stream(command, scope, prepared)),
         media_type="text/event-stream",
     )

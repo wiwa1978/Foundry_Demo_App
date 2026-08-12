@@ -3,33 +3,39 @@ from typing import Any
 from app.api.features.admin.schemas import AdminDeploymentRequest
 from app.application.foundry_admin import (
     AdminConfigDocument,
+    AdministrationService,
     DeploymentRequest,
     admin_config_to_dict,
-    create_foundry_deployment,
-    create_system_guardrail_policy_copies,
     load_admin_config,
 )
-from app.application.models import ModelSettings, save_model_settings, settings_to_dict
+from app.application.models import ModelService, settings_to_dict
 from app.core.concurrency import run_model_call
 from app.core.errors import ExternalServiceError
+from app.domain.models import ModelSettings
 
 
 def deployment_config() -> AdminConfigDocument:
     return admin_config_to_dict(load_admin_config())
 
 
-async def create_guardrail_policy_copies() -> dict[str, Any]:
+async def create_guardrail_policy_copies(
+    administration: AdministrationService,
+) -> dict[str, Any]:
     try:
-        policies = await run_model_call(create_system_guardrail_policy_copies)
+        policies = await run_model_call(administration.create_guardrail_policy_copies)
     except Exception as exc:
         raise ExternalServiceError("Guardrail policy copy creation") from exc
     return {"policies": policies}
 
 
-async def create_deployment(payload: AdminDeploymentRequest) -> dict[str, Any]:
+async def create_deployment(
+    administration: AdministrationService,
+    model_service: ModelService,
+    payload: AdminDeploymentRequest,
+) -> dict[str, Any]:
     try:
         deployment = await run_model_call(
-            create_foundry_deployment,
+            administration.create_deployment,
             DeploymentRequest(
                 deployment_name=payload.deployment_name,
                 model_name=payload.model_name,
@@ -44,7 +50,7 @@ async def create_deployment(payload: AdminDeploymentRequest) -> dict[str, Any]:
         )
     except Exception as exc:
         raise ExternalServiceError("Model deployment") from exc
-    settings = save_model_settings(
+    settings = model_service.save(
         ModelSettings(
             model=payload.deployment_name,
             api_surface=payload.api_surface,

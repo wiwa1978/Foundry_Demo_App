@@ -18,7 +18,7 @@ def _events(response) -> list[dict]:
 def test_document_list_contract(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     with patch(
-        "usecases_media.document_qa.backend.service.document_qa_service.list_documents",
+        "usecases_media.document_qa.backend.service.DocumentQaService.list_documents",
         return_value=[
             {
                 "id": "doc-1",
@@ -58,12 +58,18 @@ def test_document_question_emits_retrieval_and_completion(monkeypatch, tmp_path)
             },
         ]
     )
-    with patch("usecases_media.document_qa.backend.service.document_qa_service.gateway.retrieve", return_value=retrieval):
+    with patch(
+        "usecases_media.document_qa.backend.gateway.AzureDocumentGateway.retrieve",
+        return_value=retrieval,
+    ):
         with patch(
-            "usecases_media.document_qa.backend.service.document_qa_service.gateway.grounded_prompt",
+            "usecases_media.document_qa.backend.gateway.AzureDocumentGateway.grounded_prompt",
             return_value="grounded prompt",
         ):
-            with patch("usecases_media.document_qa.backend.service.bounded_stream_chat", return_value=provider_events):
+            with patch(
+                "app.application.chat.ChatService.bounded_stream",
+                return_value=provider_events,
+            ):
                 with TestClient(create_app()) as client:
                     response = client.post(
                         "/api/documents/ask/stream",
@@ -84,7 +90,7 @@ def test_document_question_emits_retrieval_and_completion(monkeypatch, tmp_path)
 def test_document_upload_provider_failure_is_sanitized(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     with patch(
-        "usecases_media.document_qa.backend.service.document_qa_service.gateway.add",
+        "usecases_media.document_qa.backend.gateway.AzureDocumentGateway.add",
         side_effect=RuntimeError("storage secret"),
     ):
         response = TestClient(create_app(), raise_server_exceptions=False).post(
@@ -118,7 +124,9 @@ def test_document_upload_rejects_aggregate_over_50_mb_before_indexing(monkeypatc
         ("files", ("two.txt", b"xxx", "text/plain")),
     ]
 
-    with patch("usecases_media.document_qa.backend.service.document_qa_service.add_document") as add_document:
+    with patch(
+        "usecases_media.document_qa.backend.service.DocumentQaService.add_document"
+    ) as add_document:
         response = TestClient(create_app()).post("/api/documents", files=files)
 
     assert response.status_code == 413

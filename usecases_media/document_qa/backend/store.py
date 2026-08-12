@@ -65,7 +65,12 @@ class RagSearchSettings:
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.endpoint and self.index_name and self.storage_account_url and self.storage_container_name)
+        return bool(
+            self.endpoint
+            and self.index_name
+            and self.storage_account_url
+            and self.storage_container_name
+        )
 
 
 @dataclass(frozen=True)
@@ -100,7 +105,8 @@ def load_rag_search_settings() -> RagSearchSettings:
             "FOUNDRY_EMBEDDING_DIMENSIONS",
             0,
             minimum=0,
-        ) or None,
+        )
+        or None,
         storage_account_url=first_env(
             "AZURE_STORAGE_ACCOUNT_URL",
             "FOUNDRY_STORAGE_ACCOUNT_URL",
@@ -109,7 +115,8 @@ def load_rag_search_settings() -> RagSearchSettings:
             "AZURE_STORAGE_CONTAINER_NAME",
             "FOUNDRY_STORAGE_CONTAINER_NAME",
             default="foundry-rag-documents",
-        ) or "foundry-rag-documents",
+        )
+        or "foundry-rag-documents",
     )
 
 
@@ -396,7 +403,9 @@ def _ensure_search_index(settings: RagSearchSettings, embedding_dimensions: int)
         SimpleField(name="byte_size", type=SearchFieldDataType.Int64, filterable=True),
         SimpleField(name="blob_name", type=SearchFieldDataType.String, filterable=True),
         SimpleField(name="blob_url", type=SearchFieldDataType.String),
-        SimpleField(name="chunk_index", type=SearchFieldDataType.Int32, filterable=True, sortable=True),
+        SimpleField(
+            name="chunk_index", type=SearchFieldDataType.Int32, filterable=True, sortable=True
+        ),
         SearchableField(name="content", type=SearchFieldDataType.String),
         SearchField(
             name="content_vector",
@@ -405,7 +414,9 @@ def _ensure_search_index(settings: RagSearchSettings, embedding_dimensions: int)
             vector_search_dimensions=embedding_dimensions,
             vector_search_profile_name=VECTOR_PROFILE_NAME,
         ),
-        SimpleField(name="created_at", type=SearchFieldDataType.String, filterable=True, sortable=True),
+        SimpleField(
+            name="created_at", type=SearchFieldDataType.String, filterable=True, sortable=True
+        ),
     ]
     index = SearchIndex(
         name=settings.index_name,
@@ -496,7 +507,9 @@ def _is_supported_file(filename: str, content_type: str | None) -> bool:
     extension = Path(filename).suffix.lower()
     if extension in SUPPORTED_EXTENSIONS:
         return True
-    return bool(content_type and (content_type.startswith("text/") or content_type == "application/json"))
+    return bool(
+        content_type and (content_type.startswith("text/") or content_type == "application/json")
+    )
 
 
 def _extract_text(filename: str, content_type: str | None, data: bytes) -> str:
@@ -565,7 +578,9 @@ def _decode_text(data: bytes) -> str:
 
 def _chunk_text(text: str) -> list[str]:
     normalized = re.sub(r"\r\n?", "\n", text)
-    paragraphs = [paragraph.strip() for paragraph in re.split(r"\n{2,}", normalized) if paragraph.strip()]
+    paragraphs = [
+        paragraph.strip() for paragraph in re.split(r"\n{2,}", normalized) if paragraph.strip()
+    ]
     chunks: list[str] = []
     current = ""
     for paragraph in paragraphs:

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { useCaseModules } from "./useCaseRegistry";
+import type { UseCaseModule } from "./types";
+import { registerUseCases, useCaseModules } from "./useCaseRegistry";
 
 describe("useCaseModules", () => {
   it("registers each use case exactly once", () => {
@@ -18,5 +19,15 @@ describe("useCaseModules", () => {
       expect(useCase.implementation.length).toBeGreaterThan(0);
       expect(useCase.codeSnippet.code).not.toBe("");
     }
+  });
+
+  it("rejects duplicate and incomplete registrations", () => {
+    const module = useCaseModules[0];
+    expect(() => registerUseCases([module, module])).toThrow(
+      "Duplicate use-case registration",
+    );
+    expect(() =>
+      registerUseCases([{ ...module, title: "" } as UseCaseModule]),
+    ).toThrow("Incomplete use-case registration");
   });
 });

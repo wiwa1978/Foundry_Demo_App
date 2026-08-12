@@ -13,7 +13,10 @@ def test_realtime_session_contract(monkeypatch):
         "model": "realtime",
         "voice": "alloy",
     }
-    with patch("usecases_media.shared.voice.backend.router.create_realtime_client_secret", return_value=session):
+    with patch(
+        "usecases_media.shared.voice.backend.router.create_realtime_client_secret",
+        return_value=session,
+    ):
         response = TestClient(create_app()).post(
             "/api/realtime/session",
             json={"model": "realtime", "instructions": "Be concise", "voice": "alloy"},
@@ -60,7 +63,10 @@ def test_transcription_upload_limit(monkeypatch):
 
 def test_transcription_provider_error_is_sanitized(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
-    with patch("usecases_media.shared.voice.backend.router.transcribe_audio", side_effect=RuntimeError("provider secret")):
+    with patch(
+        "usecases_media.shared.voice.backend.router.transcribe_audio",
+        side_effect=RuntimeError("provider secret"),
+    ):
         with patch("usecases_media.shared.voice.backend.router.load_settings") as settings:
             settings.return_value.speech_transcription_model = "mai"
             response = TestClient(create_app(), raise_server_exceptions=False).post(
@@ -111,7 +117,9 @@ def test_traditional_voice_route_delegates_to_service(monkeypatch):
             },
         }
     )
-    with patch("usecases_media.shared.voice.backend.router.traditional_voice_service.process", process):
+    with patch(
+        "usecases_media.shared.voice.backend.service.TraditionalVoiceService.process", process
+    ):
         response = TestClient(create_app()).post(
             "/api/voice/traditional",
             data={"model": "chat", "reasoning_effort": "low"},

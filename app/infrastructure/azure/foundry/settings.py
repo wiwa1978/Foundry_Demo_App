@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from app.application.models import list_models
 from app.core.config import env_csv, first_env
 
 
@@ -24,6 +23,7 @@ class FoundrySettings:
     hosted_agent_name: str | None = None
     application_insights_resource_id: str | None = None
     realtime_transcription_model: str = "gpt-realtime-whisper"
+    live_interpreter_binding_configured: bool = False
     realtime_translation_model: str = "gpt-realtime-translate"
 
     @property
@@ -68,21 +68,20 @@ class FoundrySettings:
 
     @property
     def is_live_interpreter_configured(self) -> bool:
-        from app.application.use_case_settings import (
-            LIVE_TRANSLATION_USE_CASE,
-            resolve_use_case_binding,
-        )
-
-        return resolve_use_case_binding(LIVE_TRANSLATION_USE_CASE) is not None
+        return self.live_interpreter_binding_configured
 
     @property
     def auth_mode(self) -> str:
         return "entra_id"
 
 
-def load_settings() -> FoundrySettings:
+def load_settings(
+    models: list[str] | None = None,
+    *,
+    live_interpreter_configured: bool = False,
+) -> FoundrySettings:
     seed_models = env_csv("FOUNDRY_MODELS")
-    models = list_models(seed_models)
+    models = list(dict.fromkeys([*(models or []), *seed_models]))
     realtime_model = (
         first_env("FOUNDRY_REALTIME_MODEL")
         or next((model for model in models if "realtime" in model.lower()), None)
@@ -109,9 +108,7 @@ def load_settings() -> FoundrySettings:
             "FOUNDRY_ENDPOINT",
         ),
         realtime_model=realtime_model,
-        embedding_model=first_env(
-            "FOUNDRY_EMBEDDING_MODEL", default="text-embedding-3-small"
-        )
+        embedding_model=first_env("FOUNDRY_EMBEDDING_MODEL", default="text-embedding-3-small")
         or "text-embedding-3-small",
         transcription_model=first_env(
             "FOUNDRY_TRANSCRIPTION_MODEL",
@@ -140,9 +137,7 @@ def load_settings() -> FoundrySettings:
         )
         or "en-US-Ava:DragonHDLatestNeural",
         flux_endpoint=first_env("FOUNDRY_FLUX_ENDPOINT"),
-        hosted_agent_name=first_env(
-            "FOUNDRY_HOSTED_AGENT_NAME", default="hosted-assistant"
-        )
+        hosted_agent_name=first_env("FOUNDRY_HOSTED_AGENT_NAME", default="hosted-assistant")
         or "hosted-assistant",
         application_insights_resource_id=first_env(
             "FOUNDRY_APPLICATION_INSIGHTS_RESOURCE_ID",
@@ -158,4 +153,5 @@ def load_settings() -> FoundrySettings:
             default="gpt-realtime-translate",
         )
         or "gpt-realtime-translate",
+        live_interpreter_binding_configured=live_interpreter_configured,
     )

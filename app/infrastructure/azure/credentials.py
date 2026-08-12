@@ -21,7 +21,5 @@ def get_azure_credential():
     if credential_type == "cli" or (not credential_type and persistence_backend() == "sqlite"):
         return AzureCliCredential(process_timeout=60)
     if credential_type not in {"", "default"}:
-        raise RuntimeError(
-            "AZURE_CREDENTIAL_TYPE must be 'cli', 'client_secret', or 'default'."
-        )
+        raise RuntimeError("AZURE_CREDENTIAL_TYPE must be 'cli', 'client_secret', or 'default'.")
     return DefaultAzureCredential()

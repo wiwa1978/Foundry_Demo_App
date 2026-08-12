@@ -5,14 +5,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from app.application.ports.conversations import ConversationPageKey, UsageRecord
 from app.core.config import env_text
 from app.domain.identity import UserScope
-from app.infrastructure.persistence.contracts import ConversationPageKey, UsageRecord
+from app.domain.models import Conversation, ConversationMessage, ModelSettings, UseCaseBinding
 from app.infrastructure.persistence.models import (
-    Conversation,
-    ConversationMessage,
-    ModelSettings,
-    UseCaseBinding,
     conversation_from_record,
     message_from_record,
     settings_from_record,
@@ -159,10 +156,7 @@ class SQLiteConversationRepository:
         limit: int,
         after: ConversationPageKey | None,
     ) -> list[Conversation]:
-        query = (
-            "SELECT * FROM conversations WHERE tenant_id = ? AND owner_id = ? "
-            "AND use_case = ?"
-        )
+        query = "SELECT * FROM conversations WHERE tenant_id = ? AND owner_id = ? AND use_case = ?"
         values: list[str | int] = [scope.tenant_id, scope.user_id, use_case]
         if after is not None:
             query += " AND (updated_at < ? OR (updated_at = ? AND id > ?))"
@@ -216,9 +210,7 @@ class SQLiteConversationRepository:
         messages: list[ConversationMessage] = []
         for row in rows:
             record = dict(row)
-            record["usage"] = (
-                json.loads(record.pop("usage_json")) if record["usage_json"] else None
-            )
+            record["usage"] = json.loads(record.pop("usage_json")) if record["usage_json"] else None
             record["guardrail_results"] = (
                 json.loads(record.pop("guardrail_results_json"))
                 if record["guardrail_results_json"]
@@ -320,9 +312,7 @@ class SQLiteModelSettingsRepository:
             return None
         record = dict(row)
         record["modalities"] = json.loads(record.pop("modalities_json"))
-        record["guardrail_policy_names"] = json.loads(
-            record.pop("guardrail_policy_names_json")
-        )
+        record["guardrail_policy_names"] = json.loads(record.pop("guardrail_policy_names_json"))
         return settings_from_record(record)
 
     def add_settings_if_absent(self, settings: ModelSettings) -> None:
@@ -364,8 +354,7 @@ class SQLiteUseCaseResourceSettingsRepository:
     def get_binding(self, use_case: str) -> UseCaseBinding | None:
         with connect() as connection:
             row = connection.execute(
-                "SELECT use_case, binding FROM use_case_bindings "
-                "WHERE use_case = ?",
+                "SELECT use_case, binding FROM use_case_bindings WHERE use_case = ?",
                 (use_case,),
             ).fetchone()
         return UseCaseBinding(**dict(row)) if row else None
@@ -388,6 +377,7 @@ class SQLiteUseCaseResourceSettingsRepository:
                     datetime.now(UTC).isoformat(),
                 ),
             )
+
 
 def _settings_values(
     settings: ModelSettings,

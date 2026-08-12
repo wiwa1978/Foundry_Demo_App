@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from app.api.dependencies import current_user_scope
 from app.api.schemas import (
@@ -24,12 +24,16 @@ from usecases_media.shared.voice.backend.schemas import (
     TraditionalVoiceResponse,
     TranscriptionResponse,
 )
-from usecases_media.shared.voice.backend.service import traditional_voice_service
+from usecases_media.shared.voice.backend.service import TraditionalVoiceService
 from usecases_media.shared.voice.backend.websockets import router as websocket_router
 
 router = APIRouter(tags=["Voice"])
 logger = logging.getLogger(__name__)
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+def get_traditional_voice_service(request: Request) -> TraditionalVoiceService:
+    return request.app.state.traditional_voice_service
 
 
 @router.post(
@@ -127,6 +131,7 @@ async def transcribe(
 )
 async def post_traditional_voice(
     scope: Annotated[UserScope, Depends(current_user_scope)],
+    service: Annotated[TraditionalVoiceService, Depends(get_traditional_voice_service)],
     audio: UploadFile = File(...),
     model: str = Form(...),
     transcription_model: str | None = Form(None),
@@ -149,7 +154,7 @@ async def post_traditional_voice(
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise HTTPException(status_code=413, detail="Recorded audio cannot exceed 25 MB.")
 
-    return await traditional_voice_service.process(
+    return await service.process(
         scope=scope,
         audio=audio_bytes,
         filename=audio.filename or "recording.webm",

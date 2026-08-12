@@ -1,66 +1,26 @@
 import hashlib
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any
 
 from app.domain.identity import UserScope
+from app.domain.models import (
+    DEPLOYMENT_DEFAULT_GUARDRAIL,
+    Conversation,
+    ConversationMessage,
+    ModelSettings,
+    UseCaseBinding,
+    normalize_api_surface,
+    normalize_guardrail_policy_name,
+    normalize_guardrail_policy_names,
+    normalize_modalities,
+)
 
-MessageRole = Literal["user", "assistant"]
-GuardrailVariant = Literal["baseline", "guarded", "policy_1", "policy_2"]
 CONVERSATION_TYPE = "conversation"
 MESSAGE_TYPE = "conversation_message"
 MODEL_SETTINGS_PARTITION = "model-settings"
 MODEL_SETTINGS_TYPE = "model_settings"
 USE_CASE_SETTINGS_PARTITION = "use-case-bindings"
 USE_CASE_SETTINGS_TYPE = "use_case_binding"
-DEPLOYMENT_DEFAULT_GUARDRAIL = "deployment_default"
-API_SURFACES = {"responses", "chat_completions"}
-MODEL_MODALITIES = {"text", "image", "voice"}
-
-
-@dataclass(frozen=True)
-class Conversation:
-    id: str
-    title: str
-    use_case: str
-    created_at: str
-    updated_at: str
-
-
-@dataclass(frozen=True)
-class ConversationMessage:
-    id: str
-    conversation_id: str
-    role: MessageRole
-    content: str
-    model: str | None
-    api_surface: str | None
-    duration_ms: int | None
-    error: str | None
-    usage: dict[str, Any] | None
-    guardrail_variant: GuardrailVariant | None
-    guardrail_policy_name: str | None
-    guardrail_results: dict[str, Any] | None
-    created_at: str
-
-
-@dataclass(frozen=True)
-class ModelSettings:
-    model: str
-    api_surface: str = "responses"
-    modalities: tuple[str, ...] = ("text",)
-    system_prompt: str = "You are a concise, helpful assistant."
-    temperature: float = 0.7
-    top_p: float = 1.0
-    max_tokens: int = 1024
-    repetition_penalty: float = 1.0
-    guardrail_policy_names: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class UseCaseBinding:
-    use_case: str
-    binding: str
 
 
 def conversation_from_record(record: dict[str, Any]) -> Conversation:
@@ -96,9 +56,7 @@ def settings_from_record(record: dict[str, Any]) -> ModelSettings:
     if policy_names is None:
         legacy_policy_name = normalize_guardrail_policy_name(record.get("guardrail_policy_name"))
         policy_names = (
-            [DEPLOYMENT_DEFAULT_GUARDRAIL, legacy_policy_name]
-            if legacy_policy_name
-            else []
+            [DEPLOYMENT_DEFAULT_GUARDRAIL, legacy_policy_name] if legacy_policy_name else []
         )
     return ModelSettings(
         model=record["model"],
@@ -149,42 +107,3 @@ def use_case_settings_document(settings: UseCaseBinding) -> dict[str, Any]:
 
 def scoped_document_id(scope: UserScope, document_id: str) -> str:
     return f"{scope.owner_key}:{document_id}"
-
-
-def normalize_api_surface(api_surface: str) -> str:
-    normalized_surface = api_surface.strip().lower()
-    if normalized_surface not in API_SURFACES:
-        raise ValueError("API surface must be 'responses' or 'chat_completions'.")
-    return normalized_surface
-
-
-def normalize_guardrail_policy_name(policy_name: str | None) -> str | None:
-    if policy_name is None:
-        return None
-    normalized_name = policy_name.strip()
-    return normalized_name or None
-
-
-def normalize_guardrail_policy_names(
-    policy_names: tuple[str, ...] | list[str],
-) -> tuple[str, ...]:
-    return tuple(
-        normalized
-        for policy_name in policy_names
-        if (normalized := normalize_guardrail_policy_name(policy_name)) is not None
-    )
-
-
-def normalize_modalities(modalities: tuple[str, ...] | list[str]) -> tuple[str, ...]:
-    normalized_modalities = tuple(
-        dict.fromkeys(modality.strip().lower() for modality in modalities if modality.strip())
-    )
-    if not normalized_modalities:
-        raise ValueError("Select at least one model capability.")
-    unsupported = sorted(set(normalized_modalities) - MODEL_MODALITIES)
-    if unsupported:
-        raise ValueError(
-            "Model capabilities must be one or more of: "
-            f"{', '.join(sorted(MODEL_MODALITIES))}."
-        )
-    return normalized_modalities

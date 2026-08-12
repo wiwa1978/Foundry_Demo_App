@@ -26,7 +26,10 @@ def test_image_samples_are_listed_from_private_storage(monkeypatch):
 
 def test_image_sample_content_is_proxied(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
-    with patch("usecases_media.shared.images.backend.router._download_sample", return_value=(b"image", "image/jpeg")):
+    with patch(
+        "usecases_media.shared.images.backend.router._download_sample",
+        return_value=(b"image", "image/jpeg"),
+    ):
         response = TestClient(create_app()).get("/api/images/samples/forest.jpg")
 
     assert response.status_code == 200
