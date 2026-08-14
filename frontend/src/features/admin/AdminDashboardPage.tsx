@@ -1,10 +1,9 @@
 import { BarChart3, FlaskConical } from "lucide-react";
 
-import type { UseCaseId } from "@/app/types";
-import { cn } from "@/lib/utils";
-
-import { EvaluationManagementPage } from "@/features/evaluations/EvaluationManagementPage";
 import type { FetchClient, ModelMetrics } from "@/api/types";
+import type { UseCaseId } from "@/app/types";
+import { EvaluationManagementPage } from "@/features/evaluations/EvaluationManagementPage";
+import { cn } from "@/lib/utils";
 
 import {
   ModelMonitoringPage,

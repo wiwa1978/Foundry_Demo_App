@@ -1,9 +1,8 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { FetchClient, ModelMetrics } from "@/api/types";
-
 import { loadModelMetrics } from "@/api/metrics";
+import type { FetchClient, ModelMetrics } from "@/api/types";
 
 import { useModelMonitoring } from "./useModelMonitoring";
 

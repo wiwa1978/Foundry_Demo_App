@@ -1,6 +1,5 @@
-import { Fragment, useState } from "react";
-
 import { BarChart3, Database, RefreshCw } from "lucide-react";
+import { Fragment, useState } from "react";
 
 import type { ModelMetrics } from "@/api/types";
 import {

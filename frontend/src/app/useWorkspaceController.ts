@@ -1,5 +1,5 @@
-import { useContentExtractor } from "@media/content_extractor/frontend";
 import { useBrowserSpeech } from "@media/browser_voice/frontend";
+import { useContentExtractor } from "@media/content_extractor/frontend";
 import {
   documentAnswerStreamEndpoint,
   useDocumentLibrary,

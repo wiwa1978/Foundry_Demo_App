@@ -6,8 +6,8 @@ import type {
   UseCaseModelMap,
   UseCaseResourceSettings,
 } from "@/api/types";
-import { useCaseModules } from "@/app/useCaseRegistry";
 import type { UseCaseCategory } from "@/app/types";
+import { useCaseModules } from "@/app/useCaseRegistry";
 import { colorPalettes, modelModalitiesList } from "@/app/workspace/constants";
 import type {
   ColorPalette,
@@ -174,7 +174,7 @@ export function AppSettingsPage({
     return bucket.replace(/_/g, " ");
   }
 
-  function useCaseMapping(useCaseId: string) {
+  function getUseCaseMapping(useCaseId: string) {
     return useCaseMapDraft[useCaseId] ?? "models";
   }
 
@@ -346,7 +346,7 @@ export function AppSettingsPage({
               </div>
               <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-[#55555a]">
                 {visibleUseCases.map((useCase) => {
-                  const mapping = useCaseMapping(useCase.id);
+                  const mapping = getUseCaseMapping(useCase.id);
                   const roleEntries =
                     typeof mapping === "string"
                       ? null

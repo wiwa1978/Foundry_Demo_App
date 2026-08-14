@@ -2,7 +2,6 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ChatBubble } from "./ChatMessages";
-
 import type { ChatMessage } from "./types";
 
 describe("ChatBubble", () => {

@@ -92,7 +92,6 @@ export default function AppWorkspace() {
     setTraditionalTranscriptionModel,
     setTtsModel,
     setTtsVoice,
-    liveTranslation,
     selected,
     selectedTranscriptions,
     contentRouterProps,

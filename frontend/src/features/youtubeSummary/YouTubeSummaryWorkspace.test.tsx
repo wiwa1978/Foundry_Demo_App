@@ -1,8 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { YouTubeSummaryWorkspace } from "./YouTubeSummaryWorkspace";
 import type { YouTubeSummaryResult } from "./types";
+import { YouTubeSummaryWorkspace } from "./YouTubeSummaryWorkspace";
 
 const result: YouTubeSummaryResult = {
   video_id: "dQw4w9WgXcQ",

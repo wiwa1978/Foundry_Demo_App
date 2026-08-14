@@ -4,8 +4,8 @@ import type {
 } from "@media/content_extractor/frontend";
 import type { LiveTranslationMode } from "@media/live_translation/frontend";
 import type { TraditionalVoiceRequest } from "@media/stt_chat_tts/frontend";
-import type { YouTubeSummaryResult } from "@media/youtube_summary/frontend";
 import type { TextTranslationResult } from "@media/text_translation/frontend";
+import type { YouTubeSummaryResult } from "@media/youtube_summary/frontend";
 import type { RefObject } from "react";
 
 import type {
