@@ -12,6 +12,7 @@ export type ReasoningEffort =
 
 export type ModelResult = {
   model: string;
+  routed_model?: string | null;
   api_surface?: "responses" | "chat_completions";
   content?: string;
   duration_ms?: number;
@@ -29,6 +30,7 @@ export type ChatMessage = {
   content: string;
   created_at?: string;
   model?: string;
+  routed_model?: string;
   api_surface?: "responses" | "chat_completions";
   duration_ms?: number;
   usage?: Usage;
@@ -53,6 +55,7 @@ export type StoredMessage = {
   role: "user" | "assistant";
   content: string;
   model: string | null;
+  routed_model?: string | null;
   api_surface: "responses" | "chat_completions" | null;
   duration_ms: number | null;
   usage: Usage | null;
@@ -74,7 +77,7 @@ export type FoundryResponseTrace = {
   api_surface: string;
   payload?: unknown;
   events?: unknown[];
-  extracted?: { content: string; usage: Usage };
+  extracted?: { content: string; usage: Usage; model?: string | null };
 };
 
 export type DocumentSource = {

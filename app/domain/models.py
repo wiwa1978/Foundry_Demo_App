@@ -33,6 +33,7 @@ class ConversationMessage:
     guardrail_policy_name: str | None
     guardrail_results: dict[str, Any] | None
     created_at: str
+    routed_model: str | None = None
 
 
 @dataclass(frozen=True)

@@ -1,14 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { realtimeTranslationWebSocketUrl } from "@/features/voice/api";
+import type { FetchClient } from "@/api/types";
+import {
+  createRealtimeTranslationSession,
+  exchangeRealtimeSdp,
+  realtimeTranslationWebSocketUrl,
+} from "@/features/voice/api";
+import {
+  closeRemoteAudio,
+  stopMediaTracks,
+} from "@/features/voice/mediaSessionUtils";
 import type {
   RealtimeStatus,
   RealtimeTranslationServerEvent,
 } from "@/features/voice/types";
 
 type Resources = {
-  context: AudioContext;
+  abortController: AbortController;
+  audio: HTMLAudioElement | null;
+  context: AudioContext | null;
+  dataChannel: RTCDataChannel | null;
   mediaStream: MediaStream | null;
+  peerConnection: RTCPeerConnection | null;
   playbackSources: Set<AudioBufferSourceNode>;
   silentOutput: GainNode | null;
   socket: WebSocket | null;
@@ -25,14 +38,41 @@ function decodeBase64Pcm(value: string) {
   }
   return bytes.buffer;
 }
+function getEventText(event: RealtimeTranslationServerEvent) {
+  return (
+    event.delta ?? event.text ?? event.transcript ?? event.translation ?? ""
+  );
+}
 
-export function useRealtimeTranslation() {
+function appendCompletedText(current: string, text: string) {
+  return current.endsWith(text)
+    ? current
+    : `${current}${current ? "\n" : ""}${text}`;
+}
+
+export function useRealtimeTranslation({
+  defaultModel = "gpt-realtime-translate",
+  defaultTranscriptionModel = "",
+  fetchClient,
+  models = [defaultModel],
+  transport = "websocket",
+}: {
+  defaultModel?: string;
+  defaultTranscriptionModel?: string;
+  fetchClient?: FetchClient;
+  models?: string[];
+  transport?: "webrtc" | "websocket";
+} = {}) {
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [error, setError] = useState("");
-  const [model, setModel] = useState("gpt-realtime-translate");
-  const [transcriptionModel, setTranscriptionModel] = useState(
-    "gpt-realtime-whisper",
+  const modelOptions = Array.from(
+    new Set([defaultModel, ...models].filter((value) => value.trim())),
   );
+  const [model, setModel] = useState(defaultModel);
+  const [transcriptionModel, setTranscriptionModel] = useState(
+    defaultTranscriptionModel,
+  );
+  const [sourceLanguage, setSourceLanguage] = useState("auto");
   const [targetLanguage, setTargetLanguage] = useState("fr");
   const [sourceTranscript, setSourceTranscript] = useState("");
   const [translatedTranscript, setTranslatedTranscript] = useState("");
@@ -41,6 +81,7 @@ export function useRealtimeTranslation() {
   const statusRef = useRef<RealtimeStatus>("idle");
   const resourcesRef = useRef<Resources | null>(null);
   const playAtRef = useRef(0);
+  const previousDefaultModelRef = useRef(defaultModel);
 
   function isCurrent(generation: number) {
     return mountedRef.current && generationRef.current === generation;
@@ -54,11 +95,15 @@ export function useRealtimeTranslation() {
   const closeResources = useCallback((resources: Resources | null) => {
     if (!resources || resources.closed) return;
     resources.closed = true;
+    resources.abortController.abort();
     resources.worklet?.disconnect();
     resources.source?.disconnect();
     resources.silentOutput?.disconnect();
+    resources.dataChannel?.close();
     resources.socket?.close();
-    resources.mediaStream?.getTracks().forEach((track) => track.stop());
+    closeRemoteAudio(resources.audio);
+    stopMediaTracks(resources.peerConnection, resources.mediaStream);
+    resources.peerConnection?.close();
     resources.playbackSources.forEach((source) => {
       try {
         source.stop();
@@ -68,7 +113,9 @@ export function useRealtimeTranslation() {
       source.disconnect();
     });
     resources.playbackSources.clear();
-    void resources.context.close().catch(() => undefined);
+    if (resources.context?.state !== "closed") {
+      void resources.context?.close().catch(() => undefined);
+    }
     playAtRef.current = 0;
   }, []);
 
@@ -84,28 +131,25 @@ export function useRealtimeTranslation() {
     resources: Resources,
     event: RealtimeTranslationServerEvent,
   ) {
-    if (!event.delta || !isCurrent(generation)) return;
+    if (!event.delta || !isCurrent(generation) || !resources.context) return;
+    const context = resources.context;
     const pcm = new Int16Array(decodeBase64Pcm(event.delta));
     const sampleRate = event.sample_rate || 24000;
     const channels = Math.max(1, event.channels || 1);
     const frameCount = Math.floor(pcm.length / channels);
-    const buffer = resources.context.createBuffer(
-      channels,
-      frameCount,
-      sampleRate,
-    );
+    const buffer = context.createBuffer(channels, frameCount, sampleRate);
     for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
       const channel = buffer.getChannelData(channelIndex);
       for (let index = 0; index < frameCount; index += 1) {
         channel[index] = pcm[index * channels + channelIndex] / 0x8000;
       }
     }
-    const source = resources.context.createBufferSource();
+    const source = context.createBufferSource();
     source.buffer = buffer;
-    source.connect(resources.context.destination);
+    source.connect(context.destination);
     resources.playbackSources.add(source);
     source.onended = () => resources.playbackSources.delete(source);
-    const startAt = Math.max(resources.context.currentTime, playAtRef.current);
+    const startAt = Math.max(context.currentTime, playAtRef.current);
     source.start(startAt);
     playAtRef.current = startAt + buffer.duration;
   }
@@ -118,17 +162,54 @@ export function useRealtimeTranslation() {
     if (!isCurrent(generation)) return;
     if (event.type === "ready") {
       if (event.model) setModel(event.model);
-      if (event.transcription_model)
+      if (event.transcription_model) {
         setTranscriptionModel(event.transcription_model);
+      }
       updateStatus("live");
-    } else if (event.type === "session.input_transcript.delta" && event.delta) {
-      setSourceTranscript((current) => current + event.delta);
     } else if (
-      event.type === "session.output_transcript.delta" &&
-      event.delta
+      (event.type === "session.input_transcript.delta" ||
+        event.type === "conversation.item.input_audio_transcription.delta" ||
+        event.type === "transcript.delta") &&
+      getEventText(event)
     ) {
-      setTranslatedTranscript((current) => current + event.delta);
-    } else if (event.type === "session.output_audio.delta") {
+      setSourceTranscript((current) => current + getEventText(event));
+    } else if (
+      (event.type === "session.input_transcript.completed" ||
+        event.type === "session.input_transcript.done" ||
+        event.type ===
+          "conversation.item.input_audio_transcription.completed" ||
+        event.type === "transcript.completed" ||
+        event.type === "transcript.done") &&
+      getEventText(event)
+    ) {
+      setSourceTranscript((current) =>
+        appendCompletedText(current, getEventText(event)),
+      );
+    } else if (
+      (event.type === "session.output_transcript.delta" ||
+        event.type === "response.text.delta" ||
+        event.type === "response.audio_transcript.delta" ||
+        event.type === "response.output_audio_transcript.delta" ||
+        event.type === "translation.delta") &&
+      getEventText(event)
+    ) {
+      setTranslatedTranscript((current) => current + getEventText(event));
+    } else if (
+      (event.type === "session.output_transcript.completed" ||
+        event.type === "session.output_transcript.done" ||
+        event.type === "response.text.done" ||
+        event.type === "translation.completed" ||
+        event.type === "translation.done") &&
+      getEventText(event)
+    ) {
+      setTranslatedTranscript((current) =>
+        appendCompletedText(current, getEventText(event)),
+      );
+    } else if (
+      event.type === "session.output_audio.delta" ||
+      event.type === "response.audio.delta" ||
+      event.type === "response.output_audio.delta"
+    ) {
       playAudio(generation, resources, event);
     } else if (event.type === "session.closed") {
       closeCurrentResources();
@@ -160,26 +241,173 @@ export function useRealtimeTranslation() {
     }, 5500);
   }
 
+  async function startWebRtc(generation: number, resources: Resources) {
+    if (!fetchClient) {
+      throw new Error("Realtime translation WebRTC requires an API client.");
+    }
+    const session = await createRealtimeTranslationSession(
+      fetchClient,
+      {
+        model,
+        sourceLanguage,
+        targetLanguage,
+        transcriptionModel: transcriptionModel || defaultTranscriptionModel,
+      },
+      resources.abortController.signal,
+    );
+    if (!isCurrent(generation)) return;
+    setModel(session.model);
+    const mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+    });
+    if (!isCurrent(generation)) {
+      mediaStream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    resources.mediaStream = mediaStream;
+    const peerConnection = new RTCPeerConnection();
+    resources.peerConnection = peerConnection;
+    const audio = new Audio();
+    audio.autoplay = true;
+    resources.audio = audio;
+    peerConnection.ontrack = (event) => {
+      if (!isCurrent(generation)) return;
+      const [remoteStream] = event.streams;
+      if (remoteStream && resources.audio) {
+        resources.audio.srcObject = remoteStream;
+        void resources.audio.play();
+      }
+    };
+    mediaStream
+      .getTracks()
+      .forEach((track) => peerConnection.addTrack(track, mediaStream));
+    const channel = peerConnection.createDataChannel("realtime-translation");
+    resources.dataChannel = channel;
+    channel.addEventListener("open", () => {
+      if (!isCurrent(generation)) return;
+      channel.send(
+        JSON.stringify({
+          type: "session.update",
+          session: { audio: { output: { language: targetLanguage } } },
+        }),
+      );
+      updateStatus("live");
+    });
+    channel.addEventListener("message", (message) => {
+      try {
+        handleEvent(generation, resources, JSON.parse(String(message.data)));
+      } catch {
+        if (isCurrent(generation))
+          setError("Received an unreadable translation event.");
+      }
+    });
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    if (!offer.sdp) throw new Error("Browser did not create an SDP offer.");
+    const answer = await exchangeRealtimeSdp(
+      session,
+      offer.sdp,
+      globalThis.fetch,
+      resources.abortController.signal,
+    );
+    await peerConnection.setRemoteDescription({ type: "answer", sdp: answer });
+  }
+
+  async function startWebSocket(generation: number, resources: Resources) {
+    const context = new AudioContext();
+    resources.context = context;
+    await context.audioWorklet.addModule(
+      new URL("../../realtime-translation-worklet.js", import.meta.url),
+    );
+    await context.resume();
+    const mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+    });
+    if (!isCurrent(generation)) {
+      mediaStream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    resources.mediaStream = mediaStream;
+    const socket = new WebSocket(
+      realtimeTranslationWebSocketUrl({
+        targetLanguage,
+        sourceLanguage,
+        model,
+        transcriptionModel: transcriptionModel || defaultTranscriptionModel,
+      }),
+    );
+    socket.binaryType = "arraybuffer";
+    resources.socket = socket;
+    socket.addEventListener("message", (message) => {
+      try {
+        handleEvent(generation, resources, JSON.parse(String(message.data)));
+      } catch {
+        if (isCurrent(generation))
+          setError("Received an unreadable translation event.");
+      }
+    });
+    socket.addEventListener("close", () => {
+      if (!isCurrent(generation)) return;
+      closeCurrentResources();
+      updateStatus("idle");
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.addEventListener("open", () => resolve(), { once: true });
+      socket.addEventListener(
+        "error",
+        () => reject(new Error("Realtime translation WebSocket failed.")),
+        { once: true },
+      );
+    });
+    resources.source = context.createMediaStreamSource(mediaStream);
+    resources.worklet = new AudioWorkletNode(
+      context,
+      "realtime-translation-processor",
+    );
+    resources.worklet.port.onmessage = (message: MessageEvent<ArrayBuffer>) => {
+      if (isCurrent(generation) && socket.readyState === WebSocket.OPEN) {
+        socket.send(message.data);
+      }
+    };
+    resources.silentOutput = context.createGain();
+    resources.silentOutput.gain.value = 0;
+    resources.source.connect(resources.worklet);
+    resources.worklet
+      .connect(resources.silentOutput)
+      .connect(context.destination);
+  }
+
   async function start() {
     if (statusRef.current !== "idle") {
       stop();
       return;
     }
-    if (
-      !navigator.mediaDevices?.getUserMedia ||
-      !window.WebSocket ||
-      !window.AudioWorkletNode
-    ) {
+    const webRtcUnsupported =
+      transport === "webrtc" &&
+      (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection);
+    const webSocketUnsupported =
+      transport === "websocket" &&
+      (!navigator.mediaDevices?.getUserMedia ||
+        !window.WebSocket ||
+        !window.AudioWorkletNode);
+    if (webRtcUnsupported || webSocketUnsupported) {
       setError("This browser does not support realtime translation audio.");
       return;
     }
 
     const generation = generationRef.current + 1;
     generationRef.current = generation;
-    const context = new AudioContext();
     const resources: Resources = {
-      context,
+      abortController: new AbortController(),
+      audio: null,
+      context: null,
+      dataChannel: null,
       mediaStream: null,
+      peerConnection: null,
       playbackSources: new Set(),
       silentOutput: null,
       socket: null,
@@ -193,66 +421,11 @@ export function useRealtimeTranslation() {
     setTranslatedTranscript("");
     updateStatus("connecting");
     try {
-      await context.audioWorklet.addModule(
-        new URL("../../realtime-translation-worklet.js", import.meta.url),
-      );
-      await context.resume();
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
-      if (!isCurrent(generation)) {
-        mediaStream.getTracks().forEach((track) => track.stop());
-        return;
+      if (transport === "webrtc") {
+        await startWebRtc(generation, resources);
+      } else {
+        await startWebSocket(generation, resources);
       }
-      resources.mediaStream = mediaStream;
-      const socket = new WebSocket(
-        realtimeTranslationWebSocketUrl(targetLanguage),
-      );
-      socket.binaryType = "arraybuffer";
-      resources.socket = socket;
-      socket.addEventListener("message", (message) => {
-        try {
-          handleEvent(generation, resources, JSON.parse(String(message.data)));
-        } catch {
-          if (isCurrent(generation))
-            setError("Received an unreadable translation event.");
-        }
-      });
-      socket.addEventListener("close", () => {
-        if (!isCurrent(generation)) return;
-        closeCurrentResources();
-        updateStatus("idle");
-      });
-      await new Promise<void>((resolve, reject) => {
-        socket.addEventListener("open", () => resolve(), { once: true });
-        socket.addEventListener(
-          "error",
-          () => reject(new Error("Realtime translation WebSocket failed.")),
-          { once: true },
-        );
-      });
-      resources.source = context.createMediaStreamSource(mediaStream);
-      resources.worklet = new AudioWorkletNode(
-        context,
-        "realtime-translation-processor",
-      );
-      resources.worklet.port.onmessage = (
-        message: MessageEvent<ArrayBuffer>,
-      ) => {
-        if (isCurrent(generation) && socket.readyState === WebSocket.OPEN) {
-          socket.send(message.data);
-        }
-      };
-      resources.silentOutput = context.createGain();
-      resources.silentOutput.gain.value = 0;
-      resources.source.connect(resources.worklet);
-      resources.worklet
-        .connect(resources.silentOutput)
-        .connect(context.destination);
     } catch (caught) {
       const current = isCurrent(generation);
       if (current) {
@@ -271,6 +444,21 @@ export function useRealtimeTranslation() {
   }
 
   useEffect(() => {
+    if (previousDefaultModelRef.current === defaultModel) return;
+    const previousDefaultModel = previousDefaultModelRef.current;
+    previousDefaultModelRef.current = defaultModel;
+    if (statusRef.current === "idle" && model === previousDefaultModel) {
+      setModel(defaultModel);
+    }
+  }, [defaultModel, model]);
+
+  useEffect(() => {
+    if (statusRef.current === "idle") {
+      setTranscriptionModel(defaultTranscriptionModel);
+    }
+  }, [defaultTranscriptionModel]);
+
+  useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
@@ -281,7 +469,11 @@ export function useRealtimeTranslation() {
   return {
     error,
     model,
+    models: modelOptions,
+    setModel,
+    setSourceLanguage,
     setTargetLanguage,
+    sourceLanguage,
     sourceTranscript,
     start,
     status,

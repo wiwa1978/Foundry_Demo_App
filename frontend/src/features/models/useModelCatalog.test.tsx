@@ -42,17 +42,28 @@ function config(overrides: Partial<ConfigResponse> = {}): ConfigResponse {
     voice_live_model: null,
     voice_live_voice: null,
     is_live_interpreter_configured: false,
+    is_text_translation_configured: false,
     ...overrides,
   };
 }
 
-function discovery(overrides: Partial<ModelsResponse> = {}): ModelsResponse {
+function discovery(
+  overrides: Partial<ModelsResponse> & {
+    deployments?: Array<{
+      name: string;
+      model_name?: string | null;
+      model_version?: string | null;
+      provisioning_state?: string | null;
+    }>;
+  } = {},
+): ModelsResponse {
   return {
     models: ["discovered-a"],
     transcription_models: ["transcribe-a"],
     traditional_transcription_models: ["whisper-a"],
     tts_models: ["tts-a"],
     model_modalities: { "discovered-a": ["text"] },
+    use_case_model_map: {},
     discovery_error: null,
     ...overrides,
   };
@@ -101,7 +112,7 @@ describe("useModelCatalog", () => {
     vi.useRealTimers();
   });
 
-  it("bootstraps catalog defaults after config loads", async () => {
+  it("does not invent a chat model when config is empty", async () => {
     const { result, rerender } = setup({ config: null });
     expect(result.current.models).toEqual([]);
 
@@ -111,12 +122,13 @@ describe("useModelCatalog", () => {
       workspace: "chat",
     });
 
-    await waitFor(() => expect(result.current.models).toEqual(["gpt-4o-mini"]));
-    expect(result.current.activeModel).toBe("gpt-4o-mini");
-    expect(result.current.selected).toEqual(["gpt-4o-mini"]);
+    await waitFor(() => expect(result.current.models).toEqual([]));
+    expect(result.current.activeModel).toBe("");
+    expect(result.current.selected).toEqual([]);
     expect(result.current.transcriptionModels).toEqual([
       "mai-transcribe-configured",
       "whisper-configured",
+      "gpt-transcribe",
     ]);
     expect(result.current.traditionalTranscriptionModel).toBe(
       "whisper-configured",
@@ -125,13 +137,70 @@ describe("useModelCatalog", () => {
     expect(result.current.ttsVoice).toBe("nova");
   });
 
+  it("loads discovered chat models when config has no seed models", async () => {
+    vi.mocked(discoverModels).mockResolvedValue(
+      discovery({
+        models: ["gpt-5.5", "gpt-5.6-sol", "gpt-4o-mini-transcribe"],
+        text_models: ["gpt-5.5", "gpt-5.6-sol"],
+        transcription_models: ["gpt-4o-mini-transcribe"],
+        model_modalities: {
+          "gpt-5.5": ["text"],
+          "gpt-5.6-sol": ["text"],
+          "gpt-4o-mini-transcribe": ["voice"],
+        },
+      }),
+    );
+
+    const { result } = setup({
+      config: config({ models: [] }),
+      canUseProtectedApis: true,
+    });
+
+    await waitFor(() =>
+      expect(result.current.textModels).toEqual(["gpt-5.5", "gpt-5.6-sol"]),
+    );
+    expect(result.current.activeModel).toBe("gpt-5.5");
+    expect(result.current.models).not.toContain("gpt-4o-mini");
+  });
+
+  it("bootstraps configured realtime transcription choices", async () => {
+    const { result } = setup({
+      config: config({
+        models: [
+          "gpt-realtime-whisper",
+          "gpt-live-transcribe",
+          "gpt-4o-transcribe",
+        ],
+        realtime_transcription_model: "gpt-realtime-whisper",
+        realtime_transcription_models: [
+          "gpt-realtime-whisper",
+          "gpt-live-transcribe",
+        ],
+      }),
+    });
+
+    await waitFor(() =>
+      expect(result.current.realtimeTranscriptionModels).toEqual([
+        "gpt-realtime-whisper",
+        "gpt-live-transcribe",
+      ]),
+    );
+    expect(result.current.transcriptionModels).toEqual([
+      "mai-transcribe-configured",
+      "whisper-configured",
+      "gpt-transcribe",
+      "gpt-4o-transcribe",
+    ]);
+  });
+
   it("merges discovery with configured models through the canonical reconciliation", async () => {
     vi.mocked(discoverModels).mockResolvedValue(
       discovery({
-        models: ["dynamic-text", "dynamic-image"],
+        models: ["dynamic-text", "dynamic-image", "text-embedding-3-large"],
         model_modalities: {
           "dynamic-text": ["text"],
           "dynamic-image": ["image"],
+          "text-embedding-3-large": ["text"],
         },
       }),
     );
@@ -141,11 +210,17 @@ describe("useModelCatalog", () => {
       expect(result.current.models).toEqual([
         "dynamic-text",
         "dynamic-image",
+        "text-embedding-3-large",
         "text-a",
         "text-b",
       ]),
     );
     expect(result.current.modelModalities["dynamic-image"]).toEqual(["image"]);
+    expect(result.current.textModels).toEqual([
+      "dynamic-text",
+      "text-a",
+      "text-b",
+    ]);
     expect(result.current.activeModel).toBe("text-a");
     expect(result.current.selected).toEqual(["text-a", "text-b"]);
   });
@@ -333,6 +408,35 @@ describe("useModelCatalog", () => {
     expect(result.current.selected).toEqual(["one", "four"]);
   });
 
+  it("maps both realtime transcription model families", async () => {
+    vi.mocked(discoverModels).mockResolvedValue(
+      discovery({
+        realtime_transcription_models: ["legacy-stt", "live-stt"],
+        deployments: [
+          {
+            name: "legacy-stt",
+            model_name: "gpt-realtime-whisper",
+            model_version: "2026-05-06",
+            provisioning_state: "Succeeded",
+          },
+          {
+            name: "live-stt",
+            model_name: "gpt-live-transcribe",
+            model_version: "2026-07-29",
+            provisioning_state: "Succeeded",
+          },
+        ],
+      }),
+    );
+    const { result } = setup({ canUseProtectedApis: true });
+    await flushPromises();
+
+    expect(result.current.realtimeTranscriptionModels).toEqual([
+      "legacy-stt",
+      "live-stt",
+    ]);
+    expect(result.current.transcriptionModels).toEqual(["transcribe-a", "gpt-transcribe"]);
+  });
   it("falls back when transcription and TTS choices disappear", async () => {
     vi.useFakeTimers();
     vi.mocked(discoverModels)

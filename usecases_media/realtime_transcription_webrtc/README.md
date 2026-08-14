@@ -1,6 +1,6 @@
 # Realtime Transcription - WebRTC
 
-Streams the browser microphone directly to a `gpt-realtime-whisper` deployment and receives transcript events over the WebRTC data channel.
+Streams the browser microphone directly to a selected `gpt-realtime-whisper` or `gpt-live-transcribe` deployment and receives transcript events over the WebRTC data channel.
 
 The workspace supports an optional ISO language hint, transcription delay tuning, and server or semantic VAD. Foundry owns turn segmentation because media bypasses the app server.
 

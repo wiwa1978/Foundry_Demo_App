@@ -17,7 +17,7 @@ from app.infrastructure.persistence.models import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "foundry_chat.sqlite3"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,7 @@ _SCHEMA_STATEMENTS = (
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         model TEXT,
+        routed_model TEXT,
         api_surface TEXT,
         duration_ms INTEGER,
         error TEXT,
@@ -122,7 +123,21 @@ def initialize_sqlite_store() -> None:
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' "
                 "AND name IN ('conversations', 'conversation_messages', 'model_settings') LIMIT 1"
             ).fetchone()
-            if app_tables_exist:
+            if schema_version == 3 and app_tables_exist:
+                logger.info(
+                    "sqlite_schema_migrate previous_version=%d target_version=%d",
+                    schema_version,
+                    SCHEMA_VERSION,
+                )
+                message_columns = {
+                    row["name"]
+                    for row in connection.execute("PRAGMA table_info(conversation_messages)")
+                }
+                if "routed_model" not in message_columns:
+                    connection.execute(
+                        "ALTER TABLE conversation_messages ADD COLUMN routed_model TEXT"
+                    )
+            elif app_tables_exist:
                 logger.warning(
                     "sqlite_schema_reset development_mvp_reset=true previous_version=%d "
                     "target_version=%d",
@@ -231,10 +246,10 @@ class SQLiteConversationRepository:
             connection.execute(
                 """
                 INSERT INTO conversation_messages (
-                    id, conversation_id, tenant_id, owner_id, role, content, model, api_surface,
-                    duration_ms, error, usage_json, guardrail_variant, guardrail_policy_name,
-                    guardrail_results_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, conversation_id, tenant_id, owner_id, role, content, model,
+                    routed_model, api_surface, duration_ms, error, usage_json,
+                    guardrail_variant, guardrail_policy_name, guardrail_results_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     message.id,
@@ -244,6 +259,7 @@ class SQLiteConversationRepository:
                     message.role,
                     message.content,
                     message.model,
+                    message.routed_model,
                     message.api_surface,
                     message.duration_ms,
                     message.error,
@@ -278,7 +294,7 @@ class SQLiteConversationRepository:
         )
         values: list[str] = [scope.tenant_id, scope.user_id, start_at]
         if model:
-            query += " AND model = ?"
+            query += " AND lower(model) = lower(?)"
             values.append(model)
         query += " ORDER BY created_at ASC, id ASC"
         with connect() as connection:

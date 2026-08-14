@@ -2,11 +2,12 @@ import type { UseCaseModule } from "@/app/types";
 
 export const liveTranslationUseCase: UseCaseModule = {
   id: "live_translation",
-  title: "Live translation",
-  shortTitle: "Live translation",
+  title: "Azure Speech Live Translation",
+  shortTitle: "Azure Speech Live Translation",
   description:
-    "Translate speech to text and spoken audio in real time with a standard neural voice or approved Personal Voice.",
-  badge: "Azure Speech",
+    "Translate live speech with Azure Speech SDK standard neural voices or approved Live Interpreter Personal Voice.",
+  badge: "Audio",
+  typeLabel: "Azure Speech Translation",
   icon: "voiceWave",
   modalities: ["audio"],
   implementation: [
@@ -15,7 +16,7 @@ export const liveTranslationUseCase: UseCaseModule = {
     "Personal Voice mode uses Live Interpreter open-range detection when the mapped resource has restricted-feature approval.",
   ],
   codeSnippet: {
-    title: "Speech SDK: configure Live Interpreter",
+    title: "Azure Speech SDK: configure Live Interpreter",
     language: "python",
     code: [
       "config = speechsdk.translation.SpeechTranslationConfig(",

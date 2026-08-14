@@ -127,7 +127,7 @@ export class MockAudioElement extends EventTarget {
   }
 }
 
-type SocketMode = "success" | "open-error" | "manual";
+type SocketMode = "success" | "open-error" | "manual" | "sync-open";
 
 export class MockWebSocket extends EventTarget {
   static readonly CONNECTING = 0;
@@ -146,6 +146,10 @@ export class MockWebSocket extends EventTarget {
     super();
     this.url = String(url);
     MockWebSocket.instances.push(this);
+    if (MockWebSocket.mode === "sync-open") {
+      this.open();
+      return;
+    }
     queueMicrotask(() => {
       if (
         MockWebSocket.mode === "manual" ||

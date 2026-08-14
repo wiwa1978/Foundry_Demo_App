@@ -9,6 +9,24 @@ import type { ReasoningEffort } from "@/features/textChat/types";
 
 export const deploymentDefaultGuardrail = "deployment_default";
 
+export const gptRealtimeTranslationLanguages = [
+  ["en", "English"],
+  ["fr", "French"],
+  ["de", "German"],
+  ["es", "Spanish"],
+  ["it", "Italian"],
+  ["nl", "Dutch"],
+  ["pt", "Portuguese"],
+  ["ja", "Japanese"],
+  ["ko", "Korean"],
+  ["ar", "Arabic"],
+] as const;
+
+export const gptRealtimeTranslationSourceLanguages = [
+  ["auto", "Auto-detect"],
+  ...gptRealtimeTranslationLanguages,
+] as const;
+
 export const liveTranslationLanguages = [
   ["en", "English"],
   ["fr", "French"],
@@ -272,6 +290,22 @@ export function isTranscriptionModelName(model: string) {
   const normalized = model.toLowerCase();
   return normalized.includes("transcribe") || normalized.includes("whisper");
 }
+
+export function isRealtimeOnlyTranscriptionModel(model: string) {
+  const normalized = model.toLowerCase();
+  return (
+    normalized.includes("realtime-whisper") ||
+    normalized.includes("live-transcribe")
+  );
+}
+
+export function isRecordedAudioTranscriptionModel(model: string) {
+  return (
+    isTranscriptionModelName(model) && !isRealtimeOnlyTranscriptionModel(model)
+  );
+}
+
+export const openAiTranscriptionModels = ["gpt-transcribe"] as const;
 
 export const traditionalTtsVoices = [
   "alloy",

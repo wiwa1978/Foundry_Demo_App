@@ -1,12 +1,14 @@
 import os
 import re
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlparse
 
 from app.application.ports.use_case_settings import UseCaseResourceSettingsRepository
 from app.domain.models import UseCaseBinding
 
 LIVE_TRANSLATION_USE_CASE = "live_translation"
+MODEL_MAP_USE_CASE = "__use_case_model_map__"
 BINDING_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 PROJECT_ENDPOINT_PREFIX = "FOUNDRY_PROJECT_ENDPOINT_"
 
@@ -17,6 +19,7 @@ class FoundryBinding:
     project_endpoint: str
     models: tuple[str, ...]
     speech_endpoint: str
+    speech_key: str | None
     region: str | None
 
 
@@ -33,6 +36,11 @@ class UseCaseSettingsService:
     def save(self, use_case: str, binding: str) -> UseCaseBinding:
         return save_use_case_binding(self.repository, use_case, binding)
 
+    def get_model_map(self) -> str | None:
+        return get_use_case_model_map(self.repository)
+
+    def save_model_map(self, payload: str) -> None:
+        save_use_case_model_map(self.repository, payload)
 
 def list_foundry_bindings() -> list[FoundryBinding]:
     names = sorted(
@@ -84,6 +92,7 @@ def resolve_foundry_binding(name: str) -> FoundryBinding:
         project_endpoint=project_endpoint,
         models=models,
         speech_endpoint=speech_endpoint,
+        speech_key=os.getenv(f"AZURE_SPEECH_KEY_{normalized_name}", "").strip() or None,
         region=region,
     )
 
@@ -122,3 +131,17 @@ def save_use_case_binding(
         raise ValueError("Use case cannot be blank.")
     repository.save_binding(mapping)
     return mapping
+
+
+def get_use_case_model_map(
+    repository: UseCaseResourceSettingsRepository,
+) -> str | None:
+    settings = repository.get_binding(MODEL_MAP_USE_CASE)
+    return settings.binding if settings else None
+
+
+def save_use_case_model_map(
+    repository: UseCaseResourceSettingsRepository,
+    payload: str,
+) -> None:
+    repository.save_binding(UseCaseBinding(use_case=MODEL_MAP_USE_CASE, binding=payload))

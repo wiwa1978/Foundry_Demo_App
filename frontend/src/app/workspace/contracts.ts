@@ -44,7 +44,13 @@ export type ImageGenerationResult = {
 
 export type Theme = "light" | "dark";
 export type ColorPalette = "foundry" | "ocean" | "forest" | "ember";
-export type ViewMode = "chat" | "metrics" | "settings" | "model-settings";
+export type ViewMode =
+  | "chat"
+  | "metrics"
+  | "settings"
+  | "model-settings"
+  | "evaluation-admin"
+  | "admin-monitor";
 
 export type StatusMessage = {
   type: "success" | "error";

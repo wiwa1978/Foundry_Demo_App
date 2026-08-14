@@ -71,11 +71,16 @@ def create_app() -> FastAPI:
     from usecases_agents.research_assistant_prompt.backend.router import (
         router as agent_research_router,
     )
+    from usecases_media.content_extractor.backend.router import router as content_extractor_router
     from usecases_media.document_qa.backend.router import router as document_qa_router
     from usecases_media.shared.images.backend.router import router as images_router
     from usecases_media.shared.voice.backend.router import router as voice_router
     from usecases_media.text_chat.backend.router import router as text_chat_router
     from usecases_media.text_chat_comparison.backend.router import router as comparison_router
+    from usecases_media.text_translation.backend.router import router as text_translation_router
+    from usecases_media.youtube_realtime_transcription.backend.router import (
+        router as youtube_realtime_transcription_router,
+    )
     from usecases_media.youtube_summary.backend.router import router as youtube_summary_router
 
     application = FastAPI(title="Foundry Chat App", lifespan=lifespan)
@@ -91,12 +96,15 @@ def create_app() -> FastAPI:
     application.add_exception_handler(HTTPException, http_error_handler)
     application.add_exception_handler(RequestValidationError, request_validation_error_handler)
     application.add_exception_handler(Exception, unexpected_error_handler)
+    application.include_router(content_extractor_router)
     application.include_router(text_chat_router)
     application.include_router(document_qa_router)
     application.include_router(voice_router)
     application.include_router(youtube_summary_router)
+    application.include_router(youtube_realtime_transcription_router)
     application.include_router(images_router)
     application.include_router(comparison_router)
+    application.include_router(text_translation_router)
     application.include_router(conversations_router)
     application.include_router(agent_research_router)
     application.include_router(hosted_agent_router)

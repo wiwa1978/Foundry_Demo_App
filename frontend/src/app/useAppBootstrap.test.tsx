@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthResponse, ConfigResponse, FetchClient } from "@/api/types";
 
@@ -30,6 +30,7 @@ function config(overrides: Partial<ConfigResponse> = {}): ConfigResponse {
     voice_live_model: null,
     voice_live_voice: null,
     is_live_interpreter_configured: false,
+    is_text_translation_configured: false,
     ...overrides,
   };
 }
@@ -64,6 +65,17 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+async function flushPromises() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("useAppBootstrap", () => {
   it("unlocks the local demo when authentication is disabled", async () => {
     const fetchClient = immediateClient(config(), auth());
@@ -77,6 +89,11 @@ describe("useAppBootstrap", () => {
     expect(result.current.canUseProtectedApis).toBe(true);
     expect(result.current.authGateActive).toBe(false);
     expect(result.current.workspaceLocked("chat")).toBe(false);
+    expect(fetchClient).not.toHaveBeenCalledWith(
+      "/api/auth/me",
+      expect.any(Object),
+      expect.any(Object),
+    );
   });
 
   it("unlocks an authenticated Entra workspace", async () => {
@@ -109,7 +126,7 @@ describe("useAppBootstrap", () => {
     expect(result.current.workspaceLocked("settings")).toBe(false);
   });
 
-  it("keeps access disabled when auth resolves before config", async () => {
+  it("waits for config before checking the current user", async () => {
     const configResponse = deferred<Response>();
     const authResponse = deferred<Response>();
     const fetchClient = vi.fn<FetchClient>((url) =>
@@ -117,27 +134,37 @@ describe("useAppBootstrap", () => {
     );
     const { result } = renderHook(() => useAppBootstrap(fetchClient));
 
-    await act(async () => {
-      authResponse.resolve(
-        Response.json(auth({ authenticated: true, entra_auth_enabled: true })),
-      );
-      await Promise.resolve();
-    });
+    expect(fetchClient).toHaveBeenCalledTimes(1);
+    expect(fetchClient).toHaveBeenCalledWith(
+      "/api/config",
+      expect.any(Object),
+      expect.any(Object),
+    );
     expect(result.current.config).toBeNull();
     expect(result.current.auth).toBeNull();
     expect(result.current.canUseProtectedApis).toBe(false);
-    expect(result.current.authGateActive).toBe(true);
 
     await act(async () => {
       configResponse.resolve(
         Response.json(config({ entra_auth_enabled: true })),
       );
     });
+    expect(fetchClient).toHaveBeenCalledWith(
+      "/api/auth/me",
+      expect.any(Object),
+      expect.any(Object),
+    );
+
+    await act(async () => {
+      authResponse.resolve(
+        Response.json(auth({ authenticated: true, entra_auth_enabled: true })),
+      );
+    });
     expect(result.current.canUseProtectedApis).toBe(true);
     expect(result.current.authGateActive).toBe(false);
   });
 
-  it("uses the existing non-configured fallback when config fails", async () => {
+  it("reports API unavailability when config cannot be loaded", async () => {
     const fetchClient = vi.fn<FetchClient>((url) => {
       if (url === "/api/config") {
         return Promise.reject(new Error("config unavailable"));
@@ -154,8 +181,37 @@ describe("useAppBootstrap", () => {
         endpoint: "config unavailable",
       }),
     );
-    expect(result.current.canUseProtectedApis).toBe(true);
+    expect(result.current.apiUnavailable).toBe(true);
+    expect(result.current.apiUnavailableReason).toBe("config unavailable");
+    expect(result.current.canUseProtectedApis).toBe(false);
     expect(result.current.authGateActive).toBe(false);
+  });
+
+  it("automatically retries config while the API is unavailable", async () => {
+    vi.useFakeTimers();
+    let configAttempts = 0;
+    const fetchClient = vi.fn<FetchClient>((url) => {
+      if (url === "/api/config") {
+        configAttempts += 1;
+        return configAttempts === 1
+          ? Promise.reject(new Error("api offline"))
+          : Promise.resolve(Response.json(config({ endpoint: "online" })));
+      }
+      return Promise.resolve(Response.json(auth()));
+    });
+    const { result } = renderHook(() => useAppBootstrap(fetchClient));
+
+    await flushPromises();
+    expect(result.current.apiUnavailable).toBe(true);
+
+    await act(async () => {
+      vi.advanceTimersByTime(3_000);
+    });
+    await flushPromises();
+
+    expect(result.current.apiUnavailable).toBe(false);
+    expect(result.current.config?.endpoint).toBe("online");
+    expect(configAttempts).toBe(2);
   });
 
   it("uses the unauthenticated fallback when auth fails", async () => {
@@ -175,21 +231,28 @@ describe("useAppBootstrap", () => {
     expect(result.current.authGateActive).toBe(true);
   });
 
-  it("aborts both requests when unmounted", () => {
-    const fetchClient = vi.fn<FetchClient>(() => new Promise(() => undefined));
+  it("aborts the pending config request when unmounted", () => {
+    const fetchClient = vi.fn<FetchClient>(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+        }),
+    );
     const { unmount } = renderHook(() => useAppBootstrap(fetchClient));
     const configSignal = fetchClient.mock.calls.find(
       ([url]) => url === "/api/config",
     )?.[1]?.signal;
-    const authSignal = fetchClient.mock.calls.find(
-      ([url]) => url === "/api/auth/me",
-    )?.[1]?.signal;
 
     expect(configSignal?.aborted).toBe(false);
-    expect(authSignal?.aborted).toBe(false);
+    expect(fetchClient).not.toHaveBeenCalledWith(
+      "/api/auth/me",
+      expect.any(Object),
+      expect.any(Object),
+    );
     unmount();
     expect(configSignal?.aborted).toBe(true);
-    expect(authSignal?.aborted).toBe(true);
   });
 
   it("ignores stale completions after the fetch client changes", async () => {

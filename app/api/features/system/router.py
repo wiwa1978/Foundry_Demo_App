@@ -47,6 +47,7 @@ def get_config(
         "realtime_model": settings.realtime_model,
         "is_realtime_transcription_configured": settings.is_realtime_transcription_configured,
         "realtime_transcription_model": settings.realtime_transcription_model,
+        "realtime_transcription_models": settings.realtime_transcription_models,
         "is_realtime_translation_configured": settings.is_realtime_translation_configured,
         "realtime_translation_model": settings.realtime_translation_model,
         "embedding_model": settings.embedding_model,
@@ -65,6 +66,8 @@ def get_config(
         "voice_live_model": settings.voice_live_model,
         "voice_live_voice": settings.voice_live_voice,
         "is_live_interpreter_configured": settings.is_live_interpreter_configured,
+        "is_text_translation_configured": settings.is_text_translation_configured,
+        "is_content_extractor_configured": settings.is_content_extractor_configured,
     }
 
 

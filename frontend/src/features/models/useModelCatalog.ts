@@ -13,8 +13,10 @@ import type { UseCaseWorkspace } from "@/app/types";
 import {
   defaultComparisonModelCount,
   isImageModelName,
-  isTranscriptionModelName,
+  isRealtimeOnlyTranscriptionModel,
+  isRecordedAudioTranscriptionModel,
   maxComparisonModelCount,
+  openAiTranscriptionModels,
 } from "@/app/workspace/constants";
 import type { StatusMessage } from "@/app/workspace/contracts";
 
@@ -24,7 +26,9 @@ type DesiredModelKind = "text" | "image";
 
 type CatalogUpdate = {
   models?: string[];
+  textModels?: string[];
   transcriptionModels?: string[];
+  realtimeTranscriptionModels?: string[];
   traditionalTranscriptionModels?: string[];
   ttsModels?: string[];
   modelModalities?: Record<string, ModelModality[]>;
@@ -35,11 +39,13 @@ type CatalogState = {
   pinnedModels: string[];
   discoveredModels: string[];
   modelModalities: Record<string, ModelModality[]>;
+  textModels: string[];
   activeModel: string;
   selectedModels: Set<string>;
   transcriptionModels: string[];
   transcriptionModel: string;
   selectedTranscriptionModels: Set<string>;
+  realtimeTranscriptionModels: string[];
   traditionalTranscriptionModels: string[];
   traditionalTranscriptionModel: string;
   ttsModels: string[];
@@ -51,11 +57,13 @@ const initialState: CatalogState = {
   pinnedModels: [],
   discoveredModels: [],
   modelModalities: {},
+  textModels: [],
   activeModel: "",
   selectedModels: new Set(),
   transcriptionModels: [],
   transcriptionModel: "",
   selectedTranscriptionModels: new Set(),
+  realtimeTranscriptionModels: [],
   traditionalTranscriptionModels: [],
   traditionalTranscriptionModel: "",
   ttsModels: [],
@@ -68,6 +76,9 @@ function uniqueModels(models: Array<string | null>) {
   );
 }
 
+function isEmbeddingModel(model: string) {
+  return model.trim().toLowerCase().includes("embedding");
+}
 function inferredModalities(model: string): ModelModality[] {
   return isImageModelName(model) ? ["image"] : ["text"];
 }
@@ -122,16 +133,25 @@ function reconcileCatalog(
     current.transcriptionModels,
     update.transcriptionModels,
   );
+  const realtimeTranscriptionModels = nonEmptyUpdate(
+    current.realtimeTranscriptionModels,
+    update.realtimeTranscriptionModels,
+  );
   const traditionalTranscriptionModels = nonEmptyUpdate(
     current.traditionalTranscriptionModels,
     update.traditionalTranscriptionModels,
   );
   const ttsModels = nonEmptyUpdate(current.ttsModels, update.ttsModels);
-  const textModels = models.filter(
-    (model) =>
-      modelModalities[model]?.includes("text") &&
-      !transcriptionModels.includes(model),
-  );
+  const textModels =
+    update.textModels !== undefined
+      ? uniqueModels(update.textModels)
+      : models.filter(
+          (model) =>
+            modelModalities[model]?.includes("text") &&
+            !transcriptionModels.includes(model) &&
+            !realtimeTranscriptionModels.includes(model) &&
+            !isEmbeddingModel(model),
+        );
   const imageModels = models.filter((model) =>
     modelModalities[model]?.includes("image"),
   );
@@ -173,6 +193,7 @@ function reconcileCatalog(
     pinnedModels,
     discoveredModels,
     modelModalities,
+    textModels,
     activeModel,
     selectedModels,
     transcriptionModels,
@@ -180,6 +201,7 @@ function reconcileCatalog(
       ? current.transcriptionModel
       : (transcriptionModels[0] ?? ""),
     selectedTranscriptionModels,
+    realtimeTranscriptionModels,
     traditionalTranscriptionModels,
     traditionalTranscriptionModel: traditionalTranscriptionModels.includes(
       current.traditionalTranscriptionModel,
@@ -194,13 +216,22 @@ function reconcileCatalog(
 }
 
 function configUpdate(config: ConfigResponse): CatalogUpdate {
-  const models = config.models.length ? config.models : ["gpt-4o-mini"];
+  const models = config.models;
+  const configuredRealtimeTranscriptionModels = uniqueModels([
+    config.realtime_transcription_model ?? null,
+    ...(config.realtime_transcription_models ?? []),
+  ]);
   return {
     models,
     transcriptionModels: uniqueModels([
       config.speech_transcription_model,
       config.transcription_model,
-      ...models.filter(isTranscriptionModelName),
+      ...openAiTranscriptionModels,
+      ...models.filter(isRecordedAudioTranscriptionModel),
+    ]),
+    realtimeTranscriptionModels: uniqueModels([
+      ...configuredRealtimeTranscriptionModels,
+      ...models.filter(isRealtimeOnlyTranscriptionModel),
     ]),
     traditionalTranscriptionModels: uniqueModels([config.transcription_model]),
     ttsModels: uniqueModels([config.tts_model]),
@@ -210,12 +241,36 @@ function configUpdate(config: ConfigResponse): CatalogUpdate {
   };
 }
 
+type ModelDiscoveryDeployment = {
+  name: string;
+  model_name?: string | null;
+};
+
 function discoveryUpdate(data: ModelsResponse): CatalogUpdate {
+  const deployments = (
+    data as ModelsResponse & { deployments?: ModelDiscoveryDeployment[] }
+  ).deployments;
+  const realtimeTranscriptionDeployments = (deployments ?? [])
+    .filter((deployment) =>
+      isRealtimeOnlyTranscriptionModel(deployment.model_name ?? deployment.name),
+    )
+    .map((deployment) => deployment.name);
   return {
     models: data.models,
-    transcriptionModels: data.transcription_models,
-    traditionalTranscriptionModels: data.traditional_transcription_models,
-    ttsModels: data.tts_models,
+    textModels: data.text_models,
+    transcriptionModels: uniqueModels([
+      ...(data.transcription_models ?? []).filter(
+        (model) => !isRealtimeOnlyTranscriptionModel(model),
+      ),
+      ...openAiTranscriptionModels,
+    ]),
+    realtimeTranscriptionModels: uniqueModels([
+      ...(data.realtime_transcription_models ?? []),
+      ...realtimeTranscriptionDeployments,
+      ...(data.transcription_models ?? []).filter(isRealtimeOnlyTranscriptionModel),
+    ]),
+    traditionalTranscriptionModels: data.traditional_transcription_models ?? [],
+    ttsModels: data.tts_models ?? [],
     modelModalities:
       data.model_modalities ??
       Object.fromEntries(
@@ -529,15 +584,7 @@ export function useModelCatalog({
     [],
   );
 
-  const textModels = useMemo(
-    () =>
-      state.models.filter(
-        (model) =>
-          state.modelModalities[model]?.includes("text") &&
-          !state.transcriptionModels.includes(model),
-      ),
-    [state.modelModalities, state.models, state.transcriptionModels],
-  );
+  const textModels = state.textModels;
   const selected = useMemo(
     () =>
       textModels
@@ -557,12 +604,13 @@ export function useModelCatalog({
     models: state.models,
     modelModalities: state.modelModalities,
     activeModel: state.activeModel,
+    textModels,
     selectedModels: state.selectedModels,
     selected,
-    textModels,
     transcriptionModels: state.transcriptionModels,
     transcriptionModel: state.transcriptionModel,
     selectedTranscriptionModels: state.selectedTranscriptionModels,
+    realtimeTranscriptionModels: state.realtimeTranscriptionModels,
     selectedTranscriptions,
     traditionalTranscriptionModels: state.traditionalTranscriptionModels,
     traditionalTranscriptionModel: state.traditionalTranscriptionModel,

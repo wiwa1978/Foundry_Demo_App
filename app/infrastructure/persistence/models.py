@@ -23,6 +23,7 @@ USE_CASE_SETTINGS_PARTITION = "use-case-bindings"
 USE_CASE_SETTINGS_TYPE = "use_case_binding"
 
 
+
 def conversation_from_record(record: dict[str, Any]) -> Conversation:
     return Conversation(
         id=record.get("conversation_id") or record["id"],
@@ -40,6 +41,7 @@ def message_from_record(record: dict[str, Any]) -> ConversationMessage:
         role=record["role"],
         content=record["content"],
         model=record.get("model"),
+        routed_model=record.get("routed_model"),
         api_surface=record.get("api_surface"),
         duration_ms=record.get("duration_ms"),
         error=record.get("error"),

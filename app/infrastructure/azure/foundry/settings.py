@@ -1,7 +1,31 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from app.core.config import env_csv, first_env
 
+AI_SERVICES_DOMAIN = ".services.ai.azure.com"
+COGNITIVE_SERVICES_DOMAIN = ".cognitiveservices.azure.com"
+
+
+def translator_endpoint_from_project(endpoint: str | None) -> str | None:
+    if not endpoint:
+        return None
+    normalized = endpoint.strip().rstrip("/")
+    if not normalized:
+        return None
+    if "://" not in normalized and "/" not in normalized:
+        return f"https://{normalized}{COGNITIVE_SERVICES_DOMAIN}"
+    parsed = urlparse(normalized)
+    if parsed.scheme.lower() != "https" or not parsed.netloc:
+        return None
+    hostname = parsed.netloc.lower()
+    if hostname.endswith(COGNITIVE_SERVICES_DOMAIN):
+        return f"https://{parsed.netloc}"
+    if hostname.endswith(AI_SERVICES_DOMAIN):
+        resource_name = parsed.netloc[: -len(AI_SERVICES_DOMAIN)]
+        if resource_name:
+            return f"https://{resource_name}{COGNITIVE_SERVICES_DOMAIN}"
+    return None
 
 @dataclass(frozen=True)
 class FoundrySettings:
@@ -22,9 +46,30 @@ class FoundrySettings:
     flux_endpoint: str | None = None
     hosted_agent_name: str | None = None
     application_insights_resource_id: str | None = None
-    realtime_transcription_model: str = "gpt-realtime-whisper"
+    realtime_transcription_model: str = ""
+    realtime_transcription_models: list[str] = field(default_factory=list)
     live_interpreter_binding_configured: bool = False
     realtime_translation_model: str = "gpt-realtime-translate"
+    translator_endpoint: str | None = None
+    translator_key: str | None = None
+    content_understanding_endpoint: str | None = None
+    content_understanding_key: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "realtime_transcription_models",
+            list(
+                dict.fromkeys(
+                    model
+                    for model in [
+                        self.realtime_transcription_model,
+                        *self.realtime_transcription_models,
+                    ]
+                    if model.strip()
+                )
+            ),
+        )
 
     @property
     def is_configured(self) -> bool:
@@ -36,15 +81,19 @@ class FoundrySettings:
 
     @property
     def is_realtime_transcription_configured(self) -> bool:
-        return bool(self.realtime_endpoint and self.realtime_transcription_model)
+        return bool(self.realtime_endpoint)
 
     @property
     def is_realtime_translation_configured(self) -> bool:
-        return bool(
-            self.realtime_endpoint
-            and self.realtime_translation_model
-            and self.realtime_transcription_model
-        )
+        return bool(self.realtime_endpoint and self.realtime_translation_model)
+
+    @property
+    def is_text_translation_configured(self) -> bool:
+        return bool(self.translator_endpoint)
+
+    @property
+    def is_content_extractor_configured(self) -> bool:
+        return bool(self.content_understanding_endpoint)
 
     @property
     def is_traditional_voice_configured(self) -> bool:
@@ -68,7 +117,7 @@ class FoundrySettings:
 
     @property
     def is_live_interpreter_configured(self) -> bool:
-        return self.live_interpreter_binding_configured
+        return bool(self.live_interpreter_binding_configured or self.speech_endpoint)
 
     @property
     def auth_mode(self) -> str:
@@ -82,21 +131,25 @@ def load_settings(
 ) -> FoundrySettings:
     seed_models = env_csv("FOUNDRY_MODELS")
     models = list(dict.fromkeys([*(models or []), *seed_models]))
+    project_endpoint = first_env(
+        "FOUNDRY_PROJECT_ENDPOINT",
+        "AZURE_AI_PROJECT_ENDPOINT",
+        "AZURE_AIPROJECT_ENDPOINT",
+        "FOUNDRY_ENDPOINT",
+        "FOUNDRY_OPENAI_ENDPOINT",
+        "AZURE_OPENAI_ENDPOINT",
+    )
     realtime_model = (
         first_env("FOUNDRY_REALTIME_MODEL")
         or next((model for model in models if "realtime" in model.lower()), None)
         or "gpt-realtime-2.1"
     )
 
+    realtime_transcription_model = first_env("FOUNDRY_REALTIME_TRANSCRIPTION_MODEL") or ""
+    realtime_transcription_models = env_csv("FOUNDRY_REALTIME_TRANSCRIPTION_MODELS")
+
     return FoundrySettings(
-        endpoint=first_env(
-            "FOUNDRY_PROJECT_ENDPOINT",
-            "AZURE_AI_PROJECT_ENDPOINT",
-            "AZURE_AIPROJECT_ENDPOINT",
-            "FOUNDRY_ENDPOINT",
-            "FOUNDRY_OPENAI_ENDPOINT",
-            "AZURE_OPENAI_ENDPOINT",
-        ),
+        endpoint=project_endpoint,
         models=models,
         realtime_endpoint=first_env(
             "FOUNDRY_REALTIME_ENDPOINT",
@@ -143,15 +196,36 @@ def load_settings(
             "FOUNDRY_APPLICATION_INSIGHTS_RESOURCE_ID",
             "APPLICATIONINSIGHTS_RESOURCE_ID",
         ),
-        realtime_transcription_model=first_env(
-            "FOUNDRY_REALTIME_TRANSCRIPTION_MODEL",
-            default="gpt-realtime-whisper",
-        )
-        or "gpt-realtime-whisper",
+        realtime_transcription_model=realtime_transcription_model,
+        realtime_transcription_models=realtime_transcription_models,
         realtime_translation_model=first_env(
             "FOUNDRY_REALTIME_TRANSLATION_MODEL",
             default="gpt-realtime-translate",
         )
         or "gpt-realtime-translate",
         live_interpreter_binding_configured=live_interpreter_configured,
+        translator_endpoint=first_env(
+            "FOUNDRY_TRANSLATOR_ENDPOINT",
+            "AZURE_TRANSLATOR_ENDPOINT",
+            "AZURE_AI_SERVICES_ENDPOINT",
+        )
+        or translator_endpoint_from_project(project_endpoint),
+        translator_key=first_env(
+            "FOUNDRY_TRANSLATOR_KEY",
+            "AZURE_TRANSLATOR_KEY",
+            "AZURE_AI_SERVICES_KEY",
+            "COGNITIVE_SERVICES_KEY",
+        ),
+        content_understanding_endpoint=first_env(
+            "FOUNDRY_CONTENT_UNDERSTANDING_ENDPOINT",
+            "AZURE_CONTENT_UNDERSTANDING_ENDPOINT",
+            "AZURE_AI_SERVICES_ENDPOINT",
+        )
+        or translator_endpoint_from_project(project_endpoint),
+        content_understanding_key=first_env(
+            "FOUNDRY_CONTENT_UNDERSTANDING_KEY",
+            "AZURE_CONTENT_UNDERSTANDING_KEY",
+            "AZURE_AI_SERVICES_KEY",
+            "COGNITIVE_SERVICES_KEY",
+        ),
     )

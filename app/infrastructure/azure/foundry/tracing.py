@@ -67,6 +67,7 @@ def build_foundry_response_trace(
             "content": content,
             "usage": usage_to_dict(usage),
             "guardrail_results": _extract_guardrail_results(payload),
+            "model": _extract_response_model(payload),
         },
     }
 
@@ -86,6 +87,7 @@ def build_foundry_stream_response_trace(
             "content": content,
             "usage": usage_to_dict(usage),
             "guardrail_results": _extract_stream_guardrail_results(serialized_events),
+            "model": _extract_stream_response_model(serialized_events),
         },
     }
 
@@ -101,6 +103,21 @@ def redact_foundry_trace(value: Any) -> Any:
     if isinstance(value, str) and len(value) > 500:
         return f"[redacted {len(value)} characters]"
     return value
+
+
+def _extract_response_model(payload: Any) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    model = payload.get("model")
+    return model if isinstance(model, str) and model.strip() else None
+
+
+def _extract_stream_response_model(events: list[Any]) -> str | None:
+    for event in events:
+        model = _extract_response_model(event)
+        if model:
+            return model
+    return None
 
 
 def _extract_guardrail_results(payload: Any) -> TraceData | None:

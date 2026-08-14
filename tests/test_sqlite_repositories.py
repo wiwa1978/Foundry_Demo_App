@@ -60,6 +60,7 @@ class SqliteRepositoryTests(unittest.TestCase):
             role="assistant",
             content="Hello",
             model="gpt-test",
+            routed_model="gpt-5.4-mini",
             usage={"total_tokens": 3},
             guardrail_variant="policy_1",
             guardrail_policy_name="strict",
@@ -68,6 +69,7 @@ class SqliteRepositoryTests(unittest.TestCase):
 
         messages = get_conversation_messages(self.conversations, USER_SCOPE, conversation.id)
         self.assertEqual(messages[0].usage, {"total_tokens": 3})
+        self.assertEqual(messages[0].routed_model, "gpt-5.4-mini")
         self.assertEqual(messages[0].guardrail_policy_name, "strict")
         self.assertEqual(messages[0].guardrail_results, {"blocked": False})
         self.assertEqual(list_conversations(self.conversations, USER_SCOPE)[0].title, "Local chat")
@@ -144,6 +146,35 @@ class SqliteRepositoryTests(unittest.TestCase):
         settings = get_model_settings(self.models, "FLUX.2-pro")
 
         self.assertEqual(settings.modalities, ("image",))
+
+    def test_model_router_uses_responses(self) -> None:
+        settings = get_model_settings("model-router")
+
+        self.assertEqual(settings.api_surface, "responses")
+        self.assertEqual(settings.modalities, ("text",))
+
+
+    def test_mai_thinking_uses_chat_completions(self) -> None:
+        settings = get_model_settings("MAI-THINKING-1")
+
+        self.assertEqual(settings.api_surface, "chat_completions")
+        self.assertEqual(settings.modalities, ("text",))
+
+    def test_stale_mai_thinking_response_surface_is_corrected(self) -> None:
+        save_model_settings(
+            ModelSettings(model="MAI-THINKIN-1", api_surface="responses")
+        )
+
+        settings = get_model_settings("MAI-THINKIN-1")
+
+        self.assertEqual(settings.api_surface, "chat_completions")
+
+    def test_stale_model_router_chat_surface_is_corrected(self) -> None:
+        save_model_settings(ModelSettings(model="model-router", api_surface="chat_completions"))
+
+        settings = get_model_settings("model-router")
+
+        self.assertEqual(settings.api_surface, "responses")
 
     def test_conversations_are_paginated_with_stable_cursor(self) -> None:
         repository = SQLiteConversationRepository()

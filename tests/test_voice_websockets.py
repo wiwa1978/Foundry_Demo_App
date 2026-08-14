@@ -30,6 +30,9 @@ class FakeUpstream:
         await asyncio.Event().wait()
         raise StopAsyncIteration
 
+    async def recv(self) -> str:
+        return await self.__anext__()
+
 
 class FakeTranscriptionUpstream(FakeUpstream):
     def __init__(self) -> None:
@@ -61,10 +64,15 @@ class FakeTranslationUpstream(FakeUpstream):
         self.audio_received = threading.Event()
         self.close_received = threading.Event()
         self.events = [
-            {"type": "session.input_transcript.delta", "delta": "Hello"},
-            {"type": "session.output_transcript.delta", "delta": "Bonjour"},
+            {"type": "session.created"},
+            {"type": "session.updated"},
             {
-                "type": "session.output_audio.delta",
+                "type": "session.input_transcript.done",
+                "text": "Hello",
+            },
+            {"type": "translation.delta", "delta": "Bonjour"},
+            {
+                "type": "response.output_audio.delta",
                 "delta": base64.b64encode(b"audio").decode("ascii"),
                 "sample_rate": 24000,
                 "channels": 1,
@@ -147,26 +155,26 @@ def test_realtime_transcription_websocket_wraps_pcm_and_relays_transcript(monkey
     connection = {
         "url": "wss://realtime.example/openai/v1/realtime?intent=transcription",
         "token": "token",
-        "model": "gpt-realtime-whisper",
+        "model": "gpt-live-transcribe",
         "session_update": {"type": "session.update", "session": {"type": "transcription"}},
     }
     with (
         patch(
             "usecases_media.shared.voice.backend.websockets.create_realtime_transcription_connection_info",
             return_value=connection,
-        ),
+        ) as create_connection,
         patch(
             "usecases_media.shared.voice.backend.websockets.websocket_connect",
             return_value=FakeConnection(upstream),
         ),
     ):
         with TestClient(create_app()).websocket_connect(
-            "/api/realtime-transcription?language=nl&delay=low&turnDetection=none",
+            "/api/realtime-transcription?model=gpt-live-transcribe&language=nl&delay=low&turnDetection=none",
             headers={"origin": "http://testserver"},
         ) as websocket:
             assert websocket.receive_json() == {
                 "type": "ready",
-                "model": "gpt-realtime-whisper",
+                "model": "gpt-live-transcribe",
                 "input_rate": 24000,
             }
             assert websocket.receive_json()["delta"] == "Hello"
@@ -179,6 +187,13 @@ def test_realtime_transcription_websocket_wraps_pcm_and_relays_transcript(monkey
         "type": "input_audio_buffer.append",
         "audio": base64.b64encode(b"pcm").decode("ascii"),
     }
+
+    create_connection.assert_called_once_with(
+        model="gpt-live-transcribe",
+        language="nl",
+        delay="low",
+        turn_detection="none",
+    )
 
 
 def test_realtime_translation_websocket_relays_pcm_text_and_audio(monkeypatch):
@@ -195,18 +210,21 @@ def test_realtime_translation_websocket_relays_pcm_text_and_audio(monkeypatch):
         patch(
             "usecases_media.shared.voice.backend.websockets.create_realtime_translation_connection_info",
             return_value=connection,
-        ),
+        ) as create_connection,
         patch(
             "usecases_media.shared.voice.backend.websockets.websocket_connect",
             return_value=FakeConnection(upstream),
-        ),
+        ) as connect,
     ):
         with TestClient(create_app()).websocket_connect(
-            "/api/realtime-translation?targetLanguage=fr",
+            "/api/realtime-translation"
+            "?targetLanguage=fr&sourceLanguage=en&model=gpt-realtime-translate-preview"
+            "&transcriptionModel=gpt-realtime-whisper",
             headers={"origin": "http://testserver"},
         ) as websocket:
+            assert websocket.receive_json()["type"] == "session.created"
             assert websocket.receive_json()["model"] == "gpt-realtime-translate"
-            assert websocket.receive_json()["delta"] == "Hello"
+            assert websocket.receive_json()["text"] == "Hello"
             assert websocket.receive_json()["delta"] == "Bonjour"
             assert websocket.receive_json()["sample_rate"] == 24000
             websocket.send_bytes(b"pcm")
@@ -223,6 +241,20 @@ def test_realtime_translation_websocket_relays_pcm_text_and_audio(monkeypatch):
         "audio": base64.b64encode(b"pcm").decode("ascii"),
     }
     assert upstream.close_received.wait(timeout=1)
+    create_connection.assert_called_once_with(
+        target_language="fr",
+        source_language="en",
+        model="gpt-realtime-translate-preview",
+        transcription_model="gpt-realtime-whisper",
+    )
+    connect.assert_called_once_with(
+        connection["url"],
+        additional_headers={
+            "Authorization": "Bearer token",
+            "openai-alpha": "translation=v1",
+        },
+        max_size=None,
+    )
 
 
 def test_live_interpreter_websocket_starts_writes_audio_and_closes(monkeypatch, tmp_path):

@@ -75,6 +75,7 @@ def stream_chat(
                         duration_ms=event["duration_ms"],
                         usage=event["usage"],
                         guardrail_results=event["guardrail_results"],
+                        routed_model=event.get("routed_model"),
                     )
                     yield {
                         "type": "completed",

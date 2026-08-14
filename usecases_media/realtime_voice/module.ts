@@ -2,11 +2,11 @@ import type { UseCaseModule } from "@/app/types";
 
 export const realtimeVoiceUseCase: UseCaseModule = {
   id: "realtime_voice",
-  title: "Realtime Speech in / Speech out",
-  shortTitle: "Realtime",
+  title: "Realtime Speech in / Speech Out",
+  shortTitle: "Realtime Speech in / Speech Out",
   description:
     "Stream microphone audio to a realtime deployment and play the audio response.",
-  badge: "WebRTC",
+  badge: "Audio",
   icon: "voiceWave",
   modalities: ["audio"],
   implementation: [

@@ -11,9 +11,12 @@ from app.application.foundry_deployments import (
     DeploymentRequest,
     DeploymentResult,
     DeploymentSummary,
+    ModelRouterRouting,
     create_foundry_deployment,
     get_deployment_guardrail_policy,
+    get_model_router_routing,
     list_foundry_deployments,
+    update_model_router_routing,
 )
 from app.application.foundry_guardrails import (
     SYSTEM_GUARDRAIL_POLICY_COPIES,
@@ -51,6 +54,16 @@ class AdministrationService:
     def create_deployment(self, request: DeploymentRequest) -> DeploymentResult:
         return create_foundry_deployment(self.gateway, request)
 
+    def model_router_routing(self, deployment_name: str) -> ModelRouterRouting:
+        return get_model_router_routing(self.gateway, deployment_name)
+
+    def update_model_router_routing(
+        self,
+        deployment_name: str,
+        mode: str,
+    ) -> ModelRouterRouting:
+        return update_model_router_routing(self.gateway, deployment_name, mode)
+
 
 __all__ = [
     "AdminConfigDocument",
@@ -59,6 +72,7 @@ __all__ = [
     "DeploymentRequest",
     "DeploymentResult",
     "DeploymentSummary",
+    "ModelRouterRouting",
     "FoundryAdminConfig",
     "GuardrailContentFilter",
     "GuardrailPolicy",
@@ -67,8 +81,10 @@ __all__ = [
     "create_foundry_deployment",
     "create_system_guardrail_policy_copies",
     "get_deployment_guardrail_policy",
+    "get_model_router_routing",
     "guardrail_policy_exists",
     "list_foundry_deployments",
     "list_guardrail_policies",
+    "update_model_router_routing",
     "load_admin_config",
 ]

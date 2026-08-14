@@ -1,7 +1,13 @@
-import { Plus, Rocket, Tags } from "lucide-react";
+import { FlaskConical, Plus, Rocket, Tags } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import type { UseCaseResourceSettings } from "@/api/types";
+import type {
+  ModelBucketName,
+  UseCaseModelMap,
+  UseCaseResourceSettings,
+} from "@/api/types";
+import { useCaseModules } from "@/app/useCaseRegistry";
+import type { UseCaseCategory } from "@/app/types";
 import { colorPalettes, modelModalitiesList } from "@/app/workspace/constants";
 import type {
   ColorPalette,
@@ -40,10 +46,17 @@ type AppSettingsPageProps = {
   liveTranslationSettingsLoading: boolean;
   liveTranslationSettingsSaving: boolean;
   liveTranslationSettingsMessage: string;
+  useCaseModelMap: UseCaseModelMap;
+  useCaseModelBucketNames: ModelBucketName[];
+  useCaseModelMapLoading: boolean;
+  useCaseModelMapSaving: boolean;
+  useCaseModelMapMessage: string;
   onNewModelChange: (value: string) => void;
   onAddModel: () => void;
   onOpenAdmin: () => void;
+  onOpenEvaluationsAdmin?: () => void;
   onSaveLiveTranslationSettings: (binding: string) => Promise<void>;
+  onSaveUseCaseModelMap: (mapping: UseCaseModelMap) => Promise<void>;
   onSaveCapabilities: (
     model: string,
     modalities: ModelModality[],
@@ -62,10 +75,17 @@ export function AppSettingsPage({
   liveTranslationSettingsLoading,
   liveTranslationSettingsSaving,
   liveTranslationSettingsMessage,
+  useCaseModelMap,
+  useCaseModelBucketNames,
+  useCaseModelMapLoading,
+  useCaseModelMapSaving,
+  useCaseModelMapMessage,
   onNewModelChange,
   onAddModel,
   onOpenAdmin,
+  onOpenEvaluationsAdmin,
   onSaveLiveTranslationSettings,
+  onSaveUseCaseModelMap,
   onSaveCapabilities,
   onColorPaletteChange,
 }: AppSettingsPageProps) {
@@ -78,10 +98,17 @@ export function AppSettingsPage({
   const [liveBinding, setLiveBinding] = useState(
     liveTranslationSettings.binding,
   );
+  const [useCaseMapDraft, setUseCaseMapDraft] = useState(useCaseModelMap);
+  const [activeUseCaseCategory, setActiveUseCaseCategory] =
+    useState<UseCaseCategory>("media");
 
   useEffect(() => {
     setLiveBinding(liveTranslationSettings.binding);
   }, [liveTranslationSettings.binding]);
+
+  useEffect(() => {
+    setUseCaseMapDraft(useCaseModelMap);
+  }, [useCaseModelMap]);
 
   function capabilitiesFor(model: string) {
     return capabilityDrafts[model] ?? modelModalities[model] ?? ["text"];
@@ -124,6 +151,51 @@ export function AppSettingsPage({
     } finally {
       setCapabilitySaving("");
     }
+  }
+
+  const bucketOptions: ModelBucketName[] = useCaseModelBucketNames.length
+    ? useCaseModelBucketNames
+    : [
+        "models",
+        "text_models",
+        "image_models",
+        "transcription_models",
+        "realtime_transcription_models",
+        "traditional_transcription_models",
+        "tts_models",
+      ];
+  const visibleUseCases = useCaseModules.filter(
+    (useCase) => (useCase.category ?? "media") === activeUseCaseCategory,
+  );
+  const useCaseMapDirty =
+    JSON.stringify(useCaseMapDraft) !== JSON.stringify(useCaseModelMap);
+
+  function formatBucketName(bucket: string) {
+    return bucket.replace(/_/g, " ");
+  }
+
+  function useCaseMapping(useCaseId: string) {
+    return useCaseMapDraft[useCaseId] ?? "models";
+  }
+
+  function setUseCaseBucket(useCaseId: string, bucket: ModelBucketName) {
+    setUseCaseMapDraft((current) => ({ ...current, [useCaseId]: bucket }));
+  }
+
+  function setUseCaseRoleBucket(
+    useCaseId: string,
+    role: string,
+    bucket: ModelBucketName,
+  ) {
+    setUseCaseMapDraft((current) => {
+      const mapping = current[useCaseId];
+      const roleMapping: Record<string, ModelBucketName> =
+        mapping && typeof mapping !== "string" ? mapping : { primary: "models" };
+      return {
+        ...current,
+        [useCaseId]: { ...roleMapping, [role]: bucket },
+      };
+    });
   }
 
   return (
@@ -246,6 +318,126 @@ export function AppSettingsPage({
         {canManageModels ? (
           <Card className="rounded-2xl border-slate-200 bg-white shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
             <CardHeader>
+              <CardTitle>Use case model buckets</CardTitle>
+              <CardDescription>
+                Map each use case to the /api/models bucket it should use. Use
+                role mappings when a scenario needs more than one model type.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <div className="flex w-fit rounded-full border border-slate-200 bg-slate-50 p-1 text-sm dark:border-[#55555a] dark:bg-[#303033]">
+                {(["media", "agents"] as const).map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setActiveUseCaseCategory(category)}
+                    className={cn(
+                      "rounded-full px-4 py-1.5 font-medium capitalize transition",
+                      activeUseCaseCategory === category
+                        ? "bg-white text-slate-900 shadow-sm dark:bg-[#45454a] dark:text-slate-50"
+                        : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200",
+                    )}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+              <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-[#55555a]">
+                {visibleUseCases.map((useCase) => {
+                  const mapping = useCaseMapping(useCase.id);
+                  const roleEntries =
+                    typeof mapping === "string" ? null : Object.entries(mapping);
+                  return (
+                    <div
+                      key={useCase.id}
+                      className="grid gap-3 border-b border-slate-200 p-3 last:border-b-0 dark:border-[#55555a] md:grid-cols-[minmax(0,1fr)_minmax(18rem,1.4fr)] md:items-center"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium">{useCase.title}</p>
+                        <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">
+                          {useCase.id}
+                        </p>
+                      </div>
+                      {roleEntries ? (
+                        <div className="grid gap-2">
+                          {roleEntries.map(([role, bucket]) => (
+                            <label
+                              key={role}
+                              className="grid gap-1 text-xs text-slate-500 dark:text-slate-400 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-center"
+                            >
+                              <span className="font-medium capitalize">{role}</span>
+                              <Select
+                                value={bucket}
+                                onValueChange={(value) =>
+                                  setUseCaseRoleBucket(
+                                    useCase.id,
+                                    role,
+                                    value as ModelBucketName,
+                                  )
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {bucketOptions.map((option) => (
+                                    <SelectItem key={option} value={option}>
+                                      {formatBucketName(option)}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <Select
+                          value={typeof mapping === "string" ? mapping : "models"}
+                          onValueChange={(value) =>
+                            setUseCaseBucket(useCase.id, value as ModelBucketName)
+                          }
+                        >
+                          <SelectTrigger aria-label={`${useCase.title} model bucket`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {bucketOptions.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {formatBucketName(option)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  disabled={
+                    useCaseModelMapLoading ||
+                    useCaseModelMapSaving ||
+                    !useCaseMapDirty
+                  }
+                  onClick={() => void onSaveUseCaseModelMap(useCaseMapDraft)}
+                >
+                  {useCaseModelMapSaving ? "Saving..." : "Save use case map"}
+                </Button>
+                {useCaseModelMapMessage ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-300">
+                    {useCaseModelMapMessage}
+                  </p>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {canManageModels ? (
+          <Card className="rounded-2xl border-slate-200 bg-white shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
+            <CardHeader>
               <CardTitle>Model endpoints</CardTitle>
               <CardDescription>
                 Model deployment names are stored in the local database. Values
@@ -357,6 +549,16 @@ export function AppSettingsPage({
                 <Rocket className="h-4 w-4" />
                 Deploy model in Foundry
               </Button>
+              {onOpenEvaluationsAdmin ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onOpenEvaluationsAdmin}
+                >
+                  <FlaskConical className="h-4 w-4" />
+                  Open admin dashboard
+                </Button>
+              ) : null}
             </CardFooter>
           </Card>
         ) : null}

@@ -1,6 +1,7 @@
 import {
   BarChart3,
   ChevronsUpDown,
+  FlaskConical,
   LogIn,
   LogOut,
   Moon,
@@ -21,6 +22,7 @@ export type WorkspaceHeaderNavigation = {
   onOpenUseCases: () => void;
   onOpenSettings: () => void;
   onOpenMetrics: () => void;
+  onOpenEvaluationsAdmin?: () => void;
 };
 
 export type WorkspaceHeaderAppearance = {
@@ -101,7 +103,28 @@ export function WorkspaceHeader({
           ) : null}
         </button>
       </div>
-      <div className="ml-auto flex items-center gap-3 text-slate-400 dark:text-slate-500">
+      {navigation.onOpenEvaluationsAdmin ? (
+        <button
+          type="button"
+          onClick={navigation.onOpenEvaluationsAdmin}
+          className={cn(
+            "ml-auto rounded-full border border-slate-200 bg-slate-100 p-1.5 text-slate-500 transition hover:bg-slate-200 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-300 dark:hover:bg-[#505056]",
+            (navigation.activeView === "evaluation-admin" ||
+              navigation.activeView === "admin-monitor") &&
+              "border-primary text-primary ring-1 ring-primary",
+          )}
+          title="Open admin dashboard"
+          aria-label="Open admin dashboard"
+        >
+          <FlaskConical className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+      <div
+        className={cn(
+          "flex items-center gap-3 text-slate-400 dark:text-slate-500",
+          !navigation.onOpenEvaluationsAdmin && "ml-auto",
+        )}
+      >
         <button
           type="button"
           onClick={openSettings}
@@ -135,7 +158,7 @@ export function WorkspaceHeader({
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-[#45454a]"
               >
                 <BarChart3 className="h-4 w-4" />
-                Model metrics
+                Model monitoring
               </button>
               <button
                 type="button"

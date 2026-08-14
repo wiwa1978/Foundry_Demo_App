@@ -1,19 +1,24 @@
 import { browserVoiceUseCase } from "@media/browser_voice/module";
+import { contentExtractorUseCase } from "@media/content_extractor/module";
 import { documentQaUseCase } from "@media/document_qa/module";
 import { imageComparisonUseCase } from "@media/image_comparison/module";
 import { imageToImageUseCase } from "@media/image_to_image/module";
 import { liveTranslationUseCase } from "@media/live_translation/module";
 import { realtimeTranscriptionWebRtcUseCase } from "@media/realtime_transcription_webrtc/module";
 import { realtimeTranscriptionWebSocketUseCase } from "@media/realtime_transcription_websocket/module";
+import { realtimeTranslationWebRtcUseCase } from "@media/realtime_translation_webrtc/module";
 import { realtimeTranslationWebSocketUseCase } from "@media/realtime_translation_websocket/module";
 import { realtimeVoiceUseCase } from "@media/realtime_voice/module";
+import { reasoningComparisonUseCase } from "@media/reasoning_comparison/module";
 import { transcribeUseCase } from "@media/recorded_transcription/module";
 import { traditionalVoiceUseCase } from "@media/stt_chat_tts/module";
 import { textChatUseCase } from "@media/text_chat/module";
 import { comparisonUseCase } from "@media/text_chat_comparison/module";
 import { textToImageUseCase } from "@media/text_to_image/module";
+import { textTranslationUseCase } from "@media/text_translation/module";
 import { transcriptionComparisonUseCase } from "@media/transcription_comparison/module";
 import { voiceLiveUseCase } from "@media/voice_live/module";
+import { youtubeRealtimeTranscriptionUseCase } from "@media/youtube_realtime_transcription/module";
 import { youtubeSummaryUseCase } from "@media/youtube_summary/module";
 
 import type {
@@ -28,6 +33,7 @@ export type RegisteredUseCase = UseCaseModule & { renderer: WorkspaceRenderer };
 
 const rendererByWorkspace = {
   chat: "chat",
+  contentExtractor: "chat",
   agentResearch: "agent",
   hostedAgent: "agent",
   comparison: "chat",
@@ -38,12 +44,15 @@ const rendererByWorkspace = {
   realtimeVoice: "voice",
   realtimeTranscriptionWebRtc: "voice",
   realtimeTranscriptionWebSocket: "voice",
+  realtimeTranslationWebRtc: "voice",
   realtimeTranslationWebSocket: "voice",
   voiceLive: "voice",
   liveTranslation: "voice",
+  textTranslation: "chat",
   transcribe: "voice",
   transcriptionComparison: "voice",
   youtubeSummary: "chat",
+  youtubeRealtimeTranscription: "chat",
 } as const satisfies Record<UseCaseWorkspace, WorkspaceRenderer>;
 
 const definitions = [
@@ -51,17 +60,22 @@ const definitions = [
   agentResearchUseCase,
   hostedAgentUseCase,
   comparisonUseCase,
+  reasoningComparisonUseCase,
   documentQaUseCase,
+  contentExtractorUseCase,
+  textTranslationUseCase,
   textToImageUseCase,
   imageComparisonUseCase,
   imageToImageUseCase,
   youtubeSummaryUseCase,
+  youtubeRealtimeTranscriptionUseCase,
   browserVoiceUseCase,
   traditionalVoiceUseCase,
   transcribeUseCase,
   transcriptionComparisonUseCase,
   realtimeTranscriptionWebRtcUseCase,
   realtimeTranscriptionWebSocketUseCase,
+  realtimeTranslationWebRtcUseCase,
   realtimeTranslationWebSocketUseCase,
   liveTranslationUseCase,
   realtimeVoiceUseCase,

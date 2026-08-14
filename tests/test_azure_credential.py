@@ -3,6 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from app.infrastructure.azure.credentials import get_azure_credential
+from app.infrastructure.azure.foundry.clients import mai_base_url
 
 
 @pytest.fixture(autouse=True)
@@ -52,3 +53,10 @@ def test_client_secret_credential_is_unchanged(monkeypatch):
     with patch("app.infrastructure.azure.credentials.ClientSecretCredential") as credential:
         assert get_azure_credential() is credential.return_value
         credential.assert_called_once_with("tenant", "client", "secret")
+
+
+def test_mai_base_url_uses_resource_endpoint_for_project_endpoint():
+    assert (
+        mai_base_url("https://example.services.ai.azure.com/api/projects/project-a")
+        == "https://example.services.ai.azure.com/mai/v1"
+    )

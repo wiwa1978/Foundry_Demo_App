@@ -44,6 +44,7 @@ class StoredMessageResult(TypedDict):
     role: str
     content: str
     model: str | None
+    routed_model: str | None
     api_surface: str | None
     duration_ms: int | None
     error: str | None
@@ -57,6 +58,7 @@ class StoredMessageResult(TypedDict):
 class ModelResult(TypedDict):
     model: str
     api_surface: str
+    routed_model: NotRequired[str | None]
     assistant_message: StoredMessageResult
     guardrail_variant: GuardrailVariant | None
     guardrail_policy_name: NotRequired[str | None]

@@ -59,6 +59,25 @@ vi.mock("@/app/workspace/AppSettingsPage", () => ({
   ),
 }));
 
+vi.mock("@/features/admin/AdminDashboardPage", () => ({
+  AdminDashboardPage: (props: {
+    onTabChange: (tab: "evaluations" | "monitoring") => void;
+    monitoring: { onDaysChange: (days: number) => void; onRefresh: () => void };
+  }) => (
+    <div data-testid="admin-dashboard">
+      <button type="button" onClick={() => props.onTabChange("monitoring")}>
+        Monitoring tab
+      </button>
+      <button type="button" onClick={() => props.monitoring.onDaysChange(30)}>
+        Admin 30 days
+      </button>
+      <button type="button" onClick={props.monitoring.onRefresh}>
+        Refresh monitoring
+      </button>
+    </div>
+  ),
+}));
+
 vi.mock("@/app/workspace/ModelMetricsDashboard", () => ({
   ModelMetricsDashboard: (props: {
     onModelChange: (model: string) => void;
@@ -286,7 +305,7 @@ vi.mock("@/features/voice/VoiceWorkspaces", () => ({
       Start realtime transcription
     </button>
   ),
-  RealtimeTranslationHero: (props: { onStart: () => void }) => (
+  GptRealtimeTranslationWorkspace: (props: { onStart: () => void }) => (
     <button
       type="button"
       data-testid="realtime-translation"
@@ -300,7 +319,7 @@ vi.mock("@/features/voice/VoiceWorkspaces", () => ({
       Start voice live
     </button>
   ),
-  LiveTranslationHero: (props: {
+  AzureSpeechLiveTranslationWorkspace: (props: {
     onStart: () => void;
     onTargetLanguageChange: (language: string) => void;
   }) => (
@@ -350,7 +369,28 @@ function routerProps(
       renderer: "chat",
       enableComposerDictation: true,
     },
+    admin: {
+      activeTab: "evaluations",
+      onTabChange: vi.fn(),
+      evaluations: {
+        fetchClient: vi.fn(),
+        useCases: [{ id: "text_chat", title: "Text Chat" }],
+        models: ["model-a", "model-b"],
+        agents: [],
+      },
+      monitoring: {
+        modelUsages: [],
+        aggregateMetrics: null,
+        modelMetrics: [],
+        days: 7,
+        loading: false,
+        error: "",
+        setDays: vi.fn(),
+        refresh: vi.fn(async () => undefined),
+      },
+    },
     access: {
+      loading: false,
       locked: false,
       checking: false,
       canUseProtectedApis: true,
@@ -383,10 +423,16 @@ function routerProps(
         liveTranslationSettingsLoading: false,
         liveTranslationSettingsSaving: false,
         liveTranslationSettingsMessage: "",
+        useCaseModelMap: { text_chat: "text_models" },
+        useCaseModelBucketNames: ["models", "text_models"],
+        useCaseModelMapLoading: false,
+        useCaseModelMapSaving: false,
+        useCaseModelMapMessage: "",
         onNewModelChange: vi.fn(),
         onAddModel: vi.fn(),
         onOpenAdmin: vi.fn(),
         onSaveLiveTranslationSettings: vi.fn(async () => undefined),
+        onSaveUseCaseModelMap: vi.fn(async () => undefined),
         onSaveCapabilities: vi.fn(async () => undefined),
         onColorPaletteChange: vi.fn(),
       },
@@ -417,6 +463,7 @@ function routerProps(
       result: null,
       generating: false,
       error: "",
+      saveToGallery: false,
       editSource: null,
       editResult: null,
       editGenerating: false,
@@ -427,6 +474,7 @@ function routerProps(
       setPrompt: vi.fn(),
       setSize: vi.fn(),
       setEditSource: vi.fn(),
+      setSaveToGallery: vi.fn(),
       setModel: vi.fn(),
       runGeneration: vi.fn(async () => undefined),
       runEdit: vi.fn(async () => undefined),
@@ -543,15 +591,36 @@ function routerProps(
         onStart: vi.fn(),
         onStop: vi.fn(),
       },
-      webSocketTranslation: {
+      webRtcTranslation: {
         configured: true,
         model: "gpt-realtime-translate",
         transcriptionModel: "gpt-realtime-whisper",
+        models: ["gpt-realtime-translate"],
+        sourceLanguage: "en",
         status: "idle",
         error: "",
         targetLanguage: "fr",
         sourceTranscript: "",
         translatedTranscript: "",
+        onSourceLanguageChange: vi.fn(),
+        onModelChange: vi.fn(),
+        onTargetLanguageChange: vi.fn(),
+        onStart: vi.fn(),
+        onStop: vi.fn(),
+      },
+      webSocketTranslation: {
+        configured: true,
+        model: "gpt-realtime-translate",
+        transcriptionModel: "gpt-realtime-whisper",
+        models: ["gpt-realtime-translate"],
+        sourceLanguage: "en",
+        status: "idle",
+        error: "",
+        targetLanguage: "fr",
+        sourceTranscript: "",
+        translatedTranscript: "",
+        onSourceLanguageChange: vi.fn(),
+        onModelChange: vi.fn(),
         onTargetLanguageChange: vi.fn(),
         onStart: vi.fn(),
         onStop: vi.fn(),
@@ -572,11 +641,15 @@ function routerProps(
         error: "",
         mode: "standard",
         sourceLanguage: "en-US",
-        targetLanguage: "en",
+        targetLanguage: "fr",
         transcript: [],
+        sourceTranscript: "",
+        translatedTranscript: "",
+        audioPlaybackEnabled: true,
         onModeChange: vi.fn(),
         onSourceLanguageChange: vi.fn(),
         onTargetLanguageChange: vi.fn(),
+        onAudioPlaybackEnabledChange: vi.fn(),
         onStart: vi.fn(),
         onStop: vi.fn(),
       },
@@ -601,6 +674,50 @@ function routerProps(
       onModelChange: vi.fn(),
       onTranscriptionModelChange: vi.fn(),
       onSummarize: vi.fn(),
+    },
+    youtubeRealtimeTranscription: {
+      url: "",
+      model: "gpt-realtime-whisper",
+      models: ["gpt-realtime-whisper", "gpt-live-transcribe"],
+      language: "auto",
+      delay: "default",
+      status: "idle",
+      statusMessage: "",
+      error: "",
+      transcript: "",
+      videoId: null,
+      configured: true,
+      onUrlChange: vi.fn(),
+      onModelChange: vi.fn(),
+      onLanguageChange: vi.fn(),
+      onDelayChange: vi.fn(),
+      onStart: vi.fn(),
+      onStop: vi.fn(),
+    },
+    contentExtractor: {
+      configured: true,
+      mode: "image",
+      file: null,
+      result: null,
+      loading: false,
+      error: "",
+      fileInputRef: createRef<HTMLInputElement>(),
+      onModeChange: vi.fn(),
+      onFileChange: vi.fn(),
+      onExtract: vi.fn(),
+    },
+    textTranslation: {
+      configured: true,
+      sourceText: "hello",
+      sourceLanguage: "en",
+      targetLanguage: "fr",
+      result: null,
+      loading: false,
+      error: "",
+      onSourceTextChange: vi.fn(),
+      onSourceLanguageChange: vi.fn(),
+      onTargetLanguageChange: vi.fn(),
+      onTranslate: vi.fn(),
     },
     agentResearch: {
       configured: true,
@@ -643,6 +760,7 @@ function routerProps(
       isListening: false,
       speechRecognitionSupported: true,
       reasoningEffort: "default",
+      modelRouterRouting: null,
       onPromptChange: vi.fn(),
       onSubmit: vi.fn(),
       onDocumentSubmit: vi.fn(),
@@ -677,10 +795,25 @@ function route(
 }
 
 describe("WorkspaceContentRouter", () => {
-  it("renders access checking and sign-in states", async () => {
+  it("renders config loading, access checking, and sign-in states", async () => {
     const user = userEvent.setup();
     const props = routerProps();
     const { rerender } = render(
+      <WorkspaceContentRouter
+        {...props}
+        access={{ ...props.access, locked: true, loading: true }}
+      />,
+    );
+
+    expect(screen.getByText("Loading Foundry Demo...")).toBeVisible();
+    expect(
+      screen.getByText("Loading application configuration from the API."),
+    ).toBeVisible();
+    expect(
+      screen.queryByText("Confirming your Microsoft account session."),
+    ).not.toBeInTheDocument();
+
+    rerender(
       <WorkspaceContentRouter
         {...props}
         access={{ ...props.access, locked: true, checking: true }}
@@ -702,6 +835,26 @@ describe("WorkspaceContentRouter", () => {
       screen.getByRole("button", { name: "Sign in with Microsoft" }),
     );
     expect(props.access.onSignIn).toHaveBeenCalledOnce();
+  });
+
+  it("renders the page-wide admin dashboard and routes tab callbacks", async () => {
+    const user = userEvent.setup();
+    const props = routerProps();
+    render(
+      <WorkspaceContentRouter
+        {...route(props, { view: "evaluation-admin" })}
+      />,
+    );
+
+    expect(screen.getByTestId("admin-dashboard")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Monitoring tab" }));
+    await user.click(screen.getByRole("button", { name: "Admin 30 days" }));
+    await user.click(
+      screen.getByRole("button", { name: "Refresh monitoring" }),
+    );
+    expect(props.admin.onTabChange).toHaveBeenCalledWith("monitoring");
+    expect(props.admin.monitoring.setDays).toHaveBeenCalledWith(30);
+    expect(props.admin.monitoring.refresh).toHaveBeenCalledOnce();
   });
 
   it("selects metrics, app settings, and model settings with their callbacks", async () => {
@@ -835,6 +988,14 @@ describe("WorkspaceContentRouter", () => {
 
     rerender(
       <WorkspaceContentRouter
+        {...route(props, { workspace: "realtimeTranslationWebRtc" })}
+      />,
+    );
+    await user.click(screen.getByTestId("realtime-translation"));
+    expect(props.realtime.webRtcTranslation.onStart).toHaveBeenCalledOnce();
+
+    rerender(
+      <WorkspaceContentRouter
         {...route(props, { workspace: "realtimeTranslationWebSocket" })}
       />,
     );
@@ -908,6 +1069,41 @@ describe("WorkspaceContentRouter", () => {
     expect(documentProps.chat.onReasoningEffortChange).toHaveBeenCalledWith(
       "xhigh",
     );
+  });
+
+  it("shows model router routing mode only for model-router", async () => {
+    const user = userEvent.setup();
+    const defaultProps = routerProps();
+    const onChange = vi.fn();
+    const { rerender } = render(<WorkspaceContentRouter {...defaultProps} />);
+
+    expect(
+      screen.queryByRole("button", { name: "Model router routing mode" }),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <WorkspaceContentRouter
+        {...routerProps({
+          chat: {
+            ...defaultProps.chat,
+            activeModel: "model-router",
+            modelRouterRouting: {
+              mode: "balanced",
+              loading: false,
+              saving: false,
+              error: "",
+              onChange,
+            },
+          },
+        })}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Model router routing mode" }),
+    );
+
+    expect(onChange).toHaveBeenCalledWith("cost");
   });
 
   it("routes comparison submit, model, and reasoning callbacks", async () => {

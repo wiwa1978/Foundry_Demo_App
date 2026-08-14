@@ -25,6 +25,51 @@ describe("UseCaseMarketplace", () => {
     expect(onSelect).toHaveBeenCalledWith("document_qa");
   });
 
+  it("shows modality and function labels on use-case cards", () => {
+    render(
+      <UseCaseMarketplace
+        activeUseCase="text_chat"
+        useCases={useCaseModules}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /text.*active.*text chat/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /audio.*youtube video summarization.*transcription/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /text.*reasoning arena.*reasoning/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /audio.*youtube video transcription.*realtime transcription/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /audio.*gpt realtime translation webrtc.*foundry realtime translation/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /audio.*gpt realtime translation websockets.*foundry realtime translation/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /audio.*azure speech live translation.*azure speech translation/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("switches to the agents category", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

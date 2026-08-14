@@ -31,6 +31,7 @@ def test_text_chat_stream_contract_and_persistence(monkeypatch, tmp_path):
                 "duration_ms": 25,
                 "usage": {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4},
                 "guardrail_results": None,
+                "routed_model": "gpt-5.4-mini",
             },
         ]
     )
@@ -55,6 +56,7 @@ def test_text_chat_stream_contract_and_persistence(monkeypatch, tmp_path):
         "completed",
     ]
     assert events[-1]["assistant_message"]["content"] == "Hello there"
+    assert events[-1]["assistant_message"]["routed_model"] == "gpt-5.4-mini"
     reset_repositories()
 
 
@@ -97,6 +99,7 @@ def test_text_chat_non_streaming_keeps_flattened_result(monkeypatch, tmp_path):
         "content": "Hello",
         "duration_ms": 10,
         "usage": {"total_tokens": 2},
+        "routed_model": "gpt-5.4-mini",
         "guardrail_results": None,
         "foundry_request": {},
         "foundry_response": {},
@@ -119,4 +122,5 @@ def test_text_chat_non_streaming_keeps_flattened_result(monkeypatch, tmp_path):
     assert response.status_code == 200
     assert body["content"] == "Hello"
     assert body["results"][0]["content"] == "Hello"
+    assert body["results"][0]["assistant_message"]["routed_model"] == "gpt-5.4-mini"
     reset_repositories()

@@ -59,8 +59,8 @@ export function ModelMetricsDashboard({
           <div>
             <h3 className="text-base font-semibold">Model metrics</h3>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Tracks requests saved by this app, using token usage returned by
-              Foundry.
+              Tracks app-recorded requests saved by this app, using token usage
+              returned on Foundry responses.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -117,19 +117,19 @@ export function ModelMetricsDashboard({
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <MetricSummaryCard
-            label="Total requests"
+            label="App-recorded requests"
             value={summary ? formatCompactNumber(summary.requests) : "-"}
-            helper="Stored assistant responses"
+            helper="Saved assistant responses"
           />
           <MetricSummaryCard
-            label="Total token count"
+            label="App-recorded tokens"
             value={summary ? formatCompactNumber(summary.total_tokens) : "-"}
-            helper={`${formatCompactNumber(summary?.avg_total_tokens ?? 0)} avg per request`}
+            helper={`${formatCompactNumber(summary?.avg_total_tokens ?? 0)} avg per saved request`}
           />
           <MetricSummaryCard
-            label="Estimated total cost"
+            label="Estimated app cost"
             value={summary ? formatCurrency(summary.estimated_cost) : "-"}
-            helper="Set token rates in .env to estimate cost"
+            helper="Set local token rates in .env to estimate cost"
             info
           />
           <MetricSummaryCard
@@ -208,8 +208,8 @@ export function ModelMetricsDashboard({
             ]}
           />
           <MetricsChartCard
-            title="Average response latency (ms)"
-            description="Shows how long responses took to complete after each request."
+            title="App-measured response latency (ms)"
+            description="Shows app-observed completion duration after each request."
             yLabel="Milliseconds"
             days={metricDays}
             footer={`Average: ${formatCompactNumber(summary?.avg_duration_ms ?? 0)} ms`}

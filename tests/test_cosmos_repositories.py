@@ -261,6 +261,9 @@ class ModelSettingsStoreTests(unittest.TestCase):
         settings = get_model_settings(self.models, "Kimi-K2.5")
         self.assertEqual(settings.api_surface, "chat_completions")
         self.assertEqual(settings.modalities, ("text",))
+        mai_settings = get_model_settings("MAI-THINKING-1")
+        self.assertEqual(mai_settings.api_surface, "chat_completions")
+        self.assertEqual(mai_settings.modalities, ("text",))
 
     @patch("app.infrastructure.persistence.cosmos.get_container")
     def test_save_settings_uses_model_settings_partition(self, get_container: MagicMock) -> None:

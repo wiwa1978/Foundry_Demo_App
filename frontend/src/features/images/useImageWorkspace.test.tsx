@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FetchClient, ModelModality } from "@/api/types";
 import type { UseCaseWorkspace } from "@/app/types";
 import type { ImageGenerationResult } from "@/app/workspace/contracts";
+import type { Conversation, StoredMessage } from "@/features/textChat/types";
 
 import {
   editImage,
@@ -35,25 +36,53 @@ function imageResponse(model: string, image = model) {
       width: 1024,
       height: 1024,
       duration_ms: 10,
+      conversation: {
+        id: "conversation-1",
+        title: "fox",
+        use_case: "text_to_image",
+        created_at: "2026-08-13T10:00:00Z",
+        updated_at: "2026-08-13T10:00:00Z",
+      },
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
 }
 
-function setup(initialWorkspace: UseCaseWorkspace = "image") {
+type ImageHookProps = {
+  workspace: UseCaseWorkspace;
+  currentConversationId?: string | null;
+};
+
+function setup(
+  initialWorkspace: UseCaseWorkspace = "image",
+  options: {
+    useCase?: "text_to_image";
+    currentConversationId?: string | null;
+    onConversationStored?: (conversation: Conversation) => void;
+  } = {},
+) {
   const onModelChange = vi.fn();
+  const onConversationStored = options.onConversationStored ?? vi.fn();
   const hook = renderHook(
-    ({ workspace }) =>
+    ({ workspace, currentConversationId }: ImageHookProps) =>
       useImageWorkspace({
         fetchClient,
         models,
         modelModalities,
         workspace,
+        useCase: options.useCase,
+        currentConversationId,
         onModelChange,
+        onConversationStored,
       }),
-    { initialProps: { workspace: initialWorkspace } },
+    {
+      initialProps: {
+        workspace: initialWorkspace,
+        currentConversationId: options.currentConversationId ?? null,
+      },
+    },
   );
-  return { ...hook, onModelChange };
+  return { ...hook, onModelChange, onConversationStored };
 }
 
 describe("useImageWorkspace", () => {
@@ -78,7 +107,7 @@ describe("useImageWorkspace", () => {
     act(() => result.current.replaceComparisonModel("image-b", "image-a"));
     expect(result.current.selected).toEqual(["image-a", "image-c"]);
 
-    rerender({ workspace: "imageEdit" });
+    rerender({ workspace: "imageEdit", currentConversationId: null });
     await waitFor(() => expect(result.current.model).toBe("gpt-image-edit"));
   });
 
@@ -102,7 +131,7 @@ describe("useImageWorkspace", () => {
     expect(result.current.submittedPrompt).toBe("a fox");
     expect(result.current.prompt).toBe("");
 
-    rerender({ workspace: "imageEdit" });
+    rerender({ workspace: "imageEdit", currentConversationId: null });
     await waitFor(() => expect(result.current.model).toBe("gpt-image-edit"));
     const source = new File(["image"], "source.png", { type: "image/png" });
     act(() => {
@@ -124,6 +153,110 @@ describe("useImageWorkspace", () => {
     act(() => result.current.setEditSource(null));
     expect(result.current.editResult).toBeNull();
     expect(result.current.editError).toBe("");
+  });
+
+  it("persists text-to-image generations without storing gallery images by default", async () => {
+    vi.mocked(generateImage).mockResolvedValue(imageResponse("image-a"));
+    const { result, onConversationStored } = setup("image", {
+      useCase: "text_to_image",
+      currentConversationId: "conversation-0",
+    });
+    await waitFor(() => expect(result.current.model).toBe("image-a"));
+
+    expect(result.current.saveToGallery).toBe(false);
+    act(() => result.current.setPrompt("  a fox  "));
+    await act(async () => result.current.runGeneration());
+
+    expect(generateImage).toHaveBeenCalledWith(
+      fetchClient,
+      expect.objectContaining({
+        prompt: "a fox",
+        conversation_id: "conversation-0",
+        use_case: "text_to_image",
+      }),
+      expect.any(AbortSignal),
+    );
+    expect(vi.mocked(generateImage).mock.calls[0]?.[1]).not.toHaveProperty(
+      "save_to_gallery",
+    );
+    expect(onConversationStored).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "conversation-1" }),
+    );
+  });
+
+  it("stores text-to-image generations in the gallery only when opted in", async () => {
+    vi.mocked(generateImage).mockResolvedValue(imageResponse("image-a"));
+    const { result } = setup("image", {
+      useCase: "text_to_image",
+      currentConversationId: "conversation-0",
+    });
+    await waitFor(() => expect(result.current.model).toBe("image-a"));
+
+    act(() => {
+      result.current.setSaveToGallery(true);
+      result.current.setPrompt("  a fox  ");
+    });
+    await act(async () => result.current.runGeneration());
+
+    expect(generateImage).toHaveBeenCalledWith(
+      fetchClient,
+      expect.objectContaining({ save_to_gallery: true }),
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("hydrates generated images from stored conversation messages", async () => {
+    const { result } = setup();
+    await waitFor(() => expect(result.current.model).toBe("image-a"));
+    const messages: StoredMessage[] = [
+      {
+        id: "user-1",
+        conversation_id: "conversation-1",
+        role: "user",
+        content: "stored fox",
+        model: null,
+        api_surface: null,
+        duration_ms: null,
+        usage: null,
+        error: null,
+        guardrail_variant: null,
+        guardrail_policy_name: null,
+        guardrail_results: null,
+        created_at: "2026-08-13T10:00:00Z",
+      },
+      {
+        id: "assistant-1",
+        conversation_id: "conversation-1",
+        role: "assistant",
+        content: JSON.stringify({
+          kind: "image_generation",
+          model: "image-b",
+          image_base64: "stored-data",
+          mime_type: "image/png",
+          width: 1024,
+          height: 1024,
+          duration_ms: 12,
+        }),
+        model: "image-b",
+        api_surface: null,
+        duration_ms: 12,
+        usage: null,
+        error: null,
+        guardrail_variant: null,
+        guardrail_policy_name: null,
+        guardrail_results: null,
+        created_at: "2026-08-13T10:00:01Z",
+      },
+    ];
+
+    act(() => result.current.loadGenerationFromMessages(messages));
+
+    expect(result.current.result).toMatchObject({
+      model: "image-b",
+      image_base64: "stored-data",
+      prompt: "stored fox",
+    });
+    expect(result.current.submittedPrompt).toBe("stored fox");
   });
 
   it("prevents a stale generation from overwriting state after model change", async () => {
@@ -213,7 +346,7 @@ describe("useImageWorkspace", () => {
     act(() => void result.current.runComparison());
     await waitFor(() => expect(result.current.comparisonGenerating).toBe(true));
 
-    rerender({ workspace: "chat" });
+    rerender({ workspace: "chat", currentConversationId: null });
     expect(result.current.comparisonGenerating).toBe(false);
     await act(async () => {
       resolvers.forEach((resolve, index) =>

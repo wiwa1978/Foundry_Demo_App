@@ -2,11 +2,11 @@ import type { UseCaseModule } from "@/app/types";
 
 export const browserVoiceUseCase: UseCaseModule = {
   id: "browser_voice",
-  title: "Browser based voice",
-  shortTitle: "Browser voice",
+  title: "Browser based Voice",
+  shortTitle: "Browser based Voice",
   description:
     "Use browser dictation and readback around the normal text chat flow.",
-  badge: "Browser APIs",
+  badge: "Audio",
   icon: "browserVoice",
   modalities: ["audio"],
   implementation: [

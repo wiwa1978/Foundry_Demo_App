@@ -13,6 +13,7 @@ function headerProps(
       onOpenUseCases: vi.fn(),
       onOpenSettings: vi.fn(),
       onOpenMetrics: vi.fn(),
+      onOpenEvaluationsAdmin: vi.fn(),
     },
     appearance: {
       theme: "light",
@@ -51,11 +52,15 @@ describe("WorkspaceHeader", () => {
     await user.click(screen.getByRole("button", { name: /use cases/i }));
     await user.click(screen.getByRole("button", { name: "Open app settings" }));
     await user.click(
+      screen.getByRole("button", { name: "Open admin dashboard" }),
+    );
+    await user.click(
       screen.getByRole("button", { name: "Switch to dark theme" }),
     );
 
     expect(props.navigation.onOpenUseCases).toHaveBeenCalledOnce();
     expect(props.navigation.onOpenSettings).toHaveBeenCalledOnce();
+    expect(props.navigation.onOpenEvaluationsAdmin).toHaveBeenCalledOnce();
     expect(props.trace.onClose).toHaveBeenCalledOnce();
     expect(props.appearance.onToggleTheme).toHaveBeenCalledOnce();
   });
@@ -111,7 +116,7 @@ describe("WorkspaceHeader", () => {
     );
     expect(screen.getByText("3")).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "Model metrics" }));
+    await user.click(screen.getByRole("button", { name: "Model monitoring" }));
     expect(props.navigation.onOpenMetrics).toHaveBeenCalledOnce();
     expect(props.trace.onClose).toHaveBeenCalledOnce();
     expect(account).not.toHaveAttribute("open");

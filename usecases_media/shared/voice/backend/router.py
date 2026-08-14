@@ -7,6 +7,7 @@ from app.api.dependencies import current_user_scope
 from app.api.schemas import (
     RealtimeSessionRequest,
     RealtimeTranscriptionSessionRequest,
+    RealtimeTranslationSessionRequest,
     normalize_reasoning_effort,
 )
 from app.core.concurrency import run_model_call
@@ -15,6 +16,7 @@ from app.domain.identity import UserScope
 from app.infrastructure.azure.foundry.realtime import (
     create_realtime_client_secret,
     create_realtime_transcription_client_secret,
+    create_realtime_translation_client_secret,
 )
 from app.infrastructure.azure.foundry.settings import load_settings
 from app.infrastructure.azure.foundry.speech import transcribe_audio, transcribe_speech_audio
@@ -72,6 +74,7 @@ async def create_realtime_transcription_session(
     try:
         return await run_model_call(
             create_realtime_transcription_client_secret,
+            model=request.model,
             language=request.language,
             delay=request.delay,
             turn_detection=request.turn_detection,
@@ -79,6 +82,36 @@ async def create_realtime_transcription_session(
     except Exception as exc:
         logger.exception("realtime_transcription_session_creation_failed")
         raise ExternalServiceError("Realtime transcription session creation") from exc
+
+
+@router.post(
+    "/api/realtime-translation/session",
+    response_model=RealtimeTranscriptionSessionResponse,
+    response_model_exclude_unset=True,
+)
+async def create_realtime_translation_session(
+    request: RealtimeTranslationSessionRequest,
+) -> dict:
+    try:
+        return await run_model_call(
+            create_realtime_translation_client_secret,
+            model=request.model,
+            source_language=request.source_language,
+            target_language=request.target_language or "fr",
+            transcription_model=request.transcription_model,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+        if "OperationNotSupported" in message or "OpperationNotSupported" in message:
+            logger.warning("realtime_translation_webrtc_not_supported", exc_info=exc)
+            raise InvalidRequestError(
+                "Foundry rejected gpt-realtime-translate WebRTC session creation for this deployment. Use GPT Realtime Translation websockets while the provider WebRTC operation is unavailable."
+            ) from exc
+        logger.exception("realtime_translation_session_creation_failed")
+        raise ExternalServiceError("Realtime translation session creation") from exc
+    except Exception as exc:
+        logger.exception("realtime_translation_session_creation_failed")
+        raise ExternalServiceError("Realtime translation session creation") from exc
 
 
 @router.post(

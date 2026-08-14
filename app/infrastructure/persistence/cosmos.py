@@ -212,6 +212,7 @@ class CosmosConversationRepository:
             "role": message.role,
             "content": message.content,
             "model": message.model,
+            "routed_model": message.routed_model,
             "api_surface": message.api_surface,
             "duration_ms": message.duration_ms,
             "error": message.error,
@@ -330,8 +331,8 @@ class CosmosConversationRepository:
         ]
         model_filter = ""
         if model:
-            model_filter = " AND c.model = @model"
-            parameters.append({"name": "@model", "value": model})
+            model_filter = " AND LOWER(c.model) = @model"
+            parameters.append({"name": "@model", "value": model.lower()})
         rows = get_container().query_items(
             # `model_filter` is a fixed literal; the value is bound via the @model parameter.
             query=(

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.api.features.admin.schemas import AdminDeploymentRequest
 from app.api.features.admin.service import create_deployment
 from app.api.features.models.service import discover_models
-from app.domain.models import ModelSettings
+from app.application.models import ModelService, ModelSettings
 from app.infrastructure.azure.foundry.settings import FoundrySettings
 from usecases_media.shared.voice.backend.service import TraditionalVoiceService
 
@@ -33,25 +33,32 @@ def test_model_discovery_classifies_deployments_and_preserves_configured_models(
         {"name": "speech-in", "model_name": "whisper"},
         {"name": "speech-out", "model_name": "gpt-4o-mini-tts"},
     ]
-    administration = MagicMock()
-    administration.list_deployments.return_value = deployments
-    models = MagicMock()
-    models.list.return_value = ["configured-chat"]
+    administration = SimpleNamespace(
+        list_deployments=MagicMock(return_value=deployments)
+    )
+    models = MagicMock(spec=ModelService)
+    models.list.side_effect = lambda configured: configured
     models.get.side_effect = lambda model: ModelSettings(model=model)
     with patch("app.api.features.models.service.load_settings", return_value=_settings()):
         result = discover_models(administration, models)
 
-    assert result["models"] == ["chat", "speech-in", "speech-out", "configured-chat"]
+    assert result["models"] == [
+        "chat",
+        "speech-in",
+        "speech-out",
+        "configured-chat",
+    ]
     assert result["traditional_transcription_models"] == ["speech-in"]
     assert result["tts_models"] == ["speech-out"]
     assert result["discovery_error"] is None
 
 
 def test_model_discovery_sanitizes_provider_failures():
-    administration = MagicMock()
-    administration.list_deployments.side_effect = RuntimeError("provider secret")
-    models = MagicMock()
-    models.list.return_value = ["configured-chat"]
+    administration = SimpleNamespace(
+        list_deployments=MagicMock(side_effect=RuntimeError("provider secret"))
+    )
+    models = MagicMock(spec=ModelService)
+    models.list.side_effect = lambda configured: configured
     with patch("app.api.features.models.service.load_settings", return_value=_settings()):
         result = discover_models(administration, models)
 
@@ -68,9 +75,10 @@ def test_admin_deployment_service_registers_created_deployment():
         modalities=["text", "voice"],
     )
     run_model_call = AsyncMock(return_value={"status": "accepted"})
-    administration = MagicMock()
-    models = MagicMock()
-    models.save.return_value = ModelSettings(model="demo", modalities=("text", "voice"))
+    saved = ModelSettings(model="demo", modalities=("text", "voice"))
+    administration = SimpleNamespace(create_deployment=MagicMock())
+    models = MagicMock(spec=ModelService)
+    models.save.return_value = saved
     with patch("app.api.features.admin.service.run_model_call", run_model_call):
         result = asyncio.run(create_deployment(administration, models, payload))
 

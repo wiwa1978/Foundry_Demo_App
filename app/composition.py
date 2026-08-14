@@ -14,6 +14,8 @@ from usecases_media.shared.voice.backend.service import TraditionalVoiceService
 
 def build_application_services() -> ApplicationServices:
     repositories = get_repositories()
+    conversations = ConversationService(repositories.conversations)
+    models = ModelService(repositories.model_settings)
     return ApplicationServices(
         chat=ChatService(
             gateway=DefaultFoundryChatGateway(),
@@ -21,8 +23,8 @@ def build_application_services() -> ApplicationServices:
             models=repositories.model_settings,
         ),
         administration=AdministrationService(DefaultFoundryManagementGateway()),
-        conversations=ConversationService(repositories.conversations),
-        models=ModelService(repositories.model_settings),
+        conversations=conversations,
+        models=models,
         use_case_settings=UseCaseSettingsService(repositories.use_case_settings),
     )
 

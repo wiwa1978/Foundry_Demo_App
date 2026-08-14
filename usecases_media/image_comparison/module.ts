@@ -2,11 +2,11 @@ import type { UseCaseModule } from "@/app/types";
 
 export const imageComparisonUseCase: UseCaseModule = {
   id: "image_comparison",
-  title: "Side by Side - Text Image",
-  shortTitle: "Side by Side - Text Image",
+  title: "Side by Side – Text Image",
+  shortTitle: "Side by Side – Text Image",
   description:
     "Send one prompt to two image deployments and compare their generated pictures side by side.",
-  badge: "Image models",
+  badge: "Image",
   icon: "comparison",
   modalities: ["image"],
   implementation: [

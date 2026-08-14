@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.api.features.admin.schemas import AdminDeploymentRequest
+from app.api.features.admin.schemas import AdminDeploymentRequest, ModelRouterRoutingRequest
 from app.application.foundry_admin import (
     AdminConfigDocument,
     AdministrationService,
@@ -61,3 +61,28 @@ async def create_deployment(
         "deployment": deployment,
         "settings": settings_to_dict(settings),
     }
+
+
+async def get_model_router_routing(
+    administration: AdministrationService,
+    deployment_name: str,
+) -> dict[str, Any]:
+    try:
+        return await run_model_call(administration.model_router_routing, deployment_name)
+    except Exception as exc:
+        raise ExternalServiceError("Model router routing lookup") from exc
+
+
+async def save_model_router_routing(
+    administration: AdministrationService,
+    deployment_name: str,
+    payload: ModelRouterRoutingRequest,
+) -> dict[str, Any]:
+    try:
+        return await run_model_call(
+            administration.update_model_router_routing,
+            deployment_name,
+            payload.mode,
+        )
+    except Exception as exc:
+        raise ExternalServiceError("Model router routing update") from exc

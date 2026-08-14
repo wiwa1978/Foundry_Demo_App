@@ -2,11 +2,11 @@ import type { UseCaseModule } from "@/app/types";
 
 export const voiceLiveUseCase: UseCaseModule = {
   id: "voice_live",
-  title: "Voice Live travel concierge",
-  shortTitle: "Voice Live",
+  title: "Voice Live travel Concierge",
+  shortTitle: "Voice Live travel Concierge",
   description:
     "Plan a trip naturally with multilingual turn detection, noise suppression, barge-in, and an Azure HD voice.",
-  badge: "Azure Speech",
+  badge: "Audio",
   icon: "voiceWave",
   modalities: ["audio"],
   implementation: [

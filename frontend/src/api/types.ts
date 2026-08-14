@@ -55,6 +55,7 @@ export type ConfigResponse = {
   realtime_model: string | null;
   is_realtime_transcription_configured?: boolean;
   realtime_transcription_model?: string | null;
+  realtime_transcription_models?: string[];
   is_realtime_translation_configured?: boolean;
   realtime_translation_model?: string | null;
   embedding_model: string | null;
@@ -73,15 +74,40 @@ export type ConfigResponse = {
   voice_live_model: string | null;
   voice_live_voice: string | null;
   is_live_interpreter_configured: boolean;
+  is_text_translation_configured: boolean;
+  is_content_extractor_configured?: boolean;
 };
+
+export type ModelBucketName =
+  | "models"
+  | "text_models"
+  | "image_models"
+  | "transcription_models"
+  | "realtime_transcription_models"
+  | "traditional_transcription_models"
+  | "tts_models";
+
+export type UseCaseModelMap = Record<
+  string,
+  ModelBucketName | Record<string, ModelBucketName>
+>;
 
 export type ModelsResponse = {
   models: string[];
+  text_models?: string[];
+  image_models?: string[];
   transcription_models?: string[];
   traditional_transcription_models?: string[];
+  realtime_transcription_models?: string[];
   tts_models?: string[];
   model_modalities?: Record<string, ModelModality[]>;
+  use_case_model_map: UseCaseModelMap;
   discovery_error: string | null;
+};
+
+export type UseCaseModelMapSettings = {
+  use_case_model_map: UseCaseModelMap;
+  bucket_names: ModelBucketName[];
 };
 
 export type AuthResponse = {
@@ -132,6 +158,13 @@ export type AdminConfig = {
   resource_group: string | null;
   account_name: string | null;
   missing: string[];
+};
+
+export type ModelRouterRoutingMode = "balanced" | "quality" | "cost";
+
+export type ModelRouterRoutingSettings = {
+  deployment_name: string;
+  mode: ModelRouterRoutingMode;
 };
 
 export type UseCaseResourceSettings = {

@@ -126,14 +126,30 @@ class DeploymentSummaryResponse(BaseModel):
     provisioning_state: str
 
 
+ModelBucketName = Literal[
+    "models",
+    "text_models",
+    "image_models",
+    "transcription_models",
+    "realtime_transcription_models",
+    "traditional_transcription_models",
+    "tts_models",
+]
+UseCaseModelMap = dict[str, ModelBucketName | dict[str, ModelBucketName]]
+
+
 class ModelsResponse(BaseModel):
     models: list[str]
+    text_models: list[str]
+    image_models: list[str]
     transcription_models: list[str]
     traditional_transcription_models: list[str]
+    realtime_transcription_models: list[str]
     tts_models: list[str]
     deployments: list[DeploymentSummaryResponse]
     model_modalities: dict[str, list[ModelModality]] | None = None
     discovery_error: str | None
+    use_case_model_map: UseCaseModelMap
 
 
 class ModelRegistrationResponse(BaseModel):

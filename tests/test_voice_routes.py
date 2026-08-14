@@ -35,19 +35,71 @@ def test_realtime_transcription_session_contract(monkeypatch):
     session = {
         "token": "secret",
         "webrtc_url": "https://example.test/realtime/calls",
-        "model": "gpt-realtime-whisper",
+        "model": "gpt-live-transcribe",
     }
     with patch(
         "usecases_media.shared.voice.backend.router.create_realtime_transcription_client_secret",
         return_value=session,
-    ):
+    ) as create_session:
         response = TestClient(create_app()).post(
             "/api/realtime-transcription/session",
-            json={"language": "nl", "delay": "low", "turn_detection": "semantic_vad"},
+            json={
+                "model": "gpt-live-transcribe",
+                "language": "nl",
+                "delay": "low",
+                "turn_detection": "semantic_vad",
+            },
         )
 
     assert response.status_code == 200
     assert response.json() == session
+    create_session.assert_called_once_with(
+        model="gpt-live-transcribe",
+        language="nl",
+        delay="low",
+        turn_detection="semantic_vad",
+    )
+
+
+def test_realtime_translation_session_contract(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    session = {
+        "token": "secret",
+        "webrtc_url": "https://example.test/realtime/calls",
+        "model": "gpt-realtime-translate",
+    }
+    with patch(
+        "usecases_media.shared.voice.backend.router.create_realtime_translation_client_secret",
+        return_value=session,
+    ) as create_session:
+        response = TestClient(create_app()).post(
+            "/api/realtime-translation/session",
+            json={"model": "gpt-realtime-translate", "target_language": "fr"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == session
+    create_session.assert_called_once_with(
+        model="gpt-realtime-translate",
+        source_language=None,
+        target_language="fr",
+        transcription_model=None,
+    )
+
+
+def test_realtime_translation_webrtc_operation_not_supported_is_actionable(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    with patch(
+        "usecases_media.shared.voice.backend.router.create_realtime_translation_client_secret",
+        side_effect=RuntimeError("OpperationNotSupported: rejected"),
+    ):
+        response = TestClient(create_app(), raise_server_exceptions=False).post(
+            "/api/realtime-translation/session",
+            json={"model": "gpt-realtime-translate", "target_language": "fr"},
+        )
+
+    assert response.status_code == 400
+    assert "Use GPT Realtime Translation websockets" in response.text
 
 
 def test_transcription_upload_limit(monkeypatch):

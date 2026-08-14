@@ -26,7 +26,7 @@ class RealtimeTranslationConnectionInfo(TypedDict):
     url: str
     token: str
     model: str
-    transcription_model: str
+    transcription_model: str | None
     session_update: dict[str, Any]
 
 
@@ -191,22 +191,22 @@ def _realtime_transcription_session(
 
 def create_realtime_transcription_client_secret(
     *,
+    model: str | None = None,
     language: str | None = None,
     delay: str | None = None,
     turn_detection: str = "server_vad",
 ) -> dict[str, Any]:
     settings = load_settings()
-    if not settings.is_realtime_transcription_configured:
-        raise RuntimeError(
-            "Realtime transcription is not configured. Set FOUNDRY_REALTIME_ENDPOINT "
-            "and FOUNDRY_REALTIME_TRANSCRIPTION_MODEL."
-        )
-
     endpoint = _normalize_realtime_endpoint(settings.realtime_endpoint or "")
-    model = settings.realtime_transcription_model.strip()
+    selected_model = (model or settings.realtime_transcription_model).strip()
+    if not selected_model:
+        raise RuntimeError(
+            "Realtime transcription requires a deployment name from /api/models or "
+            "FOUNDRY_REALTIME_TRANSCRIPTION_MODEL."
+        )
     payload = {
         "session": _realtime_transcription_session(
-            model,
+            selected_model,
             language=language,
             delay=delay,
             turn_detection=turn_detection,
@@ -245,34 +245,35 @@ def create_realtime_transcription_client_secret(
         "token": client_secret,
         # Do not enable webrtcfilter: transcription deltas must reach the browser.
         "webrtc_url": f"{endpoint}/realtime/calls",
-        "model": model,
+        "model": selected_model,
         "expires_at": data.get("expires_at") or nested_secret.get("expires_at"),
     }
 
 
 def create_realtime_transcription_connection_info(
     *,
+    model: str | None = None,
     language: str | None = None,
     delay: str | None = None,
     turn_detection: str = "none",
 ) -> RealtimeTranscriptionConnectionInfo:
     settings = load_settings()
-    if not settings.is_realtime_transcription_configured:
-        raise RuntimeError(
-            "Realtime transcription is not configured. Set FOUNDRY_REALTIME_ENDPOINT "
-            "and FOUNDRY_REALTIME_TRANSCRIPTION_MODEL."
-        )
     endpoint = _normalize_realtime_endpoint(settings.realtime_endpoint or "")
-    model = settings.realtime_transcription_model.strip()
+    selected_model = (model or settings.realtime_transcription_model).strip()
+    if not selected_model:
+        raise RuntimeError(
+            "Realtime transcription requires a deployment name from /api/models or "
+            "FOUNDRY_REALTIME_TRANSCRIPTION_MODEL."
+        )
     token = get_azure_credential().get_token("https://ai.azure.com/.default").token
     return {
         "url": endpoint.replace("https://", "wss://", 1) + "/realtime?intent=transcription",
         "token": token,
-        "model": model,
+        "model": selected_model,
         "session_update": {
             "type": "session.update",
             "session": _realtime_transcription_session(
-                model,
+                selected_model,
                 language=language,
                 delay=delay,
                 turn_detection=turn_detection,
@@ -281,41 +282,137 @@ def create_realtime_transcription_connection_info(
     }
 
 
+def _realtime_translation_audio_session(
+    *,
+    target_language: str,
+    source_language: str | None = None,
+    transcription_model: str | None = None,
+) -> dict[str, Any]:
+    language = target_language.strip().lower()
+    if len(language) != 2 or not language.isalpha():
+        raise ValueError("Realtime translation target must be an ISO-639-1 code.")
+    source = source_language.strip().lower() if source_language else None
+    if source and (len(source) != 2 or not source.isalpha()):
+        raise ValueError("Realtime translation source must be an ISO-639-1 code.")
+    audio_session: dict[str, Any] = {"output": {"language": language}}
+    if transcription_model:
+        transcription: dict[str, Any] = {"model": transcription_model}
+        if source:
+            transcription["language"] = source
+        audio_session["input"] = {"transcription": transcription}
+    return audio_session
+
+
+def create_realtime_translation_client_secret(
+    *,
+    model: str | None = None,
+    source_language: str | None = None,
+    target_language: str = "fr",
+    transcription_model: str | None = None,
+) -> dict[str, Any]:
+    settings = load_settings()
+    if not settings.is_realtime_translation_configured:
+        raise RuntimeError(
+            "Realtime translation is not configured. Set FOUNDRY_REALTIME_ENDPOINT "
+            "and FOUNDRY_REALTIME_TRANSLATION_MODEL."
+        )
+    endpoint = _normalize_realtime_endpoint(settings.realtime_endpoint or "")
+    selected_model = (model or settings.realtime_translation_model).strip()
+    selected_transcription_model = (
+        transcription_model or settings.realtime_transcription_model
+    ).strip() or None
+    audio_session = _realtime_translation_audio_session(
+        target_language=target_language,
+        source_language=source_language,
+        transcription_model=selected_transcription_model,
+    )
+    payload = {
+        "session": {
+            "type": "realtime",
+            "model": selected_model,
+            "audio": audio_session,
+        }
+    }
+    bearer_token = get_azure_credential().get_token("https://ai.azure.com/.default").token
+    request = build_checked_request(
+        f"{endpoint}/realtime/client_secrets",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {bearer_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with open_checked_url(request, timeout=30) as response:
+            data = cast(dict[str, Any], json.loads(response.read().decode("utf-8")))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Realtime translation client secret request failed with {exc.code}: {detail}"
+        ) from exc
+    except URLError as exc:
+        raise RuntimeError(
+            f"Realtime translation client secret request failed: {exc.reason}"
+        ) from exc
+
+    nested_secret = data.get("client_secret", {})
+    if not isinstance(nested_secret, dict):
+        nested_secret = {}
+    client_secret = data.get("value") or nested_secret.get("value")
+    if not isinstance(client_secret, str) or not client_secret:
+        raise RuntimeError("Realtime translation response did not include a token.")
+    return {
+        "token": client_secret,
+        "webrtc_url": f"{endpoint}/realtime/calls",
+        "model": selected_model,
+        "expires_at": data.get("expires_at") or nested_secret.get("expires_at"),
+    }
+
+
 def create_realtime_translation_connection_info(
-    *, target_language: str
+    *,
+    target_language: str,
+    source_language: str | None = None,
+    model: str | None = None,
+    transcription_model: str | None = None,
 ) -> RealtimeTranslationConnectionInfo:
     settings = load_settings()
     if not settings.is_realtime_translation_configured:
         raise RuntimeError(
-            "Realtime translation is not configured. Set FOUNDRY_REALTIME_ENDPOINT, "
-            "FOUNDRY_REALTIME_TRANSLATION_MODEL, and "
-            "FOUNDRY_REALTIME_TRANSCRIPTION_MODEL."
+            "Realtime translation is not configured. Set FOUNDRY_REALTIME_ENDPOINT "
+            "and FOUNDRY_REALTIME_TRANSLATION_MODEL. Set "
+            "FOUNDRY_REALTIME_TRANSCRIPTION_MODEL only when source captions are needed."
         )
     language = target_language.strip().lower()
     if len(language) != 2 or not language.isalpha():
         raise ValueError("Realtime translation target must be an ISO-639-1 code.")
+    source = source_language.strip().lower() if source_language else None
+    if source and (len(source) != 2 or not source.isalpha()):
+        raise ValueError("Realtime translation source must be an ISO-639-1 code.")
 
     endpoint = _normalize_realtime_endpoint(settings.realtime_endpoint or "")
-    model = settings.realtime_translation_model.strip()
-    transcription_model = settings.realtime_transcription_model.strip()
+    selected_model = (model or settings.realtime_translation_model).strip()
+    selected_transcription_model = (
+        transcription_model or settings.realtime_transcription_model
+    ).strip() or None
     token = get_azure_credential().get_token("https://ai.azure.com/.default").token
+    audio_session: dict[str, Any] = {"output": {"language": language}}
+    if selected_transcription_model:
+        transcription = {"model": selected_transcription_model}
+        if source:
+            transcription["language"] = source
+        audio_session["input"] = {"transcription": transcription}
+
     return {
         "url": endpoint.replace("https://", "wss://", 1)
-        + f"/realtime/translations?model={quote(model, safe='')}",
+        + f"/realtime/translations?model={quote(selected_model, safe='')}",
         "token": token,
-        "model": model,
-        "transcription_model": transcription_model,
+        "model": selected_model,
+        "transcription_model": selected_transcription_model,
         "session_update": {
             "type": "session.update",
-            "session": {
-                "audio": {
-                    "input": {
-                        "transcription": {"model": transcription_model},
-                        "noise_reduction": {"type": "near_field"},
-                    },
-                    "output": {"language": language},
-                }
-            },
+            "session": {"audio": audio_session},
         },
     }
 

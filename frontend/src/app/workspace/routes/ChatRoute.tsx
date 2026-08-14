@@ -23,6 +23,12 @@ import type {
   WorkspaceGuardrailsViewModel,
   WorkspaceYouTubeSummaryViewModel,
 } from "./contracts";
+const modelRouterRoutingOptions = [
+  { value: "balanced", label: "Balanced routing" },
+  { value: "quality", label: "Quality routing" },
+  { value: "cost", label: "Cost routing" },
+] as const;
+
 
 type ChatRouteProps = {
   route: WorkspaceContentRoute;
@@ -165,6 +171,32 @@ export function ChatRoute({
                     <Mic className="h-4 w-4" />
                   )}
                 </Button>
+              </>
+            ) : null}
+            {chat.modelRouterRouting ? (
+              <>
+                <ComposerSelect
+                  id="composer-router-routing"
+                  ariaLabel="Model router routing mode"
+                  value={chat.modelRouterRouting.mode}
+                  onChange={(value) =>
+                    chat.modelRouterRouting?.onChange(
+                      value as typeof chat.modelRouterRouting.mode,
+                    )
+                  }
+                  options={[...modelRouterRoutingOptions]}
+                  disabled={
+                    chat.isRunning ||
+                    chat.modelRouterRouting.loading ||
+                    chat.modelRouterRouting.saving
+                  }
+                  title="Model router routing mode is a deployment setting and can take up to five minutes to apply."
+                />
+                {chat.modelRouterRouting.error ? (
+                  <span className="max-w-48 truncate text-xs text-red-600 dark:text-red-300">
+                    {chat.modelRouterRouting.error}
+                  </span>
+                ) : null}
               </>
             ) : null}
             <ComposerSelect

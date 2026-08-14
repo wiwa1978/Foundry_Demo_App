@@ -50,7 +50,7 @@ def calculate_usage_metrics(
     buckets: dict[str, MetricsDay] = {
         item.isoformat(): {
             "date": item.isoformat(),
-            "label": item.strftime("%m/%d"),
+            "label": item.strftime("%d/%m"),
             "requests": 0,
             "prompt_tokens": 0,
             "completion_tokens": 0,

@@ -3,10 +3,10 @@ import type { UseCaseModule } from "@/app/types";
 export const textChatUseCase: UseCaseModule = {
   id: "text_chat",
   title: "Text Chat",
-  shortTitle: "Text chat",
+  shortTitle: "Text Chat",
   description:
     "A clean single-model Foundry chat experience with only the controls needed to chat.",
-  badge: "Default",
+  badge: "Text",
   icon: "chat",
   modalities: ["text"],
   implementation: [

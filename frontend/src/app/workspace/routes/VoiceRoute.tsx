@@ -1,7 +1,7 @@
-import { LiveTranslationHero } from "@media/live_translation/frontend";
+import { AzureSpeechLiveTranslationWorkspace } from "@media/live_translation/frontend";
 import { RealtimeTranscriptionHero as RealtimeTranscriptionWebRtcHero } from "@media/realtime_transcription_webrtc/frontend";
 import { RealtimeTranscriptionHero as RealtimeTranscriptionWebSocketHero } from "@media/realtime_transcription_websocket/frontend";
-import { RealtimeTranslationHero } from "@media/realtime_translation_websocket/frontend";
+import { GptRealtimeTranslationWorkspace } from "@media/realtime_translation_websocket/frontend";
 import { RealtimeVoiceHero } from "@media/realtime_voice/frontend";
 import { TranscriptionWorkspace } from "@media/recorded_transcription/frontend";
 import { TraditionalVoiceWorkspace } from "@media/stt_chat_tts/frontend";
@@ -85,11 +85,12 @@ export function VoiceRoute({
       />
     );
   }
+  if (route.workspace === "realtimeTranslationWebRtc") {
+    return <GptRealtimeTranslationWorkspace {...realtime.webRtcTranslation} />;
+  }
   if (route.workspace === "realtimeTranslationWebSocket") {
     return (
-      <HeroFrame wide>
-        <RealtimeTranslationHero {...realtime.webSocketTranslation} />
-      </HeroFrame>
+      <GptRealtimeTranslationWorkspace {...realtime.webSocketTranslation} />
     );
   }
   if (route.workspace === "voiceLive") {
@@ -99,11 +100,7 @@ export function VoiceRoute({
       </HeroFrame>
     );
   }
-  return (
-    <HeroFrame>
-      <LiveTranslationHero {...realtime.liveTranslation} />
-    </HeroFrame>
-  );
+  return <AzureSpeechLiveTranslationWorkspace {...realtime.liveTranslation} />;
 }
 
 function HeroFrame({

@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from urllib.parse import urlparse
 
+from azure.ai.projects import AIProjectClient
 from azure.identity import get_bearer_token_provider
 from openai import AzureOpenAI, OpenAI
 
@@ -54,6 +55,34 @@ def openai_base_url(endpoint_value: str) -> str:
     return f"https://{parsed.netloc}{base_path}"
 
 
+def mai_base_url(endpoint_value: str) -> str:
+    endpoint = normalize_endpoint(endpoint_value)
+    if "://" not in endpoint and "/" not in endpoint:
+        return f"https://{endpoint}.services.ai.azure.com/mai/v1"
+
+    parsed = urlparse(endpoint)
+    if parsed.scheme.lower() != "https" or not parsed.netloc:
+        raise RuntimeError(
+            "FOUNDRY_PROJECT_ENDPOINT must be a Foundry project endpoint like "
+            "https://<resource-name>.services.ai.azure.com/api/projects/<project-name>."
+        )
+
+    path = parsed.path.rstrip("/")
+    if path.endswith("/mai/v1"):
+        base_path = path
+    elif path.endswith("/mai"):
+        base_path = f"{path}/v1"
+    elif path.endswith("/openai/v1") or path.endswith("/openai"):
+        base_path = "/mai/v1"
+    elif "/api/projects/" in path:
+        base_path = "/mai/v1"
+    elif not path:
+        base_path = "/mai/v1"
+    else:
+        base_path = f"{path}/mai/v1"
+    return f"https://{parsed.netloc}{base_path}"
+
+
 def azure_openai_endpoint(endpoint_value: str) -> str:
     endpoint = normalize_endpoint(endpoint_value)
     parsed = urlparse(endpoint)
@@ -81,6 +110,31 @@ def create_openai_client(settings: FoundrySettings) -> Iterator[OpenAI]:
         api_key=token_provider,
     ) as openai_client:
         yield openai_client
+
+
+@contextmanager
+def create_mai_openai_client(settings: FoundrySettings) -> Iterator[OpenAI]:
+    endpoint = normalize_endpoint(settings.endpoint or "")
+    token_provider = get_bearer_token_provider(
+        get_azure_credential(),
+        "https://cognitiveservices.azure.com/.default",
+    )
+    with OpenAI(
+        base_url=mai_base_url(endpoint),
+        api_key=token_provider,
+    ) as openai_client:
+        yield openai_client
+
+
+@contextmanager
+def create_project_openai_client(settings: FoundrySettings) -> Iterator[OpenAI]:
+    endpoint = normalize_endpoint(settings.endpoint or "")
+    with AIProjectClient(
+        endpoint=endpoint,
+        credential=get_azure_credential(),
+    ) as project_client:
+        with project_client.get_openai_client() as openai_client:
+            yield openai_client
 
 
 @contextmanager

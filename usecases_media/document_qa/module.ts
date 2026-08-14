@@ -3,10 +3,10 @@ import type { UseCaseModule } from "@/app/types";
 export const documentQaUseCase: UseCaseModule = {
   id: "document_qa",
   title: "Document Q&A",
-  shortTitle: "Documents",
+  shortTitle: "Document Q&A",
   description:
     "Upload documents, retrieve relevant chunks with Azure AI Search, and ask grounded questions.",
-  badge: "RAG",
+  badge: "Text",
   icon: "documents",
   modalities: ["text"],
   implementation: [

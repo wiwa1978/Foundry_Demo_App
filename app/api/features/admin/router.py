@@ -1,6 +1,7 @@
+import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.api.dependencies import administration_service as get_administration_service
 from app.api.dependencies import model_service as get_model_service
@@ -10,6 +11,10 @@ from app.api.features.admin.schemas import (
     AdminDeploymentConfigResponse,
     AdminDeploymentRequest,
     AdminDeploymentResponse,
+    ModelRouterRoutingRequest,
+    ModelRouterRoutingResponse,
+    UseCaseModelMapRequest,
+    UseCaseModelMapResponse,
     UseCaseResourceSettingsRequest,
     UseCaseResourceSettingsResponse,
 )
@@ -17,8 +22,15 @@ from app.api.features.admin.service import (
     create_deployment,
     create_guardrail_policy_copies,
     deployment_config,
+    get_model_router_routing,
+    save_model_router_routing,
 )
 from app.api.features.models.schemas import GuardrailPolicyListResponse
+from app.api.features.models.service import (
+    MODEL_BUCKETS,
+    normalize_use_case_model_map,
+    use_case_model_map,
+)
 from app.application.foundry_admin import AdminConfigDocument, AdministrationService
 from app.application.models import ModelService
 from app.application.use_case_settings import (
@@ -58,6 +70,39 @@ async def post_admin_deployment(
     audit_event("model_deployment_created", request=request, model=payload.deployment_name)
     return result
 
+
+
+@router.get(
+    "/api/admin/model-router/routing",
+    response_model=ModelRouterRoutingResponse,
+)
+async def get_model_router_routing_mode(
+    _admin: Annotated[UserScope, Depends(privileged_user_scope)],
+    administration: Annotated[AdministrationService, Depends(get_administration_service)],
+    deployment: Annotated[str, Query(min_length=1)] = "model-router",
+) -> dict:
+    return await get_model_router_routing(administration, deployment)
+
+
+@router.put(
+    "/api/admin/model-router/routing",
+    response_model=ModelRouterRoutingResponse,
+)
+async def put_model_router_routing_mode(
+    payload: ModelRouterRoutingRequest,
+    request: Request,
+    _admin: Annotated[UserScope, Depends(privileged_user_scope)],
+    administration: Annotated[AdministrationService, Depends(get_administration_service)],
+    deployment: Annotated[str, Query(min_length=1)] = "model-router",
+) -> dict:
+    result = await save_model_router_routing(administration, deployment, payload)
+    audit_event(
+        "model_router_routing_updated",
+        request=request,
+        model=deployment,
+        mode=result["mode"],
+    )
+    return result
 
 @router.post(
     "/api/admin/guardrails/selectable-copies",
@@ -108,4 +153,37 @@ def put_live_translation_settings(
     return {
         **settings.__dict__,
         "available_bindings": [binding.name for binding in list_foundry_bindings()],
+    }
+
+
+@router.get(
+    "/api/admin/use-case-model-map",
+    response_model=UseCaseModelMapResponse,
+)
+def get_use_case_model_map_settings(
+    _admin: Annotated[UserScope, Depends(privileged_user_scope)],
+    settings_service: Annotated[UseCaseSettingsService, Depends(get_use_case_settings_service)],
+) -> dict:
+    return {
+        "use_case_model_map": use_case_model_map(settings_service.get_model_map()),
+        "bucket_names": sorted(MODEL_BUCKETS),
+    }
+
+
+@router.put(
+    "/api/admin/use-case-model-map",
+    response_model=UseCaseModelMapResponse,
+)
+def put_use_case_model_map_settings(
+    payload: UseCaseModelMapRequest,
+    request: Request,
+    _admin: Annotated[UserScope, Depends(privileged_user_scope)],
+    settings_service: Annotated[UseCaseSettingsService, Depends(get_use_case_settings_service)],
+) -> dict:
+    model_map = normalize_use_case_model_map(payload.use_case_model_map)
+    settings_service.save_model_map(json.dumps(model_map, separators=(",", ":"), sort_keys=True))
+    audit_event("use_case_model_map_updated", request=request)
+    return {
+        "use_case_model_map": model_map,
+        "bucket_names": sorted(MODEL_BUCKETS),
     }

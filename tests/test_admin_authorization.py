@@ -21,6 +21,8 @@ PRIVILEGED_REQUESTS = (
     ("post", "/api/admin/deployments", {"deployment_name": "d1", "model_name": "m1"}),
     ("post", "/api/models", {"model": "gpt-4o-mini"}),
     ("put", "/api/model-settings", {"model": "gpt-4o-mini"}),
+    ("get", "/api/admin/use-case-model-map", None),
+    ("put", "/api/admin/use-case-model-map", {"use_case_model_map": {"text_chat": "text_models"}}),
 )
 
 

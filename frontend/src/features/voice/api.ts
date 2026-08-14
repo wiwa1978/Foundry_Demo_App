@@ -38,6 +38,7 @@ export async function createRealtimeSession(
 export async function createRealtimeTranscriptionSession(
   fetchClient: FetchClient,
   request: {
+    model?: string;
     language: string | null;
     delay: string | null;
     turn_detection: string;
@@ -63,6 +64,49 @@ export async function createRealtimeTranscriptionSession(
       await readPublicApiError(
         response,
         "Failed to create realtime transcription session.",
+      ),
+    );
+  }
+  return (await response.json()) as RealtimeTranscriptionSessionResponse;
+}
+
+export async function createRealtimeTranslationSession(
+  fetchClient: FetchClient,
+  request: {
+    model: string;
+    sourceLanguage?: string | null;
+    targetLanguage: string;
+    transcriptionModel?: string | null;
+  },
+  signal?: AbortSignal,
+) {
+  const response = await fetchClient(
+    "/api/realtime-translation/session",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: request.model,
+        source_language:
+          request.sourceLanguage && request.sourceLanguage !== "auto"
+            ? request.sourceLanguage
+            : null,
+        target_language: request.targetLanguage,
+        transcription_model: request.transcriptionModel || null,
+      }),
+      signal,
+    },
+    {
+      label: "Create realtime translation session",
+      request,
+      responseKind: "json",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await readPublicApiError(
+        response,
+        "Failed to create realtime translation session.",
       ),
     );
   }
@@ -184,6 +228,7 @@ export function liveInterpreterUrl() {
 }
 
 export function realtimeTranscriptionWebSocketUrl(options?: {
+  model?: string | null;
   language?: string | null;
   delay?: string | null;
   turnDetection?: string;
@@ -192,6 +237,7 @@ export function realtimeTranscriptionWebSocketUrl(options?: {
   const url = new URL(
     `${protocol}//${window.location.host}/api/realtime-transcription`,
   );
+  if (options?.model) url.searchParams.set("model", options.model);
   if (options?.language) url.searchParams.set("language", options.language);
   if (options?.delay) url.searchParams.set("delay", options.delay);
   if (options?.turnDetection) {
@@ -200,11 +246,23 @@ export function realtimeTranscriptionWebSocketUrl(options?: {
   return url.toString();
 }
 
-export function realtimeTranslationWebSocketUrl(targetLanguage: string) {
+export function realtimeTranslationWebSocketUrl(options: {
+  targetLanguage: string;
+  sourceLanguage?: string | null;
+  model?: string | null;
+  transcriptionModel?: string | null;
+}) {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const url = new URL(
     `${protocol}//${window.location.host}/api/realtime-translation`,
   );
-  url.searchParams.set("targetLanguage", targetLanguage);
+  url.searchParams.set("targetLanguage", options.targetLanguage);
+  if (options.sourceLanguage && options.sourceLanguage !== "auto") {
+    url.searchParams.set("sourceLanguage", options.sourceLanguage);
+  }
+  if (options.model) url.searchParams.set("model", options.model);
+  if (options.transcriptionModel) {
+    url.searchParams.set("transcriptionModel", options.transcriptionModel);
+  }
   return url.toString();
 }

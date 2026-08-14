@@ -2,12 +2,12 @@ import type { UseCaseModule } from "@/app/types";
 
 export const realtimeTranslationWebSocketUseCase: UseCaseModule = {
   id: "realtime_translation_websocket",
-  title: "Realtime translation",
-  typeLabel: "WebSockets",
-  shortTitle: "Translation · GPT Realtime",
+  title: "GPT Realtime Translation websockets",
+  typeLabel: "Foundry Realtime Translation",
+  shortTitle: "GPT Realtime Translation websockets",
   description:
-    "Translate live speech into streamed text and audio with gpt-realtime-translate.",
-  badge: "GPT Realtime",
+    "Backend-mediated speech translation with gpt-realtime-translate: browser PCM flows through FastAPI to Foundry over WebSockets.",
+  badge: "Audio",
   icon: "voiceWave",
   modalities: ["audio"],
   implementation: [
@@ -16,7 +16,7 @@ export const realtimeTranslationWebSocketUseCase: UseCaseModule = {
     "Source text, translated text, and translated PCM audio stream back while the speaker is talking.",
   ],
   codeSnippet: {
-    title: "Dedicated realtime translation session",
+    title: "GPT Realtime Translation WebSocket session",
     language: "python",
     code: [
       "url = f'{endpoint}/realtime/translations?model=gpt-realtime-translate'",

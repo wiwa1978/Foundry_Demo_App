@@ -1,3 +1,4 @@
+import { useContentExtractor } from "@media/content_extractor/frontend";
 import { useBrowserSpeech } from "@media/browser_voice/frontend";
 import {
   documentAnswerStreamEndpoint,
@@ -7,7 +8,8 @@ import { useImageWorkspace } from "@media/image_comparison/frontend";
 import { useLiveTranslation } from "@media/live_translation/frontend";
 import { useRealtimeTranscription as useWebRtcTranscription } from "@media/realtime_transcription_webrtc/frontend";
 import { useRealtimeTranscription as useWebSocketTranscription } from "@media/realtime_transcription_websocket/frontend";
-import { useRealtimeTranslation } from "@media/realtime_translation_websocket/frontend";
+import { useRealtimeTranslation as useWebRtcTranslation } from "@media/realtime_translation_webrtc/frontend";
+import { useRealtimeTranslation as useWebSocketTranslation } from "@media/realtime_translation_websocket/frontend";
 import { useRealtimeVoice } from "@media/realtime_voice/frontend";
 import { useTranscriptionSession } from "@media/recorded_transcription/frontend";
 import { useTraditionalVoiceSession } from "@media/stt_chat_tts/frontend";
@@ -16,20 +18,25 @@ import {
   comparisonStreamEndpoint,
   streamComparison,
 } from "@media/text_chat_comparison/frontend";
+import { useTextTranslation } from "@media/text_translation/frontend";
 import { useVoiceLive } from "@media/voice_live/frontend";
+import { useYouTubeRealtimeTranscription } from "@media/youtube_realtime_transcription/frontend";
 import { useYouTubeSummary } from "@media/youtube_summary/frontend";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { loadModelRouterRouting, saveModelRouterRouting } from "@/api/admin";
 import { loginUrl } from "@/api/auth";
 import {
   deleteConversation,
   listConversations,
   loadConversation as loadConversationRequest,
 } from "@/api/conversations";
+import type { ModelRouterRoutingMode } from "@/api/types";
 import type { UseCaseId } from "@/app/types";
 import { useCaseModules } from "@/app/useCaseRegistry";
 import {
   deploymentDefaultGuardrail,
+  isRealtimeOnlyTranscriptionModel,
   traditionalTtsVoices,
 } from "@/app/workspace/constants";
 import type { ViewMode } from "@/app/workspace/contracts";
@@ -41,12 +48,15 @@ import {
 import type { WorkspaceContentRouterProps } from "@/app/workspace/routes/contracts";
 import { useApiTrace } from "@/app/workspace/useApiTrace";
 import { useWorkspaceAppearance } from "@/app/workspace/useWorkspaceAppearance";
+import type { ModelUsageSummary } from "@/features/admin/ModelMonitoringPage";
 import { useAdminDeployment } from "@/features/admin/useAdminDeployment";
 import { useLiveTranslationSettings } from "@/features/admin/useLiveTranslationSettings";
+import { useUseCaseModelMapSettings } from "@/features/admin/useUseCaseModelMapSettings";
 import { useAgentResearchStream } from "@/features/agentResearch/useAgentResearchStream";
 import { useGuardrailComparison } from "@/features/guardrails/useGuardrailComparison";
 import { useHostedAgentStream } from "@/features/hostedAgent/useHostedAgentStream";
 import { useModelMetrics } from "@/features/metrics/useModelMetrics";
+import { useModelMonitoring } from "@/features/metrics/useModelMonitoring";
 import { useModelCatalog } from "@/features/models/useModelCatalog";
 import { useModelSettingsController } from "@/features/models/useModelSettingsController";
 import type {
@@ -57,6 +67,81 @@ import type {
 } from "@/features/textChat/types";
 
 import { useAppBootstrap } from "./useAppBootstrap";
+
+function addModelUsage(
+  usages: Map<string, ModelUsageSummary>,
+  model: string | null | undefined,
+  useCase: string,
+  role: string,
+) {
+  const normalizedModel = model?.trim();
+  if (!normalizedModel) return;
+  const usage = usages.get(normalizedModel) ?? {
+    model: normalizedModel,
+    useCases: [],
+    roles: [],
+  };
+  if (!usage.useCases.includes(useCase)) usage.useCases.push(useCase);
+  if (!usage.roles.includes(role)) usage.roles.push(role);
+  usages.set(normalizedModel, usage);
+}
+
+function buildModelUsages({
+  textModels,
+  imageModels,
+  imageEditModels,
+  transcriptionModels,
+  realtimeTranscriptionModels,
+  ttsModels,
+  embeddingModel,
+  realtimeModel,
+  realtimeTranslationModel,
+  voiceLiveModel,
+}: {
+  textModels: string[];
+  imageModels: string[];
+  imageEditModels: string[];
+  transcriptionModels: string[];
+  realtimeTranscriptionModels: string[];
+  ttsModels: string[];
+  embeddingModel: string | null | undefined;
+  realtimeModel: string | null | undefined;
+  realtimeTranslationModel: string | null | undefined;
+  voiceLiveModel: string | null | undefined;
+}) {
+  const usages = new Map<string, ModelUsageSummary>();
+  const addMany = (models: string[], useCase: string, role: string) =>
+    models.forEach((candidate) =>
+      addModelUsage(usages, candidate, useCase, role),
+    );
+
+  addMany(textModels, "Text Chat", "Chat completion");
+  addMany(textModels, "Side by Side – Text Chat", "Comparison");
+  addMany(textModels, "Reasoning Arena", "Reasoning comparison");
+  addMany(textModels, "Document Q&A", "Grounded answer");
+  addModelUsage(usages, embeddingModel, "Document Q&A", "Embeddings");
+  addMany(imageModels, "Text to Image", "Image generation");
+  addMany(imageModels, "Side by Side – Text Image", "Image comparison");
+  addMany(imageEditModels, "Image to Image", "Image editing");
+  addMany(textModels, "Youtube Video Summarization", "Summarization");
+  addMany(transcriptionModels, "Youtube Video Summarization", "Transcription");
+  addMany(realtimeTranscriptionModels, "Youtube Video Transcription", "Realtime transcription");
+  addMany(textModels, "Browser based Voice", "Chat completion");
+  addMany(transcriptionModels, "STT-Chat-TTS", "Speech to text");
+  addMany(textModels, "STT-Chat-TTS", "Chat completion");
+  addMany(ttsModels, "STT-Chat-TTS", "Text to speech");
+  addMany(transcriptionModels, "Recorded Audio Transcription", "Transcription");
+  addMany(transcriptionModels, "Side by Side Recorded Audio Transcription", "Transcription comparison");
+  addMany(realtimeTranscriptionModels, "Realtime Transcription webrtc", "Realtime transcription");
+  addMany(realtimeTranscriptionModels, "Realtime Transcription websockets", "Realtime transcription");
+  addModelUsage(usages, realtimeTranslationModel, "GPT Realtime Translation", "Foundry realtime translation");
+  addModelUsage(usages, realtimeModel, "Realtime Speech in / Speech Out", "Realtime speech");
+  addModelUsage(usages, voiceLiveModel, "Voice Live travel Concierge", "Voice Live");
+
+  return Array.from(usages.values()).sort((left, right) =>
+    left.model.localeCompare(right.model),
+  );
+}
 
 export function useWorkspaceController() {
   const [comparisonMode, setComparisonMode] = useState(false);
@@ -72,6 +157,7 @@ export function useWorkspaceController() {
     string | null
   >(null);
   const useCaseSessionRef = useRef(0);
+  const contentExtractorFileInputRef = useRef<HTMLInputElement>(null);
   const [conversationsOpen, setConversationsOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [activeView, setActiveView] = useState<ViewMode>("chat");
@@ -87,6 +173,9 @@ export function useWorkspaceController() {
     entraAuthEnabled,
     canUseProtectedApis,
     workspaceLocked: isWorkspaceLocked,
+    apiUnavailable,
+    apiUnavailableReason,
+    retryApiConnection,
   } = useAppBootstrap(apiTrace.tracedFetch);
   const workspaceLocked = isWorkspaceLocked(activeView);
   const activeUseCaseDetails = useMemo(
@@ -103,6 +192,7 @@ export function useWorkspaceController() {
     selected,
     textModels,
     transcriptionModels,
+    realtimeTranscriptionModels,
     transcriptionModel,
     selectedTranscriptionModels,
     selectedTranscriptions,
@@ -142,7 +232,101 @@ export function useWorkspaceController() {
     fetchClient: apiTrace.tracedFetch,
     onDeploymentCreated,
   });
+  const activeModelIsRouter =
+    activeModel.trim().toLowerCase() === "model-router";
+  const [modelRouterRoutingMode, setModelRouterRoutingMode] =
+    useState<ModelRouterRoutingMode>("balanced");
+  const [modelRouterRoutingLoading, setModelRouterRoutingLoading] =
+    useState(false);
+  const [modelRouterRoutingSaving, setModelRouterRoutingSaving] =
+    useState(false);
+  const [modelRouterRoutingError, setModelRouterRoutingError] = useState("");
+
+  useEffect(() => {
+    if (!activeModelIsRouter || !canUseProtectedApis) {
+      setModelRouterRoutingError("");
+      return;
+    }
+    const controller = new AbortController();
+    setModelRouterRoutingLoading(true);
+    setModelRouterRoutingError("");
+    void loadModelRouterRouting(
+      apiTrace.tracedFetch,
+      activeModel,
+      controller.signal,
+    )
+      .then(({ response, data }) => {
+        if (!response.ok) {
+          throw new Error(
+            data.detail || "Failed to load model router routing.",
+          );
+        }
+        setModelRouterRoutingMode(data.mode);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setModelRouterRoutingError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load model router routing.",
+        );
+      })
+      .finally(() => setModelRouterRoutingLoading(false));
+    return () => controller.abort();
+  }, [
+    activeModel,
+    activeModelIsRouter,
+    apiTrace.tracedFetch,
+    canUseProtectedApis,
+  ]);
+
+  const changeModelRouterRoutingMode = useCallback(
+    async (mode: ModelRouterRoutingMode) => {
+      if (!activeModelIsRouter || !canUseProtectedApis) {
+        return;
+      }
+      const previous = modelRouterRoutingMode;
+      setModelRouterRoutingMode(mode);
+      setModelRouterRoutingSaving(true);
+      setModelRouterRoutingError("");
+      try {
+        const { response, data } = await saveModelRouterRouting(
+          apiTrace.tracedFetch,
+          activeModel,
+          mode,
+        );
+        if (!response.ok) {
+          throw new Error(
+            data.detail || "Failed to save model router routing.",
+          );
+        }
+        setModelRouterRoutingMode(data.mode);
+      } catch (error) {
+        setModelRouterRoutingMode(previous);
+        setModelRouterRoutingError(
+          error instanceof Error
+            ? error.message
+            : "Failed to save model router routing.",
+        );
+      } finally {
+        setModelRouterRoutingSaving(false);
+      }
+    },
+    [
+      activeModel,
+      activeModelIsRouter,
+      apiTrace.tracedFetch,
+      canUseProtectedApis,
+      modelRouterRoutingMode,
+    ],
+  );
   const liveTranslationSettings = useLiveTranslationSettings({
+    fetchClient: apiTrace.tracedFetch,
+    enabled: canUseProtectedApis,
+  });
+  const useCaseModelMapSettings = useUseCaseModelMapSettings({
     fetchClient: apiTrace.tracedFetch,
     enabled: canUseProtectedApis,
   });
@@ -230,6 +414,10 @@ export function useWorkspaceController() {
     fetchClient: apiTrace.tracedFetch,
     model: config?.realtime_model ?? "gpt-realtime-2.1",
   });
+  const defaultRealtimeTranscriptionModel =
+    config?.realtime_transcription_model ??
+    realtimeTranscriptionModels[0] ??
+    "";
   const realtimeTranscriptionWebRtc = useWebRtcTranscription({
     fetchClient: apiTrace.tracedFetch,
     transport: "webrtc",
@@ -238,16 +426,56 @@ export function useWorkspaceController() {
     fetchClient: apiTrace.tracedFetch,
     transport: "websocket",
   });
-  const realtimeTranslation = useRealtimeTranslation();
+  const youtubeRealtimeTranscription = useYouTubeRealtimeTranscription({
+    models: realtimeTranscriptionModels,
+    defaultModel: defaultRealtimeTranscriptionModel,
+  });
+  const realtimeTranslationModels = Array.from(
+    new Set(
+      [
+        config?.realtime_translation_model,
+        ...models.filter((candidate) => {
+          const normalized = candidate.toLowerCase();
+          return (
+            normalized.includes("realtime") && normalized.includes("translate")
+          );
+        }),
+        "gpt-realtime-translate",
+      ].filter(
+        (candidate): candidate is string =>
+          typeof candidate === "string" && candidate.trim().length > 0,
+      ),
+    ),
+  );
+  const realtimeTranslationWebRtc = useWebRtcTranslation({
+    defaultModel:
+      config?.realtime_translation_model ?? "gpt-realtime-translate",
+    fetchClient: apiTrace.tracedFetch,
+    models: realtimeTranslationModels,
+    defaultTranscriptionModel: defaultRealtimeTranscriptionModel,
+    transport: "webrtc",
+  });
+  const realtimeTranslationWebSocket = useWebSocketTranslation({
+    defaultModel:
+      config?.realtime_translation_model ?? "gpt-realtime-translate",
+    models: realtimeTranslationModels,
+    defaultTranscriptionModel: defaultRealtimeTranscriptionModel,
+  });
   const voiceLive = useVoiceLive({
     model: config?.voice_live_model ?? "gpt-realtime",
     voice: config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural",
   });
   const liveTranslation = useLiveTranslation();
+  const contentExtractor = useContentExtractor({
+    fetchClient: apiTrace.tracedFetch,
+  });
   const youtubeSummary = useYouTubeSummary({
     fetchClient: apiTrace.tracedFetch,
     appendFoundryTrace: apiTrace.appendFoundryTrace,
     appendFoundryResponseTrace: apiTrace.appendFoundryResponseTrace,
+  });
+  const textTranslation = useTextTranslation({
+    fetchClient: apiTrace.tracedFetch,
   });
   const chatStream = useChatStream({
     fetchClient: apiTrace.tracedFetch,
@@ -345,6 +573,9 @@ export function useWorkspaceController() {
         .filter((model) => !selectedModels.has(model))
         .slice(0, Math.max(0, 2 - selectedModels.size))
         .forEach(toggleModel);
+      if (useCase === "reasoning_comparison") {
+        setReasoningEffort("high");
+      }
     }
     if (useCase !== activeUseCase) {
       chatStream.cancel();
@@ -385,10 +616,16 @@ export function useWorkspaceController() {
       realtimeTranscriptionWebSocket.stop();
     }
     if (
-      nextUseCase.workspace !== "realtimeTranslationWebSocket" &&
-      realtimeTranslation.status !== "idle"
+      nextUseCase.workspace !== "realtimeTranslationWebRtc" &&
+      realtimeTranslationWebRtc.status !== "idle"
     ) {
-      realtimeTranslation.stop();
+      realtimeTranslationWebRtc.stop();
+    }
+    if (
+      nextUseCase.workspace !== "realtimeTranslationWebSocket" &&
+      realtimeTranslationWebSocket.status !== "idle"
+    ) {
+      realtimeTranslationWebSocket.stop();
     }
     if (nextUseCase.workspace !== "voiceLive" && voiceLive.status !== "idle") {
       voiceLive.stop();
@@ -398,6 +635,12 @@ export function useWorkspaceController() {
       liveTranslation.status !== "idle"
     ) {
       liveTranslation.stop();
+    }
+    if (nextUseCase.workspace !== "contentExtractor") {
+      contentExtractor.reset();
+    }
+    if (nextUseCase.workspace !== "textTranslation") {
+      textTranslation.reset();
     }
     if (nextUseCase.workspace !== "traditionalVoice") {
       traditionalVoice.invalidate();
@@ -601,7 +844,10 @@ export function useWorkspaceController() {
         ...transcriptionModels,
         config?.speech_transcription_model,
         config?.transcription_model,
-      ].filter((model): model is string => Boolean(model)),
+      ].filter(
+        (model): model is string =>
+          typeof model === "string" && !isRealtimeOnlyTranscriptionModel(model),
+      ),
     ),
   );
   const youtubeTranscriptionModel = youtubeTranscriptionModels.includes(
@@ -609,6 +855,29 @@ export function useWorkspaceController() {
   )
     ? transcriptionModel
     : (youtubeTranscriptionModels[0] ?? "");
+  const youtubeRealtimeTranscriptionModel =
+    realtimeTranscriptionModels.includes(youtubeRealtimeTranscription.model)
+      ? youtubeRealtimeTranscription.model
+      : (realtimeTranscriptionModels[0] ?? defaultRealtimeTranscriptionModel);
+  const modelUsages = buildModelUsages({
+    textModels,
+    imageModels: imageWorkspace.models,
+    imageEditModels: imageWorkspace.editModels,
+    transcriptionModels: youtubeTranscriptionModels,
+    realtimeTranscriptionModels,
+    ttsModels,
+    embeddingModel: config?.embedding_model,
+    realtimeModel: config?.realtime_model,
+    realtimeTranslationModel: config?.realtime_translation_model,
+    voiceLiveModel: config?.voice_live_model,
+  });
+  const adminViewActive =
+    activeView === "evaluation-admin" || activeView === "admin-monitor";
+  const monitoringController = useModelMonitoring({
+    fetchClient: apiTrace.tracedFetch,
+    enabled: adminViewActive && canUseProtectedApis,
+    models: modelUsages.map((usage) => usage.model),
+  });
   const contentRouterProps: WorkspaceContentRouterProps = {
     route: {
       view: activeView,
@@ -620,13 +889,37 @@ export function useWorkspaceController() {
     },
     access: {
       locked: workspaceLocked,
-      checking: auth === null,
+      loading: config === null && !apiUnavailable,
+      checking: config !== null && entraAuthEnabled && auth === null,
       canUseProtectedApis,
       onSignIn: () => window.location.assign(loginUrl),
     },
     metrics: {
       ...metricsController,
       models,
+    },
+    admin: {
+      activeTab: activeView === "admin-monitor" ? "monitoring" : "evaluations",
+      onTabChange: (tab) =>
+        setActiveView(
+          tab === "monitoring" ? "admin-monitor" : "evaluation-admin",
+        ),
+      evaluations: {
+        fetchClient: apiTrace.tracedFetch,
+        useCases: useCaseModules,
+        models,
+        agents: config?.hosted_agent_name ? [config.hosted_agent_name] : [],
+      },
+      monitoring: {
+        modelUsages,
+        aggregateMetrics: monitoringController.aggregateMetrics,
+        modelMetrics: monitoringController.modelMetrics,
+        days: monitoringController.days,
+        loading: monitoringController.loading,
+        error: monitoringController.error,
+        setDays: monitoringController.setDays,
+        refresh: monitoringController.refresh,
+      },
     },
     settings: {
       app: {
@@ -640,10 +933,17 @@ export function useWorkspaceController() {
         liveTranslationSettingsLoading: liveTranslationSettings.loading,
         liveTranslationSettingsSaving: liveTranslationSettings.saving,
         liveTranslationSettingsMessage: liveTranslationSettings.message,
+        useCaseModelMap: useCaseModelMapSettings.useCaseModelMap,
+        useCaseModelBucketNames: useCaseModelMapSettings.bucketNames,
+        useCaseModelMapLoading: useCaseModelMapSettings.loading,
+        useCaseModelMapSaving: useCaseModelMapSettings.saving,
+        useCaseModelMapMessage: useCaseModelMapSettings.message,
         onNewModelChange: setNewModel,
         onAddModel: () => void addModel(),
         onOpenAdmin: () => void adminDeployment.open(),
+        onOpenEvaluationsAdmin: () => setActiveView("evaluation-admin"),
         onSaveLiveTranslationSettings: liveTranslationSettings.save,
+        onSaveUseCaseModelMap: useCaseModelMapSettings.save,
         onSaveCapabilities: modelSettingsController.saveModelCapabilities,
         onColorPaletteChange: appearance.setColorPalette,
       },
@@ -800,21 +1100,45 @@ export function useWorkspaceController() {
         onStart: () => void realtimeTranscriptionWebSocket.start(),
         onStop: realtimeTranscriptionWebSocket.stop,
       },
+      webRtcTranslation: {
+        configured: config?.is_realtime_translation_configured ?? false,
+        model:
+          realtimeTranslationWebRtc.model ??
+          config?.realtime_translation_model ??
+          "gpt-realtime-translate",
+        transcriptionModel: realtimeTranslationWebRtc.transcriptionModel,
+        models: realtimeTranslationWebRtc.models,
+        sourceLanguage: realtimeTranslationWebRtc.sourceLanguage,
+        status: realtimeTranslationWebRtc.status,
+        error: realtimeTranslationWebRtc.error,
+        targetLanguage: realtimeTranslationWebRtc.targetLanguage,
+        sourceTranscript: realtimeTranslationWebRtc.sourceTranscript,
+        translatedTranscript: realtimeTranslationWebRtc.translatedTranscript,
+        onModelChange: realtimeTranslationWebRtc.setModel,
+        onSourceLanguageChange: realtimeTranslationWebRtc.setSourceLanguage,
+        onTargetLanguageChange: realtimeTranslationWebRtc.setTargetLanguage,
+        onStart: () => void realtimeTranslationWebRtc.start(),
+        onStop: realtimeTranslationWebRtc.stop,
+      },
       webSocketTranslation: {
         configured: config?.is_realtime_translation_configured ?? false,
         model:
-          realtimeTranslation.model ??
+          realtimeTranslationWebSocket.model ??
           config?.realtime_translation_model ??
           "gpt-realtime-translate",
-        transcriptionModel: realtimeTranslation.transcriptionModel,
-        status: realtimeTranslation.status,
-        error: realtimeTranslation.error,
-        targetLanguage: realtimeTranslation.targetLanguage,
-        sourceTranscript: realtimeTranslation.sourceTranscript,
-        translatedTranscript: realtimeTranslation.translatedTranscript,
-        onTargetLanguageChange: realtimeTranslation.setTargetLanguage,
-        onStart: () => void realtimeTranslation.start(),
-        onStop: realtimeTranslation.stop,
+        transcriptionModel: realtimeTranslationWebSocket.transcriptionModel,
+        models: realtimeTranslationWebSocket.models,
+        sourceLanguage: realtimeTranslationWebSocket.sourceLanguage,
+        status: realtimeTranslationWebSocket.status,
+        error: realtimeTranslationWebSocket.error,
+        targetLanguage: realtimeTranslationWebSocket.targetLanguage,
+        sourceTranscript: realtimeTranslationWebSocket.sourceTranscript,
+        translatedTranscript: realtimeTranslationWebSocket.translatedTranscript,
+        onModelChange: realtimeTranslationWebSocket.setModel,
+        onSourceLanguageChange: realtimeTranslationWebSocket.setSourceLanguage,
+        onTargetLanguageChange: realtimeTranslationWebSocket.setTargetLanguage,
+        onStart: () => void realtimeTranslationWebSocket.start(),
+        onStop: realtimeTranslationWebSocket.stop,
       },
       voiceLive: {
         configured: config?.is_voice_live_configured ?? false,
@@ -834,9 +1158,13 @@ export function useWorkspaceController() {
         sourceLanguage: liveTranslation.sourceLanguage,
         targetLanguage: liveTranslation.targetLanguage,
         transcript: liveTranslation.transcript,
+        sourceTranscript: liveTranslation.sourceTranscript,
+        translatedTranscript: liveTranslation.translatedTranscript,
+        audioPlaybackEnabled: liveTranslation.audioPlaybackEnabled,
         onModeChange: liveTranslation.setMode,
         onSourceLanguageChange: liveTranslation.setSourceLanguage,
         onTargetLanguageChange: liveTranslation.setTargetLanguage,
+        onAudioPlaybackEnabledChange: liveTranslation.setAudioPlaybackEnabled,
         onStart: () => void liveTranslation.start(),
         onStop: liveTranslation.stop,
       },
@@ -845,6 +1173,31 @@ export function useWorkspaceController() {
       enabled: guardrailComparison.enabled,
       policyNames: guardrailComparison.activePolicies,
       deploymentPolicyName: guardrailComparison.deploymentPolicy?.policy_name,
+    },
+    contentExtractor: {
+      configured: config?.is_content_extractor_configured ?? false,
+      mode: contentExtractor.mode,
+      file: contentExtractor.file,
+      result: contentExtractor.result,
+      loading: contentExtractor.loading,
+      error: contentExtractor.error,
+      fileInputRef: contentExtractorFileInputRef,
+      onModeChange: contentExtractor.setMode,
+      onFileChange: contentExtractor.setFile,
+      onExtract: () => void contentExtractor.extract(),
+    },
+    textTranslation: {
+      configured: config?.is_text_translation_configured ?? false,
+      sourceText: textTranslation.sourceText,
+      sourceLanguage: textTranslation.sourceLanguage,
+      targetLanguage: textTranslation.targetLanguage,
+      result: textTranslation.result,
+      loading: textTranslation.loading,
+      error: textTranslation.error,
+      onSourceTextChange: textTranslation.setSourceText,
+      onSourceLanguageChange: textTranslation.setSourceLanguage,
+      onTargetLanguageChange: textTranslation.setTargetLanguage,
+      onTranslate: () => void textTranslation.translate(),
     },
     youtubeSummary: {
       url: youtubeSummary.url,
@@ -867,6 +1220,27 @@ export function useWorkspaceController() {
           reasoningEffort === "default" ? null : reasoningEffort,
         ),
     },
+    youtubeRealtimeTranscription: {
+      url: youtubeRealtimeTranscription.url,
+      model: youtubeRealtimeTranscriptionModel,
+      models: realtimeTranscriptionModels,
+      language: youtubeRealtimeTranscription.language,
+      delay: youtubeRealtimeTranscription.delay,
+      status: youtubeRealtimeTranscription.status,
+      statusMessage: youtubeRealtimeTranscription.statusMessage,
+      error: youtubeRealtimeTranscription.error,
+      transcript: youtubeRealtimeTranscription.transcript,
+      videoId: youtubeRealtimeTranscription.videoId,
+      configured:
+        (config?.is_realtime_transcription_configured ?? false) &&
+        realtimeTranscriptionModels.length > 0,
+      onUrlChange: youtubeRealtimeTranscription.setUrl,
+      onModelChange: youtubeRealtimeTranscription.setModel,
+      onLanguageChange: youtubeRealtimeTranscription.setLanguage,
+      onDelayChange: youtubeRealtimeTranscription.setDelay,
+      onStart: () => void youtubeRealtimeTranscription.start(),
+      onStop: youtubeRealtimeTranscription.stop,
+    },
     chat: {
       activeModel,
       models: textModels,
@@ -877,6 +1251,17 @@ export function useWorkspaceController() {
       isListening,
       speechRecognitionSupported,
       reasoningEffort,
+      modelRouterRouting:
+        activeModelIsRouter && canUseProtectedApis
+          ? {
+              mode: modelRouterRoutingMode,
+              loading: modelRouterRoutingLoading,
+              saving: modelRouterRoutingSaving,
+              error: modelRouterRoutingError,
+              onChange: (mode: ModelRouterRoutingMode) =>
+                void changeModelRouterRoutingMode(mode),
+            }
+          : null,
       onPromptChange: setPrompt,
       onSubmit: () => void runChat(),
       onDocumentSubmit: () => void runDocumentChat(),
@@ -937,6 +1322,9 @@ export function useWorkspaceController() {
     workspaceLocked,
     canUseProtectedApis,
     config,
+    apiUnavailable,
+    apiUnavailableReason,
+    retryApiConnection,
     realtime,
     traditionalVoice,
     transcription,
@@ -973,6 +1361,8 @@ export function useWorkspaceController() {
     selectedTranscriptionModels,
     toggleTranscriptionModel,
     imageWorkspace,
+    contentExtractor,
+    contentExtractorFileInputRef,
     guardrailComparison,
     isRunning,
     traditionalTranscriptionModels,

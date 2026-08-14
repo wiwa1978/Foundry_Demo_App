@@ -21,6 +21,13 @@ describe("useLiveTranslation", () => {
     installMediaSessionMocks();
   });
 
+  it("defaults to translating English speech to French", () => {
+    const { result } = renderHook(() => useLiveTranslation());
+
+    expect(result.current.sourceLanguage).toBe("en-US");
+    expect(result.current.targetLanguage).toBe("fr");
+  });
+
   it("starts with the selected language, handles translations and PCM, then ignores stale events", async () => {
     const { result } = renderHook(() => useLiveTranslation());
     act(() => result.current.setTargetLanguage("nl"));
@@ -30,8 +37,21 @@ describe("useLiveTranslation", () => {
     act(() =>
       firstSocket.emitMessage(
         JSON.stringify({
+          type: "partial_translation",
+          text: "Goede",
+          source_text: "Good",
+        }),
+      ),
+    );
+    expect(result.current.sourceTranscript).toBe("Good");
+    expect(result.current.translatedTranscript).toBe("Goede");
+    expect(result.current.transcript).toEqual([]);
+    act(() =>
+      firstSocket.emitMessage(
+        JSON.stringify({
           type: "translation",
           text: "Goedemorgen",
+          source_text: "Good morning",
           detected_language: "en",
         }),
       ),
@@ -57,9 +77,12 @@ describe("useLiveTranslation", () => {
 
     expect(result.current.status).toBe("live");
     expect(result.current.transcript.map((entry) => entry.text)).toEqual([
+      "Good morning",
       "Goedemorgen · detected en",
       "Welkom",
     ]);
+    expect(result.current.sourceTranscript).toBe("Good morning");
+    expect(result.current.translatedTranscript).toBe("Goedemorgen\nWelkom");
     const startMessage = JSON.parse(String(firstSocket.sent[0])) as {
       mode: string;
       source_language: string;
@@ -103,6 +126,30 @@ describe("useLiveTranslation", () => {
     );
     expect(result.current.transcript).toEqual([]);
     expect(MockAudioWorkletNode.instances).toHaveLength(2);
+  });
+
+  it("stops queued audio and ignores playback while disabled", async () => {
+    const { result } = renderHook(() => useLiveTranslation());
+
+    await act(async () => result.current.start());
+    const socket = MockWebSocket.instances[0];
+    const context = MockAudioContext.instances[0];
+    const pcm = new Int16Array([0, 8192]).buffer;
+
+    act(() => socket.emitMessage(pcm));
+    expect(context.bufferSources).toHaveLength(1);
+    expect(context.bufferSources[0].start).toHaveBeenCalledOnce();
+
+    act(() => result.current.setAudioPlaybackEnabled(false));
+    expect(result.current.audioPlaybackEnabled).toBe(false);
+    expect(context.bufferSources[0].stop).toHaveBeenCalledOnce();
+
+    act(() => socket.emitMessage(pcm));
+    expect(context.bufferSources).toHaveLength(1);
+
+    act(() => result.current.setAudioPlaybackEnabled(true));
+    act(() => socket.emitMessage(pcm));
+    expect(context.bufferSources).toHaveLength(2);
   });
 
   it("cleans up when the interpreter socket closes after becoming ready", async () => {

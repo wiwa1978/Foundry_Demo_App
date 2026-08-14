@@ -42,6 +42,16 @@ describe("ConversationHistoryPopover", () => {
 
     rerender(<ConversationHistoryPopover open {...props} />);
     expect(screen.getByText("No saved chats yet.")).toBeVisible();
+    const dialog = screen.getByRole("dialog", {
+      name: "Previous Conversations",
+    });
+    expect(dialog.parentElement).toHaveClass(
+      "fixed",
+      "inset-0",
+      "items-center",
+      "justify-center",
+    );
+    expect(dialog).toHaveClass("w-[min(42rem,calc(100vw-2rem))]");
   });
 
   it("loads conversations, starts a new chat, deletes, and closes", async () => {
@@ -67,6 +77,8 @@ describe("ConversationHistoryPopover", () => {
     );
     expect(onLoad).toHaveBeenCalledWith("conversation-2");
     expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.getByRole("heading", { name: /2026/ })).toBeVisible();
+    expect(screen.getAllByText(/2026/).length).toBeGreaterThanOrEqual(3);
 
     onClose.mockClear();
     rerender(

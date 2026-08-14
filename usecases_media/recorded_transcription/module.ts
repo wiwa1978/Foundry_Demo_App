@@ -3,10 +3,11 @@ import type { UseCaseModule } from "@/app/types";
 export const transcribeUseCase: UseCaseModule = {
   id: "transcribe",
   title: "Recorded Audio Transcription",
-  shortTitle: "Recorded transcription",
+  shortTitle: "Recorded Audio Transcription",
   description:
     "Record or upload completed audio and return a finalized speech-to-text transcript.",
-  badge: "Speech to text",
+  badge: "Audio",
+  typeLabel: "Transcription",
   icon: "voiceWave",
   modalities: ["audio"],
   implementation: [

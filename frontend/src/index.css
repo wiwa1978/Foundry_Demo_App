@@ -30,6 +30,9 @@
     --palette-soft: #f5f3ff;
     --palette-soft-border: #c4b5fd;
     --chat-text: #ffffff;
+    --scrollbar-track: #e2e8f0;
+    --scrollbar-thumb: #94a3b8;
+    --scrollbar-thumb-hover: #64748b;
   }
 
   .dark {
@@ -57,6 +60,9 @@
     --palette-accent: #c4b5fd;
     --palette-soft: rgb(139 92 246 / 0.1);
     --palette-soft-border: rgb(139 92 246 / 0.3);
+    --scrollbar-track: #29292c;
+    --scrollbar-thumb: #606066;
+    --scrollbar-thumb-hover: #8b8b92;
   }
 
   :root[data-palette="ocean"] {
@@ -121,6 +127,31 @@
 
   * {
     @apply border-border;
+  }
+
+  * {
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    scrollbar-width: thin;
+  }
+
+  *::-webkit-scrollbar {
+    height: 0.75rem;
+    width: 0.75rem;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border: 2px solid var(--scrollbar-track);
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
   }
 
   body {

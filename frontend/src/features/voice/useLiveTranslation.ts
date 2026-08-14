@@ -25,15 +25,22 @@ const LIVE_INTERPRETER_START_TIMEOUT_MS = 20_000;
 export function useLiveTranslation() {
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [error, setError] = useState("");
-  const [targetLanguage, setTargetLanguage] = useState("en");
+  const [targetLanguage, setTargetLanguage] = useState("fr");
   const [sourceLanguage, setSourceLanguage] = useState("en-US");
   const [mode, setMode] = useState<LiveTranslationMode>("standard");
   const [transcript, setTranscript] = useState<RealtimeTranscriptEntry[]>([]);
+  const [sourceTranscript, setSourceTranscript] = useState("");
+  const [translatedTranscript, setTranslatedTranscript] = useState("");
+  const [sourceInterimTranscript, setSourceInterimTranscript] = useState("");
+  const [translatedInterimTranscript, setTranslatedInterimTranscript] =
+    useState("");
+  const [audioPlaybackEnabled, setAudioPlaybackEnabledState] = useState(true);
   const mountedRef = useRef(true);
   const statusRef = useRef<RealtimeStatus>("idle");
   const generationRef = useRef(0);
   const transcriptSequenceRef = useRef(0);
   const playAtRef = useRef(0);
+  const audioPlaybackEnabledRef = useRef(true);
   const resourcesRef = useRef<LiveTranslationResources | null>(null);
 
   function updateStatus(nextStatus: RealtimeStatus) {
@@ -44,6 +51,28 @@ export function useLiveTranslation() {
   function isCurrent(generation: number) {
     return mountedRef.current && generationRef.current === generation;
   }
+
+  const stopPlayback = useCallback((resources: LiveTranslationResources | null) => {
+    resources?.playbackSources.forEach((source) => {
+      try {
+        source.stop();
+      } catch {
+        // A source that already ended cannot be stopped again in every browser.
+      }
+      source.disconnect();
+    });
+    resources?.playbackSources.clear();
+    playAtRef.current = 0;
+  }, []);
+
+  const setAudioPlaybackEnabled = useCallback(
+    (enabled: boolean) => {
+      audioPlaybackEnabledRef.current = enabled;
+      setAudioPlaybackEnabledState(enabled);
+      if (!enabled) stopPlayback(resourcesRef.current);
+    },
+    [stopPlayback],
+  );
 
   const closeResources = useCallback(
     (resources: LiveTranslationResources | null) => {
@@ -57,21 +86,12 @@ export function useLiveTranslation() {
       resources.worklet?.disconnect();
       resources.source?.disconnect();
       resources.silentOutput?.disconnect();
-      resources.playbackSources.forEach((source) => {
-        try {
-          source.stop();
-        } catch {
-          // A source that already ended cannot be stopped again in every browser.
-        }
-        source.disconnect();
-      });
-      resources.playbackSources.clear();
+      stopPlayback(resources);
       resources.mediaStream?.getTracks().forEach((track) => track.stop());
       if (resources.audioContext)
         void resources.audioContext.close().catch(() => undefined);
-      playAtRef.current = 0;
     },
-    [],
+    [stopPlayback],
   );
 
   const closeCurrentResources = useCallback(() => {
@@ -81,22 +101,59 @@ export function useLiveTranslation() {
     closeResources(resources);
   }, [closeResources]);
 
+  function transcriptWithInterim(committed: string, interim: string) {
+    const cleanedInterim = interim.trim();
+    if (!cleanedInterim) return committed;
+    return committed ? `${committed}\n${cleanedInterim}` : cleanedInterim;
+  }
+
+  function updateInterimTranslation(
+    generation: number,
+    translatedText?: string,
+    sourceText?: string,
+  ) {
+    if (!isCurrent(generation)) return;
+    setSourceInterimTranscript(sourceText?.trim() ?? "");
+    setTranslatedInterimTranscript(translatedText?.trim() ?? "");
+  }
+
   function appendTranslation(
     generation: number,
-    text: string,
+    translatedText: string,
+    sourceText?: string,
     detectedLanguage?: string | null,
   ) {
-    const cleaned = text.trim();
-    if (!cleaned || !isCurrent(generation)) return;
-    transcriptSequenceRef.current += 1;
-    const entry = {
-      id: `live-translation-${transcriptSequenceRef.current}`,
-      source: "assistant" as const,
-      text: detectedLanguage
-        ? `${cleaned} · detected ${detectedLanguage}`
-        : cleaned,
-    };
-    setTranscript((current) => [...current, entry].slice(-10));
+    const cleanedTranslation = translatedText.trim();
+    const cleanedSource = sourceText?.trim() ?? "";
+    if ((!cleanedTranslation && !cleanedSource) || !isCurrent(generation)) return;
+    setSourceInterimTranscript("");
+    setTranslatedInterimTranscript("");
+    const entries: RealtimeTranscriptEntry[] = [];
+    if (cleanedSource) {
+      transcriptSequenceRef.current += 1;
+      entries.push({
+        id: `live-translation-${transcriptSequenceRef.current}`,
+        source: "user",
+        text: cleanedSource,
+      });
+      setSourceTranscript((current) =>
+        current ? `${current}\n${cleanedSource}` : cleanedSource,
+      );
+    }
+    if (cleanedTranslation) {
+      transcriptSequenceRef.current += 1;
+      entries.push({
+        id: `live-translation-${transcriptSequenceRef.current}`,
+        source: "assistant",
+        text: detectedLanguage
+          ? `${cleanedTranslation} · detected ${detectedLanguage}`
+          : cleanedTranslation,
+      });
+      setTranslatedTranscript((current) =>
+        current ? `${current}\n${cleanedTranslation}` : cleanedTranslation,
+      );
+    }
+    setTranscript((current) => [...current, ...entries].slice(-20));
   }
 
   function playPcm(
@@ -105,7 +162,9 @@ export function useLiveTranslation() {
     data: ArrayBuffer,
   ) {
     const context = resources.audioContext;
-    if (!context || !isCurrent(generation)) return;
+    if (!context || !isCurrent(generation) || !audioPlaybackEnabledRef.current) {
+      return;
+    }
     const pcm = new Int16Array(data);
     const buffer = context.createBuffer(1, pcm.length, 16000);
     const channel = buffer.getChannelData(0);
@@ -216,6 +275,10 @@ export function useLiveTranslation() {
     setError("");
     setTranscript([]);
 
+    setSourceTranscript("");
+    setSourceInterimTranscript("");
+    setTranslatedInterimTranscript("");
+    setTranslatedTranscript("");
     try {
       const context = new AudioContext();
       resources.audioContext = context;
@@ -302,10 +365,21 @@ export function useLiveTranslation() {
               );
               resolve();
             }
-            if (event.type === "translation" && event.text) {
-              appendTranslation(
+            if (event.type === "partial_translation") {
+              updateInterimTranslation(
                 generation,
                 event.text,
+                event.source_text,
+              );
+            }
+            if (
+              event.type === "translation" &&
+              (event.text || event.source_text)
+            ) {
+              appendTranslation(
+                generation,
+                event.text ?? "",
+                event.source_text,
                 event.detected_language,
               );
             }
@@ -386,16 +460,26 @@ export function useLiveTranslation() {
   }, [closeCurrentResources]);
 
   return {
+    audioPlaybackEnabled,
     error,
     mode,
     setMode,
+    setAudioPlaybackEnabled,
     setSourceLanguage,
     setTargetLanguage,
     sourceLanguage,
+    sourceTranscript: transcriptWithInterim(
+      sourceTranscript,
+      sourceInterimTranscript,
+    ),
     start,
     status,
     stop,
     targetLanguage,
     transcript,
+    translatedTranscript: transcriptWithInterim(
+      translatedTranscript,
+      translatedInterimTranscript,
+    ),
   };
 }

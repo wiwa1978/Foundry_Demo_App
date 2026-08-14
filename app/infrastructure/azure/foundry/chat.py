@@ -2,7 +2,11 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
-from app.infrastructure.azure.foundry.clients import create_openai_client
+from app.infrastructure.azure.foundry.clients import (
+    create_mai_openai_client,
+    create_openai_client,
+    create_project_openai_client,
+)
 from app.infrastructure.azure.foundry.settings import load_settings
 from app.infrastructure.azure.foundry.tracing import (
     TraceData,
@@ -12,7 +16,58 @@ from app.infrastructure.azure.foundry.tracing import (
     usage_to_dict,
 )
 
-SAMPLING_UNSUPPORTED_MODEL_PREFIXES = ("gpt-5", "gpt5", "o1", "o3", "o4")
+MAI_THINKING_MODEL_PREFIXES = ("mai-thinking", "mai-thinkin")
+SAMPLING_UNSUPPORTED_MODEL_PREFIXES = (
+    "gpt-5",
+    "gpt5",
+    "o1",
+    "o3",
+    "o4",
+    *MAI_THINKING_MODEL_PREFIXES,
+)
+ROUTER_MODEL_NAMES = {"model-router"}
+
+
+def _is_router_model(model: str) -> bool:
+    return model.strip().lower().replace("_", "-") in ROUTER_MODEL_NAMES
+
+
+def _client_factory_for(model: str, api_surface: str):
+    if api_surface == "responses" and _is_router_model(model):
+        return create_project_openai_client
+    return create_mai_openai_client if _uses_mai_endpoint(model) else create_openai_client
+
+
+def _emulate_stream_from_response(
+    *,
+    api_surface: str,
+    response: Any,
+    content: str,
+    usage: Any,
+    started: float,
+    guardrail_policy_name: str | None,
+) -> Iterator[dict[str, Any]]:
+    if content:
+        yield {"type": "delta", "delta": content}
+    foundry_response = build_foundry_response_trace(
+        api_surface=api_surface,
+        response=response,
+        content=content,
+        usage=usage,
+    )
+    yield {
+        "type": "foundry_response",
+        "response": redact_foundry_trace(foundry_response),
+    }
+    yield {
+        "type": "completed",
+        "content": content,
+        "duration_ms": round((time.perf_counter() - started) * 1000),
+        "usage": usage_to_dict(usage),
+        "guardrail_policy_name": guardrail_policy_name,
+        "guardrail_results": foundry_response["extracted"]["guardrail_results"],
+        "routed_model": foundry_response["extracted"].get("model"),
+    }
 
 
 def _format_response_input(
@@ -52,6 +107,11 @@ def _format_chat_messages(
 def _supports_sampling_parameters(model: str) -> bool:
     normalized_model = model.strip().lower().replace("_", "-")
     return not normalized_model.startswith(SAMPLING_UNSUPPORTED_MODEL_PREFIXES)
+
+
+def _uses_mai_endpoint(model: str) -> bool:
+    normalized_model = model.strip().lower().replace("_", "-")
+    return normalized_model.startswith(MAI_THINKING_MODEL_PREFIXES)
 
 
 def _build_response_request(
@@ -99,7 +159,7 @@ def _build_chat_completion_request(
         "messages": _format_chat_messages(prompt, system_prompt, history),
         "max_completion_tokens": max_tokens,
     }
-    if _supports_sampling_parameters(model):
+    if _supports_sampling_parameters(model) and not _is_router_model(model):
         request["temperature"] = temperature
         request["top_p"] = top_p
         if repetition_penalty != 1:
@@ -197,7 +257,8 @@ def complete_chat(
     )
     extra_headers = {"x-policy-id": guardrail_policy_name} if guardrail_policy_name else None
     response: Any
-    with create_openai_client(settings) as openai_client:
+    client_factory = _client_factory_for(model, api_surface)
+    with client_factory(settings) as openai_client:
         request = foundry_request["payload"]
         if api_surface == "chat_completions":
             response = openai_client.chat.completions.create(
@@ -230,6 +291,7 @@ def complete_chat(
         "usage": usage_to_dict(usage),
         "guardrail_policy_name": guardrail_policy_name,
         "guardrail_results": foundry_response["extracted"]["guardrail_results"],
+        "routed_model": foundry_response["extracted"].get("model"),
         "foundry_request": redact_foundry_trace(foundry_request),
         "foundry_response": redact_foundry_trace(foundry_response),
     }
@@ -319,11 +381,30 @@ def stream_chat(
     )
     yield {"type": "foundry_request", "request": redact_foundry_trace(foundry_request)}
 
-    extra_headers = {"x-policy-id": guardrail_policy_name} if guardrail_policy_name else None
-    with create_openai_client(settings) as openai_client:
+    extra_headers = (
+        {"x-policy-id": guardrail_policy_name} if guardrail_policy_name else None
+    )
+    client_factory = _client_factory_for(model, api_surface)
+    with client_factory(settings) as openai_client:
         request = foundry_request["payload"]
         stream: Any
         if api_surface == "chat_completions":
+            if _is_router_model(model):
+                response = openai_client.chat.completions.create(
+                    **request,
+                    extra_headers=extra_headers,
+                )
+                content = response.choices[0].message.content if response.choices else ""
+                usage = getattr(response, "usage", None)
+                yield from _emulate_stream_from_response(
+                    api_surface=api_surface,
+                    response=response,
+                    content=content,
+                    usage=usage,
+                    started=started,
+                    guardrail_policy_name=guardrail_policy_name,
+                )
+                return
             stream = openai_client.chat.completions.create(
                 **request,
                 stream=True,
@@ -340,6 +421,22 @@ def stream_chat(
                     chunks.append(delta)
                     yield {"type": "delta", "delta": delta}
         elif api_surface == "responses":
+            if _is_router_model(model):
+                response = openai_client.responses.create(
+                    **request,
+                    extra_headers=extra_headers,
+                )
+                content = getattr(response, "output_text", "") or ""
+                usage = getattr(response, "usage", None)
+                yield from _emulate_stream_from_response(
+                    api_surface=api_surface,
+                    response=response,
+                    content=content,
+                    usage=usage,
+                    started=started,
+                    guardrail_policy_name=guardrail_policy_name,
+                )
+                return
             stream = openai_client.responses.create(
                 **request,
                 stream=True,
@@ -378,4 +475,5 @@ def stream_chat(
         "usage": usage_to_dict(usage),
         "guardrail_policy_name": guardrail_policy_name,
         "guardrail_results": foundry_response["extracted"]["guardrail_results"],
+        "routed_model": foundry_response["extracted"].get("model"),
     }

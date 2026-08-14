@@ -57,6 +57,10 @@ def get_model_settings(repository: ModelSettingsRepository, model: str) -> Model
     if inferred_modalities == ("image",) and settings.modalities == ("text",):
         settings = replace(settings, modalities=inferred_modalities)
         repository.save_settings(settings)
+    if _requires_chat_completions(normalized_model) and settings.api_surface == "responses":
+        settings = replace(settings, api_surface="chat_completions")
+    if _requires_responses(normalized_model) and settings.api_surface == "chat_completions":
+        settings = replace(settings, api_surface="responses")
     return settings
 
 
@@ -134,12 +138,32 @@ def _normalize_modalities(modalities: tuple[str, ...] | list[str]) -> tuple[str,
 
 
 def _default_api_surface(model: str) -> str:
-    return "chat_completions" if "kimi" in model.strip().lower() else "responses"
+    return "chat_completions" if _requires_chat_completions(model) else "responses"
+
+
+def _requires_chat_completions(model: str) -> bool:
+    normalized_model = model.strip().lower().replace("_", "-")
+    return (
+        "kimi" in normalized_model
+        or normalized_model.startswith(("mai-thinking", "mai-thinkin"))
+    )
+
+
+def _requires_responses(model: str) -> bool:
+    return model.strip().lower().replace("_", "-") == "model-router"
+
+
+def _is_image_model(model: str) -> bool:
+    normalized_model = model.strip().lower()
+    return any(
+        token in normalized_model
+        for token in ("dall-e", "gpt-image", "imagen", "mai-image", "vision", "flux")
+    )
 
 
 def _default_modalities(model: str) -> tuple[str, ...]:
     normalized_model = model.strip().lower()
-    if any(marker in normalized_model for marker in ("image", "dall-e", "flux")):
+    if _is_image_model(normalized_model):
         return ("image",)
     if any(marker in normalized_model for marker in ("audio", "realtime", "transcribe", "tts")):
         return ("voice",)

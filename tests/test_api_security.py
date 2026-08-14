@@ -76,6 +76,23 @@ def test_disabled_mode_ignores_spoofed_proxy_headers(monkeypatch):
     assert response.json() == {"authenticated": False, "entra_auth_enabled": False}
 
 
+def test_disabled_mode_overrides_configured_local_auth(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    for name in (
+        "ENTRA_LOCAL_CLIENT_ID",
+        "ENTRA_LOCAL_CLIENT_SECRET",
+        "ENTRA_LOCAL_TENANT_ID",
+        "ENTRA_LOCAL_SESSION_SECRET",
+        "ENTRA_LOCAL_REDIRECT_URI",
+    ):
+        monkeypatch.setenv(name, "x" * 32)
+
+    response = client.get("/api/auth/me")
+
+    assert response.status_code == 200
+    assert response.json() == {"authenticated": False, "entra_auth_enabled": False}
+
+
 def test_local_mode_does_not_trust_proxy_headers(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "local")
     for name in (

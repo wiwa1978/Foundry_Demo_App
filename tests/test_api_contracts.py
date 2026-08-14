@@ -3,6 +3,8 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.application.conversations import Conversation
+from app.infrastructure.persistence.registry import reset_repositories
+from app.infrastructure.persistence.sqlite import initialize_sqlite_store
 from app.main import app, create_app
 
 client = TestClient(app)
@@ -27,6 +29,40 @@ def test_auth_me_returns_public_unauthenticated_contract(monkeypatch):
         "authenticated": False,
         "entra_auth_enabled": False,
     }
+
+
+def test_admin_use_case_model_map_round_trips(monkeypatch, tmp_path):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    monkeypatch.setenv("PERSISTENCE_BACKEND", "sqlite")
+    monkeypatch.setenv("SQLITE_DATABASE_PATH", str(tmp_path / "model-map.sqlite3"))
+    reset_repositories()
+    initialize_sqlite_store()
+    test_client = TestClient(create_app())
+    payload = {
+        "use_case_model_map": {
+            "text_chat": "text_models",
+            "youtube_summary": {
+                "text": "text_models",
+                "transcription": "transcription_models",
+            },
+        }
+    }
+
+    put_response = test_client.put("/api/admin/use-case-model-map", json=payload)
+    get_response = test_client.get("/api/admin/use-case-model-map")
+
+    assert put_response.status_code == 200
+    assert get_response.status_code == 200
+    assert get_response.json()["use_case_model_map"]["text_chat"] == "text_models"
+    assert get_response.json()["use_case_model_map"]["youtube_summary"] == {
+        "text": "text_models",
+        "transcription": "transcription_models",
+    }
+    assert get_response.json()["use_case_model_map"]["comparison"] == "text_models"
+    assert get_response.json()["use_case_model_map"]["reasoning_comparison"] == "text_models"
+    assert get_response.json()["use_case_model_map"]["text_to_image"] == "image_models"
+    assert "image_models" in get_response.json()["bucket_names"]
+    assert "realtime_transcription_models" in get_response.json()["bucket_names"]
 
 
 @patch("app.application.conversations.ConversationService.list_page")
@@ -138,8 +174,8 @@ def test_every_json_operation_has_an_explicit_openapi_response_schema():
         if (path, method) not in excluded
     ]
 
-    assert len(operations) == 46
-    assert len(eligible) == 34
+    assert len(operations) == 53
+    assert len(eligible) == 41
     for path, method, operation in eligible:
         response = operation["responses"]["200"]
         assert response["content"]["application/json"]["schema"], (method, path)

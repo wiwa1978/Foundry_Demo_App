@@ -3,7 +3,9 @@ export type UseCaseId =
   | "agent_research"
   | "hosted_agent"
   | "document_qa"
+  | "content_extractor"
   | "comparison"
+  | "reasoning_comparison"
   | "browser_voice"
   | "traditional_voice"
   | "transcribe"
@@ -11,13 +13,16 @@ export type UseCaseId =
   | "realtime_voice"
   | "realtime_transcription_webrtc"
   | "realtime_transcription_websocket"
+  | "realtime_translation_webrtc"
   | "realtime_translation_websocket"
   | "voice_live"
   | "live_translation"
+  | "text_translation"
   | "text_to_image"
   | "image_to_image"
   | "image_comparison"
-  | "youtube_summary";
+  | "youtube_summary"
+  | "youtube_realtime_transcription";
 
 export type UseCaseIconName =
   | "chat"
@@ -31,6 +36,7 @@ export type UseCaseWorkspace =
   | "chat"
   | "agentResearch"
   | "hostedAgent"
+  | "contentExtractor"
   | "comparison"
   | "image"
   | "imageEdit"
@@ -39,12 +45,15 @@ export type UseCaseWorkspace =
   | "realtimeVoice"
   | "realtimeTranscriptionWebRtc"
   | "realtimeTranscriptionWebSocket"
+  | "realtimeTranslationWebRtc"
   | "realtimeTranslationWebSocket"
   | "voiceLive"
   | "liveTranslation"
+  | "textTranslation"
   | "transcribe"
   | "transcriptionComparison"
-  | "youtubeSummary";
+  | "youtubeSummary"
+  | "youtubeRealtimeTranscription";
 export type UseCaseModality = "text" | "image" | "audio" | "video";
 export type WorkspaceRenderer = "chat" | "agent" | "voice" | "image";
 export type UseCaseCategory = "media" | "agents";

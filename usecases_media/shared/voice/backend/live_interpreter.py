@@ -5,7 +5,6 @@ from urllib.parse import urlparse
 
 from app.application.use_case_settings import FoundryBinding
 from app.infrastructure.azure.credentials import get_azure_credential
-from app.infrastructure.azure.foundry.settings import FoundrySettings
 
 TARGET_LANGUAGE_PATTERN = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z]{2,8})?$")
 SUPPORTED_TARGET_LANGUAGES = {"ar", "de", "en", "es", "fr", "it", "ja", "ko", "nl", "pt", "zh-Hans"}
@@ -24,19 +23,34 @@ STANDARD_NEURAL_VOICES = {
 }
 
 
+def _language_family(language: str) -> str:
+    return language.strip().split("-", 1)[0].casefold()
+
+
+def _validate_speech_endpoint(speech_endpoint: str) -> str:
+    endpoint = speech_endpoint.strip().rstrip("/")
+    parsed = urlparse(endpoint)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("AZURE_SPEECH_ENDPOINT must be an absolute HTTPS endpoint.")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("AZURE_SPEECH_ENDPOINT must be a Speech resource root endpoint.")
+    if not parsed.netloc.lower().endswith(".cognitiveservices.azure.com"):
+        raise ValueError(
+            "AZURE_SPEECH_ENDPOINT must be an Azure Speech custom-domain endpoint."
+        )
+    return f"https://{parsed.netloc}"
+
+
 def build_live_interpreter_endpoint(speech_endpoint: str) -> str:
-    parsed = urlparse(speech_endpoint.strip())
-    if parsed.scheme not in {"http", "https", "ws", "wss"} or not parsed.netloc:
-        raise ValueError("AZURE_SPEECH_ENDPOINT must be an absolute resource endpoint.")
-    scheme = "wss" if parsed.scheme in {"https", "wss"} else "ws"
-    return f"{scheme}://{parsed.netloc}/stt/speech/universal/v2"
+    endpoint = _validate_speech_endpoint(speech_endpoint)
+    parsed = urlparse(endpoint)
+    return f"wss://{parsed.netloc}/stt/speech/universal/v2"
 
 
 class LiveInterpreterSession:
     def __init__(
         self,
         *,
-        settings: FoundrySettings,
         binding: FoundryBinding,
         mode: str,
         source_language: str,
@@ -49,22 +63,28 @@ class LiveInterpreterSession:
             or target_language not in SUPPORTED_TARGET_LANGUAGES
         ):
             raise ValueError("Select a supported target language.")
-        import azure.cognitiveservices.speech as speechsdk
-
         mode = mode.strip().lower()
         if mode not in {"standard", "personal"}:
             raise ValueError("Translation voice mode must be standard or personal.")
         if mode == "standard" and not source_language.strip():
             raise ValueError("Select a source language for standard translation.")
+        if (
+            mode == "standard"
+            and _language_family(source_language) == _language_family(target_language)
+        ):
+            raise ValueError("Select a target language different from the source language.")
+        import azure.cognitiveservices.speech as speechsdk
+
+        speech_endpoint = _validate_speech_endpoint(binding.speech_endpoint)
         endpoint = (
-            build_live_interpreter_endpoint(binding.speech_endpoint)
+            build_live_interpreter_endpoint(speech_endpoint)
             if mode == "personal"
-            else binding.speech_endpoint
+            else speech_endpoint
         )
-        if settings.speech_key:
+        if binding.speech_key:
             translation_config = speechsdk.translation.SpeechTranslationConfig(
                 endpoint=endpoint,
-                subscription=settings.speech_key,
+                subscription=binding.speech_key,
             )
         else:
             translation_config = speechsdk.translation.SpeechTranslationConfig(
@@ -80,6 +100,29 @@ class LiveInterpreterSession:
         translation_config.set_speech_synthesis_output_format(
             speechsdk.SpeechSynthesisOutputFormat.Raw16Khz16BitMonoPcm
         )
+
+        standard_synthesizer = None
+        if mode == "standard":
+            if binding.speech_key:
+                synthesis_config = speechsdk.SpeechConfig(
+                    endpoint=speech_endpoint,
+                    subscription=binding.speech_key,
+                )
+            else:
+                synthesis_config = speechsdk.SpeechConfig(
+                    endpoint=speech_endpoint,
+                    token_credential=get_azure_credential(),
+                )
+            synthesis_config.speech_synthesis_voice_name = STANDARD_NEURAL_VOICES[
+                target_language
+            ]
+            synthesis_config.set_speech_synthesis_output_format(
+                speechsdk.SpeechSynthesisOutputFormat.Raw16Khz16BitMonoPcm
+            )
+            standard_synthesizer = speechsdk.SpeechSynthesizer(
+                speech_config=synthesis_config,
+                audio_config=None,
+            )
 
         stream_format = speechsdk.audio.AudioStreamFormat(
             samples_per_second=16000,
@@ -101,11 +144,14 @@ class LiveInterpreterSession:
         self._loop = loop
         self._target_language = target_language
         self._mode = mode
+        self._standard_synthesizer = standard_synthesizer
         self.events: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(maxsize=256)
         self._closed = False
 
+        self._recognizer.recognizing.connect(self._recognizing)
         self._recognizer.recognized.connect(self._recognized)
-        self._recognizer.synthesizing.connect(self._synthesizing)
+        if mode == "personal":
+            self._recognizer.synthesizing.connect(self._synthesizing)
         self._recognizer.canceled.connect(self._canceled)
         self._recognizer.session_stopped.connect(
             lambda _evt: self._emit("json", {"type": "session_stopped"})
@@ -122,27 +168,66 @@ class LiveInterpreterSession:
 
         self._loop.call_soon_threadsafe(enqueue)
 
-    def _recognized(self, evt: Any) -> None:
-        result = evt.result
-        if result.reason != self._speechsdk.ResultReason.TranslatedSpeech:
-            return
-        translation = result.translations.get(self._target_language, "").strip()
-        if not translation:
-            return
+    def _translation_payload(
+        self, event_type: str, result: Any
+    ) -> dict[str, Any] | None:
+        translations = getattr(result, "translations", {})
+        translation = translations.get(self._target_language, "").strip()
+        source_text = (getattr(result, "text", "") or "").strip()
+        if not translation and not source_text:
+            return None
         detected_language = None
         if self._mode == "personal":
             detected_language = result.properties.get_property(
                 self._speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult,
                 "",
             )
+        return {
+            "type": event_type,
+            "text": translation or None,
+            "source_text": source_text or None,
+            "target_language": self._target_language,
+            "detected_language": detected_language or None,
+        }
+
+    def _recognizing(self, evt: Any) -> None:
+        result = evt.result
+        if result.reason != self._speechsdk.ResultReason.TranslatingSpeech:
+            return
+        payload = self._translation_payload("partial_translation", result)
+        if payload:
+            self._emit("json", payload)
+
+    def _recognized(self, evt: Any) -> None:
+        result = evt.result
+        if result.reason != self._speechsdk.ResultReason.TranslatedSpeech:
+            return
+        payload = self._translation_payload("translation", result)
+        if not payload:
+            return
+        self._emit("json", payload)
+        translation = payload.get("text")
+        if self._mode == "standard" and isinstance(translation, str):
+            self._synthesize_standard_translation(translation)
+
+    def _synthesize_standard_translation(self, text: str) -> None:
+        if not self._standard_synthesizer:
+            return
+        try:
+            result = self._standard_synthesizer.speak_text_async(text).get()
+        except Exception as exc:
+            self._emit(
+                "json",
+                {"type": "error", "error": f"Azure Speech synthesis failed: {exc}"},
+            )
+            return
+        audio = bytes(getattr(result, "audio_data", b"") or b"")
+        if audio:
+            self._emit("bytes", audio)
+            return
         self._emit(
             "json",
-            {
-                "type": "translation",
-                "text": translation,
-                "target_language": self._target_language,
-                "detected_language": detected_language or None,
-            },
+            {"type": "error", "error": "Azure Speech synthesis produced no audio."},
         )
 
     def _synthesizing(self, evt: Any) -> None:

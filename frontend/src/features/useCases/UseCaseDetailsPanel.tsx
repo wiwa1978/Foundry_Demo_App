@@ -44,9 +44,9 @@ export function UseCaseDetailsPanel({
             </h2>
             {useCase.typeLabel ? (
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                <Badge>{useCase.typeLabel}</Badge>
+                <Badge variant="outline">{useCase.typeLabel}</Badge>
                 {useCase.frameworkLabel ? (
-                  <Badge>{useCase.frameworkLabel}</Badge>
+                  <Badge variant="outline">{useCase.frameworkLabel}</Badge>
                 ) : null}
               </div>
             ) : null}

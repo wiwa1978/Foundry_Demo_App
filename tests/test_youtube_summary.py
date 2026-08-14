@@ -11,6 +11,7 @@ from usecases_media.youtube_summary.backend.service import (
     chunk_transcript,
     download_youtube_audio,
     extract_video_id,
+    fetch_audio_transcript,
     normalize_caption_text,
     summarize_youtube_video,
 )
@@ -175,6 +176,41 @@ def test_summary_falls_back_to_audio_transcription():
     assert result["source"] == "audio_transcription"
     assert result["transcription_model"] == "stt-model"
     assert result["foundry_requests"][0]["path"] == "/audio/transcriptions"
+
+
+def test_audio_fallback_uses_openai_transcription_for_gpt_transcribe():
+    with (
+        patch(
+            "usecases_media.youtube_summary.backend.service.download_youtube_audio",
+            return_value=b"m4a",
+        ),
+        patch(
+            "usecases_media.youtube_summary.backend.service.transcribe_audio",
+            return_value={
+                "text": "GPT transcript.",
+                "foundry_request": {"path": "/audio/transcriptions"},
+                "foundry_response": {"payload": {"text_characters": 15}},
+            },
+        ) as openai_transcribe,
+        patch(
+            "usecases_media.youtube_summary.backend.service.transcribe_speech_audio"
+        ) as speech_transcribe,
+    ):
+        captions, requests, responses = asyncio.run(
+            fetch_audio_transcript("dQw4w9WgXcQ", "en", "gpt-transcribe")
+        )
+
+    openai_transcribe.assert_called_once_with(
+        audio=b"m4a",
+        filename="youtube-audio.m4a",
+        content_type="audio/mp4",
+        model="gpt-transcribe",
+    )
+    speech_transcribe.assert_not_called()
+    assert captions.transcription_model == "gpt-transcribe"
+    assert captions.text == "GPT transcript."
+    assert requests == [{"path": "/audio/transcriptions"}]
+    assert responses == [{"payload": {"text_characters": 15}}]
 
 
 def test_summary_explains_missing_transcription_model_when_captions_fail():

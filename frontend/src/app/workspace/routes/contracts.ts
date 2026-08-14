@@ -1,9 +1,20 @@
+import type {
+  ContentExtractorMode,
+  ContentExtractorResult,
+} from "@media/content_extractor/frontend";
 import type { LiveTranslationMode } from "@media/live_translation/frontend";
 import type { TraditionalVoiceRequest } from "@media/stt_chat_tts/frontend";
 import type { YouTubeSummaryResult } from "@media/youtube_summary/frontend";
+import type { TextTranslationResult } from "@media/text_translation/frontend";
 import type { RefObject } from "react";
 
-import type { UseCaseResourceSettings } from "@/api/types";
+import type {
+  FetchClient,
+  ModelBucketName,
+  ModelRouterRoutingMode,
+  UseCaseModelMap,
+  UseCaseResourceSettings,
+} from "@/api/types";
 import type {
   UseCaseId,
   UseCaseWorkspace,
@@ -27,6 +38,11 @@ import type {
   TranscriptionResult,
   ViewMode,
 } from "@/app/workspace/contracts";
+import type { AdminDashboardTab } from "@/features/admin/AdminDashboardPage";
+import type {
+  ModelMetricSnapshot,
+  ModelUsageSummary,
+} from "@/features/admin/ModelMonitoringPage";
 import type {
   AgentResearchCitation,
   AgentResearchRunConfig,
@@ -49,9 +65,35 @@ export type WorkspaceContentRoute = {
 
 export type WorkspaceAccessViewModel = {
   locked: boolean;
+  loading: boolean;
   checking: boolean;
   canUseProtectedApis: boolean;
   onSignIn: () => void;
+};
+
+export type WorkspaceMonitoringViewModel = {
+  modelUsages: ModelUsageSummary[];
+  aggregateMetrics: ModelMetrics | null;
+  modelMetrics: ModelMetricSnapshot[];
+  days: number;
+  loading: boolean;
+  error: string;
+  setDays: (days: number) => void;
+  refresh: () => Promise<void>;
+};
+
+export type WorkspaceEvaluationAdminViewModel = {
+  fetchClient: FetchClient;
+  useCases: readonly { id: UseCaseId; title: string }[];
+  models: string[];
+  agents: string[];
+};
+
+export type WorkspaceAdminViewModel = {
+  activeTab: AdminDashboardTab;
+  onTabChange: (tab: AdminDashboardTab) => void;
+  evaluations: WorkspaceEvaluationAdminViewModel;
+  monitoring: WorkspaceMonitoringViewModel;
 };
 
 export type WorkspaceMetricsViewModel = {
@@ -77,10 +119,17 @@ export type WorkspaceAppSettingsViewModel = {
   liveTranslationSettingsLoading: boolean;
   liveTranslationSettingsSaving: boolean;
   liveTranslationSettingsMessage: string;
+  useCaseModelMap: UseCaseModelMap;
+  useCaseModelBucketNames: ModelBucketName[];
+  useCaseModelMapLoading: boolean;
+  useCaseModelMapSaving: boolean;
+  useCaseModelMapMessage: string;
   onNewModelChange: (value: string) => void;
   onAddModel: () => void;
   onOpenAdmin: () => void;
+  onOpenEvaluationsAdmin?: () => void;
   onSaveLiveTranslationSettings: (binding: string) => Promise<void>;
+  onSaveUseCaseModelMap: (mapping: UseCaseModelMap) => Promise<void>;
   onSaveCapabilities: (
     model: string,
     modalities: ModelModality[],
@@ -120,6 +169,7 @@ export type WorkspaceImagesViewModel = {
   result: ImageGenerationResult | null;
   generating: boolean;
   error: string;
+  saveToGallery: boolean;
   editSource: File | null;
   editResult: ImageGenerationResult | null;
   editGenerating: boolean;
@@ -130,6 +180,7 @@ export type WorkspaceImagesViewModel = {
   setPrompt: (prompt: string) => void;
   setSize: (size: string) => void;
   setEditSource: (source: File | null) => void;
+  setSaveToGallery: (save: boolean) => void;
   setModel: (model: string) => void;
   runGeneration: () => Promise<void>;
   runEdit: () => Promise<void>;
@@ -233,11 +284,15 @@ export type WorkspaceRealtimeTranslationViewModel = {
   configured: boolean;
   model: string;
   transcriptionModel: string;
+  models: string[];
+  sourceLanguage: string;
   status: RealtimeStatus;
   error: string;
   targetLanguage: string;
   sourceTranscript: string;
   translatedTranscript: string;
+  onModelChange: (value: string) => void;
+  onSourceLanguageChange: (value: string) => void;
   onTargetLanguageChange: (value: string) => void;
   onStart: () => void;
   onStop: () => void;
@@ -262,9 +317,13 @@ export type WorkspaceLiveTranslationViewModel = {
   sourceLanguage: string;
   targetLanguage: string;
   transcript: RealtimeTranscriptEntry[];
+  sourceTranscript: string;
+  translatedTranscript: string;
+  audioPlaybackEnabled: boolean;
   onModeChange: (mode: LiveTranslationMode) => void;
   onSourceLanguageChange: (language: string) => void;
   onTargetLanguageChange: (language: string) => void;
+  onAudioPlaybackEnabledChange: (enabled: boolean) => void;
   onStart: () => void;
   onStop: () => void;
 };
@@ -273,6 +332,7 @@ export type WorkspaceRealtimeViewModel = {
   session: WorkspaceRealtimeSessionViewModel;
   webRtcTranscription: WorkspaceRealtimeTranscriptionViewModel;
   webSocketTranscription: WorkspaceRealtimeTranscriptionViewModel;
+  webRtcTranslation: WorkspaceRealtimeTranslationViewModel;
   webSocketTranslation: WorkspaceRealtimeTranslationViewModel;
   voiceLive: WorkspaceVoiceLiveViewModel;
   liveTranslation: WorkspaceLiveTranslationViewModel;
@@ -301,6 +361,53 @@ export type WorkspaceYouTubeSummaryViewModel = {
   onSummarize: () => void;
 };
 
+export type WorkspaceContentExtractorViewModel = {
+  configured: boolean;
+  mode: ContentExtractorMode;
+  file: File | null;
+  result: ContentExtractorResult | null;
+  loading: boolean;
+  error: string;
+  fileInputRef: RefObject<HTMLInputElement>;
+  onModeChange: (mode: ContentExtractorMode) => void;
+  onFileChange: (file: File | null) => void;
+  onExtract: () => void;
+};
+
+export type WorkspaceTextTranslationViewModel = {
+  configured: boolean;
+  sourceText: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  result: TextTranslationResult | null;
+  loading: boolean;
+  error: string;
+  onSourceTextChange: (value: string) => void;
+  onSourceLanguageChange: (value: string) => void;
+  onTargetLanguageChange: (value: string) => void;
+  onTranslate: () => void;
+};
+
+export type WorkspaceYouTubeRealtimeTranscriptionViewModel = {
+  url: string;
+  model: string;
+  models: string[];
+  language: string;
+  delay: RealtimeTranscriptionDelay;
+  status: RealtimeStatus;
+  statusMessage: string;
+  error: string;
+  transcript: string;
+  videoId: string | null;
+  configured: boolean;
+  onUrlChange: (value: string) => void;
+  onModelChange: (value: string) => void;
+  onLanguageChange: (value: string) => void;
+  onDelayChange: (value: RealtimeTranscriptionDelay) => void;
+  onStart: () => void;
+  onStop: () => void;
+};
+
 export type WorkspaceChatViewModel = {
   activeModel: string;
   models: string[];
@@ -311,6 +418,13 @@ export type WorkspaceChatViewModel = {
   isListening: boolean;
   speechRecognitionSupported: boolean;
   reasoningEffort: ReasoningEffort;
+  modelRouterRouting: {
+    mode: ModelRouterRoutingMode;
+    loading: boolean;
+    saving: boolean;
+    error: string;
+    onChange: (mode: ModelRouterRoutingMode) => void;
+  } | null;
   onPromptChange: (value: string) => void;
   onSubmit: () => void;
   onDocumentSubmit: () => void;
@@ -357,6 +471,7 @@ export type WorkspaceHostedAgentViewModel = {
 export type WorkspaceContentRouterProps = {
   route: WorkspaceContentRoute;
   access: WorkspaceAccessViewModel;
+  admin: WorkspaceAdminViewModel;
   metrics: WorkspaceMetricsViewModel;
   settings: WorkspaceSettingsViewModel;
   images: WorkspaceImagesViewModel;
@@ -367,6 +482,9 @@ export type WorkspaceContentRouterProps = {
   realtime: WorkspaceRealtimeViewModel;
   guardrails: WorkspaceGuardrailsViewModel;
   youtubeSummary: WorkspaceYouTubeSummaryViewModel;
+  youtubeRealtimeTranscription: WorkspaceYouTubeRealtimeTranscriptionViewModel;
+  contentExtractor: WorkspaceContentExtractorViewModel;
+  textTranslation: WorkspaceTextTranslationViewModel;
   chat: WorkspaceChatViewModel;
   agentResearch: WorkspaceAgentResearchViewModel;
   hostedAgent: WorkspaceHostedAgentViewModel;

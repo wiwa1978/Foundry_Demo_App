@@ -1,8 +1,10 @@
 import { GitCompareArrows, HelpCircle, Settings } from "lucide-react";
 
+import { ApiUnavailableDialog } from "@/app/ApiUnavailableDialog";
 import { useCaseModules } from "@/app/useCaseRegistry";
 import { AdminDeploymentModal } from "@/app/workspace/AdminDeploymentModal";
 import { ApiTraceDrawer } from "@/app/workspace/ApiTraceDrawer";
+import type { ViewMode } from "@/app/workspace/contracts";
 import { ConversationHistoryPopover } from "@/app/workspace/ConversationHistoryPopover";
 import { formatModelName } from "@/app/workspace/formatters";
 import { WorkspaceContentRouter } from "@/app/workspace/WorkspaceContentRouter";
@@ -15,7 +17,13 @@ import { cn } from "@/lib/utils";
 
 import { useWorkspaceController } from "./useWorkspaceController";
 
+
+function isAdminView(view: ViewMode) {
+  return view === "evaluation-admin" || view === "admin-monitor";
+}
+
 export default function AppWorkspace() {
+
   const {
     activeView,
     setActiveView,
@@ -34,6 +42,9 @@ export default function AppWorkspace() {
     apiTrace,
     workspaceLocked,
     canUseProtectedApis,
+    apiUnavailable,
+    apiUnavailableReason,
+    retryApiConnection,
     config,
     realtime,
     traditionalVoice,
@@ -71,6 +82,8 @@ export default function AppWorkspace() {
     selectedTranscriptionModels,
     toggleTranscriptionModel,
     imageWorkspace,
+    contentExtractor,
+    contentExtractorFileInputRef,
     guardrailComparison,
     isRunning,
     traditionalTranscriptionModels,
@@ -97,7 +110,8 @@ export default function AppWorkspace() {
             setUseCaseMarketplaceOpen(true);
           },
           onOpenSettings: () => setActiveView("settings"),
-          onOpenMetrics: () => setActiveView("metrics"),
+          onOpenMetrics: () => setActiveView("admin-monitor"),
+          onOpenEvaluationsAdmin: () => setActiveView("evaluation-admin"),
         }}
         appearance={{
           theme: appearance.theme,
@@ -138,10 +152,12 @@ export default function AppWorkspace() {
       <div
         className={cn(
           "grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 p-4",
-          !workspaceLocked && "lg:grid-cols-[18rem_minmax(0,1fr)]",
+          !workspaceLocked &&
+            !isAdminView(activeView) &&
+            "lg:grid-cols-[18rem_minmax(0,1fr)]",
         )}
       >
-        {!workspaceLocked ? (
+        {!workspaceLocked && !isAdminView(activeView) ? (
           <WorkspaceSidebar
             workspace={{
               activeView,
@@ -189,6 +205,20 @@ export default function AppWorkspace() {
               inputRef: documentLibrary.inputRef,
               onUpload: documentLibrary.upload,
               onRemove: documentLibrary.remove,
+            }}
+            contentExtractor={{
+              configured: config?.is_content_extractor_configured ?? false,
+              mode: contentExtractor.mode,
+              file: contentExtractor.file,
+              loading: contentExtractor.loading,
+              error: contentExtractor.error,
+              samples: contentExtractor.samples,
+              samplesLoading: contentExtractor.samplesLoading,
+              sampleError: contentExtractor.sampleError,
+              inputRef: contentExtractorFileInputRef,
+              onModeChange: contentExtractor.setMode,
+              onFileChange: (file) => void contentExtractor.extractFile(file),
+              onSelectSample: (sample) => void contentExtractor.selectSample(sample),
             }}
             browserSpeech={{
               availableSpeechVoices,
@@ -239,20 +269,11 @@ export default function AppWorkspace() {
               onTtsModelChange: setTtsModel,
               onTtsVoiceChange: setTtsVoice,
             }}
-            liveTranslation={{
-              mode: liveTranslation.mode,
-              sourceLanguage: liveTranslation.sourceLanguage,
-              targetLanguage: liveTranslation.targetLanguage,
-              active: liveTranslation.status !== "idle",
-              onModeChange: liveTranslation.setMode,
-              onSourceLanguageChange: liveTranslation.setSourceLanguage,
-              onTargetLanguageChange: liveTranslation.setTargetLanguage,
-            }}
           />
         ) : null}
 
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white shadow-sm dark:border-[#55555a] dark:bg-[#39393d]">
-          {!workspaceLocked ? (
+          {!workspaceLocked && !isAdminView(activeView) && activeUseCaseDetails.workspace !== "contentExtractor" ? (
             <div className="flex items-center justify-between border-b px-5 py-4 dark:border-[#55555a]">
               <div>
                 <h2 className="palette-heading font-semibold">
@@ -321,7 +342,12 @@ export default function AppWorkspace() {
                 </p>
               </div>
               <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-                {activeView !== "model-settings" ? (
+                {activeView !== "model-settings" &&
+                activeUseCaseDetails.workspace !==
+                  "realtimeTranslationWebRtc" &&
+                activeUseCaseDetails.workspace !==
+                  "realtimeTranslationWebSocket" &&
+                activeUseCaseDetails.workspace !== "liveTranslation" ? (
                   <button
                     type="button"
                     onClick={() =>
@@ -366,6 +392,12 @@ export default function AppWorkspace() {
           <WorkspaceContentRouter {...contentRouterProps} />
         </section>
       </div>
+      {apiUnavailable ? (
+        <ApiUnavailableDialog
+          reason={apiUnavailableReason}
+          onRetry={retryApiConnection}
+        />
+      ) : null}
 
       {adminDeployment.isOpen ? (
         <AdminDeploymentModal

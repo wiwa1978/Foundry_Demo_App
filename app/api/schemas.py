@@ -85,6 +85,9 @@ class ImageGenerationRequest(InternalRequestModel):
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_LENGTH)
     width: Annotated[int, Field(ge=768)] = 1024
     height: Annotated[int, Field(ge=768)] = 1024
+    conversation_id: str | None = Field(default=None, max_length=128)
+    use_case: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{0,49}$")
+    save_to_gallery: bool = False
 
     @field_validator("model", "prompt")
     @classmethod
@@ -119,14 +122,30 @@ class RealtimeSessionRequest(InternalRequestModel):
 
 
 class RealtimeTranscriptionSessionRequest(InternalRequestModel):
+    model: str | None = Field(default=None, max_length=MAX_MODEL_NAME_LENGTH)
     language: str | None = Field(default=None, max_length=2)
     delay: str | None = Field(default=None, max_length=10)
     turn_detection: str = Field(default="server_vad", max_length=20)
 
-    @field_validator("language", "delay", "turn_detection")
+    @field_validator("model", "language", "delay", "turn_detection")
     @classmethod
     def trim_transcription_options(cls, value: str | None) -> str | None:
         if value is None:
             return None
         value = value.strip().lower()
+        return value or None
+
+
+class RealtimeTranslationSessionRequest(InternalRequestModel):
+    model: str | None = Field(default=None, max_length=MAX_MODEL_NAME_LENGTH)
+    source_language: str | None = Field(default=None, max_length=2)
+    target_language: str | None = Field(default="fr", max_length=2)
+    transcription_model: str | None = Field(default=None, max_length=MAX_MODEL_NAME_LENGTH)
+
+    @field_validator("model", "source_language", "target_language", "transcription_model")
+    @classmethod
+    def trim_translation_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
         return value or None

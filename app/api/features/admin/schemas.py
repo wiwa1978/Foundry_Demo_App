@@ -2,7 +2,12 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.api.features.models.schemas import ModelSettingsRequest, ModelSettingsResponse
+from app.api.features.models.schemas import (
+    ModelBucketName,
+    ModelSettingsRequest,
+    ModelSettingsResponse,
+    UseCaseModelMap,
+)
 
 
 class AdminDeploymentRequest(BaseModel):
@@ -74,6 +79,17 @@ class AdminDeploymentResponse(BaseModel):
     settings: ModelSettingsResponse
 
 
+ModelRouterRoutingMode = Literal["balanced", "quality", "cost"]
+
+
+class ModelRouterRoutingRequest(BaseModel):
+    mode: ModelRouterRoutingMode
+
+
+class ModelRouterRoutingResponse(BaseModel):
+    deployment_name: str
+    mode: ModelRouterRoutingMode
+
 class UseCaseResourceSettingsRequest(BaseModel):
     binding: str
 
@@ -90,3 +106,12 @@ class UseCaseResourceSettingsResponse(BaseModel):
     use_case: str
     binding: str
     available_bindings: list[str]
+
+
+class UseCaseModelMapRequest(BaseModel):
+    use_case_model_map: UseCaseModelMap
+
+
+class UseCaseModelMapResponse(BaseModel):
+    use_case_model_map: UseCaseModelMap
+    bucket_names: list[ModelBucketName]

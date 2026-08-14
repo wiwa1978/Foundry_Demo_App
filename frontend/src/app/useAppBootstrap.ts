@@ -5,18 +5,22 @@ import { loadConfig } from "@/api/config";
 import type { AuthResponse, ConfigResponse, FetchClient } from "@/api/types";
 import type { ViewMode } from "@/app/workspace/contracts";
 
+const apiUnavailableRetryMs = 3_000;
+
 type BootstrapState =
   | {
       fetchClient: FetchClient;
       ready: false;
       config: null;
       auth: null;
+      apiUnavailableReason: null;
     }
   | {
       fetchClient: FetchClient;
       ready: true;
       config: ConfigResponse;
       auth: AuthResponse;
+      apiUnavailableReason: string | null;
     };
 
 function configFailure(error: unknown): ConfigResponse {
@@ -45,11 +49,19 @@ function configFailure(error: unknown): ConfigResponse {
     voice_live_model: null,
     voice_live_voice: null,
     is_live_interpreter_configured: false,
+    is_text_translation_configured: false,
+    is_content_extractor_configured: false,
   };
 }
 
 function authFailure(): AuthResponse {
   return { authenticated: false, entra_auth_enabled: false };
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : "Failed to load configuration.";
 }
 
 export function useAppBootstrap(fetchClient: FetchClient) {
@@ -58,7 +70,9 @@ export function useAppBootstrap(fetchClient: FetchClient) {
     ready: false,
     config: null,
     auth: null,
+    apiUnavailableReason: null,
   });
+  const [retryNonce, setRetryNonce] = useState(0);
   const generationRef = useRef(0);
 
   useEffect(() => {
@@ -66,30 +80,83 @@ export function useAppBootstrap(fetchClient: FetchClient) {
     generationRef.current += 1;
     const generation = generationRef.current;
 
-    void Promise.all([
-      loadConfig(fetchClient, controller.signal).catch(configFailure),
-      loadCurrentUser(fetchClient, controller.signal).catch(authFailure),
-    ]).then(([config, auth]) => {
-      if (controller.signal.aborted || generation !== generationRef.current) {
-        return;
-      }
-      setState({ fetchClient, ready: true, config, auth });
-    });
+    void loadConfig(fetchClient, controller.signal)
+      .then(async (config) => {
+        if (controller.signal.aborted || generation !== generationRef.current) {
+          return;
+        }
+        if (!config.entra_auth_enabled) {
+          setState({
+            fetchClient,
+            ready: true,
+            config,
+            auth: authFailure(),
+            apiUnavailableReason: null,
+          });
+          return;
+        }
+        const auth = await loadCurrentUser(
+          fetchClient,
+          controller.signal,
+        ).catch(authFailure);
+        if (controller.signal.aborted || generation !== generationRef.current) {
+          return;
+        }
+        setState({
+          fetchClient,
+          ready: true,
+          config,
+          auth,
+          apiUnavailableReason: null,
+        });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || generation !== generationRef.current) {
+          return;
+        }
+        const reason = errorMessage(error);
+        setState({
+          fetchClient,
+          ready: true,
+          config: configFailure(new Error(reason)),
+          auth: authFailure(),
+          apiUnavailableReason: reason,
+        });
+      });
 
     return () => controller.abort();
-  }, [fetchClient]);
+  }, [fetchClient, retryNonce]);
+
+  useEffect(() => {
+    if (!state.ready || state.apiUnavailableReason === null) {
+      return;
+    }
+    const retryTimer = window.setInterval(
+      () => setRetryNonce((current) => current + 1),
+      apiUnavailableRetryMs,
+    );
+    return () => window.clearInterval(retryTimer);
+  }, [state.ready, state.apiUnavailableReason]);
+
+  const retryApiConnection = useCallback(() => {
+    setRetryNonce((current) => current + 1);
+  }, []);
 
   const snapshot =
     state.fetchClient === fetchClient && state.ready ? state : null;
   const config = snapshot?.config ?? null;
   const auth = snapshot?.auth ?? null;
+  const apiUnavailableReason = snapshot?.apiUnavailableReason ?? null;
+  const apiUnavailable = apiUnavailableReason !== null;
   const entraAuthEnabled = config?.entra_auth_enabled ?? false;
   const canUseProtectedApis =
     snapshot !== null &&
+    !apiUnavailable &&
     (!entraAuthEnabled || snapshot.auth.authenticated === true);
   const authGateActive =
-    snapshot === null ||
-    (entraAuthEnabled && snapshot.auth.authenticated !== true);
+    !apiUnavailable &&
+    (snapshot === null ||
+      (entraAuthEnabled && snapshot.auth.authenticated !== true));
   const workspaceLocked = useCallback(
     (activeView: ViewMode) => authGateActive && activeView !== "settings",
     [authGateActive],
@@ -101,6 +168,9 @@ export function useAppBootstrap(fetchClient: FetchClient) {
     entraAuthEnabled,
     canUseProtectedApis,
     authGateActive,
+    apiUnavailable,
+    apiUnavailableReason,
     workspaceLocked,
+    retryApiConnection,
   };
 }

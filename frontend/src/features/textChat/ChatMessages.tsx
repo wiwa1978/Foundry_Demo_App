@@ -11,6 +11,7 @@ import { useState } from "react";
 import {
   formatGuardrailLabel,
   formatMessageDateTime,
+  formatModelName,
   formatUsage,
 } from "@/app/workspace/formatters";
 import { formatApiSurface } from "@/app/workspace/traceUtils";
@@ -19,6 +20,13 @@ import { Badge } from "@/components/ui/badge";
 import type { ChatMessage } from "@/features/textChat/types";
 import { cn } from "@/lib/utils";
 
+
+function routedModelLabel(message: ChatMessage) {
+  if (!message.routed_model || message.routed_model === message.model) {
+    return null;
+  }
+  return `Answered by ${formatModelName(message.routed_model)}`;
+}
 export function ChatMessageHistory({ messages }: { messages: ChatMessage[] }) {
   const turns = groupComparisonTurns(messages);
   return (
@@ -109,6 +117,9 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
             <Badge variant="secondary">
               {formatApiSurface(message.api_surface)}
             </Badge>
+          ) : null}
+          {!isUser && routedModelLabel(message) ? (
+            <Badge variant="outline">{routedModelLabel(message)}</Badge>
           ) : null}
           {!isUser && message.guardrail_variant ? (
             <Badge variant="outline">{formatGuardrailLabel(message)}</Badge>
@@ -205,6 +216,9 @@ export function ComparisonModelResponse({ message }: { message: ChatMessage }) {
           <Badge variant="secondary">
             {formatApiSurface(message.api_surface)}
           </Badge>
+        ) : null}
+        {routedModelLabel(message) ? (
+          <Badge variant="outline">{routedModelLabel(message)}</Badge>
         ) : null}
         {message.guardrail_variant ? (
           <Badge variant="outline">{formatGuardrailLabel(message)}</Badge>

@@ -31,13 +31,17 @@ type Resources = {
 export function useRealtimeTranscription({
   fetchClient,
   transport,
+  models = [],
+  defaultModel = "gpt-realtime-whisper",
 }: {
   fetchClient: FetchClient;
   transport: RealtimeTranscriptionTransport;
+  models?: string[];
+  defaultModel?: string;
 }) {
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [error, setError] = useState("");
-  const [model, setModel] = useState("gpt-realtime-whisper");
+  const [model, setModel] = useState(defaultModel);
   const [transcript, setTranscript] = useState("");
   const [language, setLanguage] = useState("auto");
   const [delay, setDelay] = useState<RealtimeTranscriptionDelay>("default");
@@ -170,6 +174,7 @@ export function useRealtimeTranscription({
     const session = await createRealtimeTranscriptionSession(
       fetchClient,
       {
+        model,
         language: language === "auto" ? null : language,
         delay: delay === "default" ? null : delay,
         turn_detection: turnDetection,
@@ -237,6 +242,7 @@ export function useRealtimeTranscription({
     resources.mediaStream = mediaStream;
     const socket = new WebSocket(
       realtimeTranscriptionWebSocketUrl({
+        model,
         language: language === "auto" ? null : language,
         delay: delay === "default" ? null : delay,
         turnDetection,
@@ -345,6 +351,12 @@ export function useRealtimeTranscription({
   }
 
   useEffect(() => {
+    setModel((current) =>
+      models.includes(current) ? current : (models[0] ?? defaultModel),
+    );
+  }, [defaultModel, models]);
+
+  useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
@@ -359,6 +371,7 @@ export function useRealtimeTranscription({
     model,
     setDelay,
     setLanguage,
+    setModel,
     setTurnDetection,
     start,
     status,

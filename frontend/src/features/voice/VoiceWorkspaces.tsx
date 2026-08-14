@@ -10,6 +10,8 @@ import {
 import { type RefObject, useEffect, useRef, useState } from "react";
 
 import {
+  gptRealtimeTranslationLanguages,
+  gptRealtimeTranslationSourceLanguages,
   liveTranslationLanguages,
   liveTranslationSourceLanguages,
 } from "@/app/workspace/constants";
@@ -1082,8 +1084,8 @@ export function RealtimeTranscriptionHero({
         </div>
         {!configured ? (
           <p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">
-            Configure FOUNDRY_REALTIME_ENDPOINT and the existing
-            gpt-realtime-whisper deployment.
+            Configure FOUNDRY_REALTIME_ENDPOINT and at least one existing
+            realtime transcription deployment.
           </p>
         ) : null}
         {error ? (
@@ -1099,16 +1101,19 @@ export function RealtimeTranscriptionHero({
     </div>
   );
 }
-
-export function RealtimeTranslationHero({
+export function GptRealtimeTranslationWorkspace({
   configured,
   model,
   transcriptionModel,
+  models,
+  sourceLanguage,
   status,
   error,
   targetLanguage,
   sourceTranscript,
   translatedTranscript,
+  onModelChange,
+  onSourceLanguageChange,
   onTargetLanguageChange,
   onStart,
   onStop,
@@ -1116,61 +1121,138 @@ export function RealtimeTranslationHero({
   configured: boolean;
   model: string;
   transcriptionModel: string;
+  models: string[];
+  sourceLanguage: string;
   status: RealtimeStatus;
   error: string;
   targetLanguage: string;
   sourceTranscript: string;
   translatedTranscript: string;
+  onModelChange: (value: string) => void;
+  onSourceLanguageChange: (value: string) => void;
   onTargetLanguageChange: (value: string) => void;
   onStart: () => void;
   onStop: () => void;
 }) {
+  const sourceLanguageName =
+    gptRealtimeTranslationSourceLanguages.find(
+      ([code]) => code === sourceLanguage,
+    )?.[1] ?? sourceLanguage;
+
   const isActive = status !== "idle";
+  const hasOutput = Boolean(sourceTranscript || translatedTranscript);
   return (
-    <div className="w-full overflow-hidden rounded-3xl border border-fuchsia-200 bg-gradient-to-br from-white via-fuchsia-50/60 to-indigo-50 p-6 shadow-sm dark:border-fuchsia-500/30 dark:from-[#39393d] dark:via-fuchsia-950/20 dark:to-indigo-950/20">
-      <div className="text-center">
-        <DictationHero active={isActive} />
-        <div className="flex flex-wrap justify-center gap-2">
-          <Badge>{model}</Badge>
-          <Badge variant="outline">{transcriptionModel}</Badge>
-          <Badge variant="outline">WebSockets</Badge>
-          <Badge variant="outline">Translated audio</Badge>
-        </div>
-        <h3 className="mt-4 text-2xl font-semibold tracking-tight">
-          Realtime speech translation
-        </h3>
-        <p className="mx-auto mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-          <span className="font-medium">{model}</span> translates the continuous
-          stream while <span className="font-medium">{transcriptionModel}</span>
-          provides the source transcript. Use headphones to avoid microphone
-          feedback from translated speech.
-        </p>
-        <div className="mx-auto mt-5 max-w-xs text-left">
-          <label className="grid gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-            Target language
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex-1 overflow-auto p-5">
+        {hasOutput ? (
+          <div className="mx-auto grid max-w-5xl gap-4 md:grid-cols-2">
+            <div className="min-h-64 rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm dark:border-[#606066] dark:bg-[#45454a]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                  Original spoken words
+                </span>
+                <Badge variant="outline">{sourceLanguageName}</Badge>
+              </div>
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
+                {sourceTranscript || "Listening for source speech..."}
+              </p>
+            </div>
+            <div className="min-h-64 rounded-2xl border border-fuchsia-200 bg-white p-5 shadow-sm dark:border-fuchsia-500/40 dark:bg-[#39393d]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700 dark:text-fuchsia-300">
+                  GPT translation
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!translatedTranscript}
+                  onClick={() =>
+                    void navigator.clipboard.writeText(translatedTranscript)
+                  }
+                >
+                  <Copy className="h-4 w-4" /> Copy
+                </Button>
+              </div>
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
+                {translatedTranscript ||
+                  "Waiting for translated text and audio..."}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <div className="max-w-xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
+              <DictationHero active={isActive} />
+              <div className="flex flex-wrap justify-center gap-2">
+                <Badge>Foundry Realtime API</Badge>
+                <Badge variant="outline">{formatModelName(model)}</Badge>
+              </div>
+              <h3 className="mt-3 text-2xl font-semibold tracking-tight">
+                GPT Realtime Translation
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                Streams 24 kHz microphone PCM to the dedicated realtime
+                translation endpoint, returning translated text and speech as
+                the speaker talks.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t bg-slate-50 px-4 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
+        <div className="palette-focus mx-auto flex max-w-5xl flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_4px_rgba(15,23,42,0.16)] dark:border-[#606066] dark:bg-[#2f2f33] dark:shadow-none sm:flex-row sm:items-end">
+          <Label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Translation model
+            <select
+              value={model}
+              onChange={(event) => onModelChange(event.target.value)}
+              disabled={isActive}
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+            >
+              {models.map((option) => (
+                <option key={option} value={option}>
+                  {formatModelName(option)}
+                </option>
+              ))}
+            </select>
+          </Label>
+          <Label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Translate from
+            <select
+              value={sourceLanguage}
+              onChange={(event) => onSourceLanguageChange(event.target.value)}
+              disabled={isActive}
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+            >
+              {gptRealtimeTranslationSourceLanguages.map(([code, name]) => (
+                <option key={code} value={code}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </Label>
+          <Label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Translate to
             <select
               value={targetLanguage}
-              disabled={isActive}
               onChange={(event) => onTargetLanguageChange(event.target.value)}
-              className="h-10 rounded-lg border bg-white px-3 text-sm dark:border-[#606066] dark:bg-[#29292c]"
+              disabled={isActive}
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
             >
-              <option value="nl">Dutch</option>
-              <option value="en">English</option>
-              <option value="fr">French</option>
-              <option value="de">German</option>
-              <option value="es">Spanish</option>
-              <option value="it">Italian</option>
-              <option value="pt">Portuguese</option>
+              {gptRealtimeTranslationLanguages.map(([code, name]) => (
+                <option key={code} value={code}>
+                  {name}
+                </option>
+              ))}
             </select>
-          </label>
-        </div>
-        <div className="mt-5 flex justify-center">
+          </Label>
           <Button
             type="button"
             onClick={isActive ? onStop : onStart}
             disabled={!configured && !isActive}
             variant={isActive ? "destructive" : "default"}
-            className="rounded-full px-5"
           >
             {isActive ? (
               <MicOff className="h-4 w-4" />
@@ -1187,34 +1269,25 @@ export function RealtimeTranslationHero({
           </Button>
         </div>
         {!configured ? (
-          <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
-            Configure the existing gpt-realtime-translate and
-            gpt-realtime-whisper deployments.
+          <p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">
+            Configure FOUNDRY_REALTIME_ENDPOINT and
+            FOUNDRY_REALTIME_TRANSLATION_MODEL. Set
+            FOUNDRY_REALTIME_TRANSCRIPTION_MODEL only for source captions.
           </p>
         ) : null}
         {error ? (
-          <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
+          <p className="mx-auto mt-2 max-w-5xl rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
             {error}
           </p>
         ) : null}
-      </div>
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <div className="min-h-48 rounded-2xl border bg-white/80 p-5 dark:border-[#606066] dark:bg-[#29292c]/80">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Source transcript
-          </p>
-          <p className="mt-4 whitespace-pre-wrap text-lg leading-8">
-            {sourceTranscript || "Waiting for source speech..."}
-          </p>
-        </div>
-        <div className="min-h-48 rounded-2xl border border-fuchsia-100 bg-white/80 p-5 dark:border-fuchsia-900/50 dark:bg-[#29292c]/80">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-700 dark:text-fuchsia-300">
-            Translation
-          </p>
-          <p className="mt-4 whitespace-pre-wrap text-lg leading-8">
-            {translatedTranscript || "Waiting for translated text and audio..."}
-          </p>
-        </div>
+        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+          Uses the backend-mediated WebSocket transport, not browser WebRTC ·{" "}
+          {formatModelName(model)}
+          {transcriptionModel
+            ? ` with ${formatModelName(transcriptionModel)} source transcription`
+            : " without source transcription"}
+          . Use headphones to avoid feedback.
+        </p>
       </div>
     </div>
   );
@@ -1328,7 +1401,7 @@ export function VoiceLiveHero({
   );
 }
 
-export function LiveTranslationHero({
+export function AzureSpeechLiveTranslationWorkspace({
   configured,
   status,
   error,
@@ -1336,9 +1409,13 @@ export function LiveTranslationHero({
   sourceLanguage,
   targetLanguage,
   transcript,
+  sourceTranscript,
+  translatedTranscript,
+  audioPlaybackEnabled,
   onModeChange,
   onSourceLanguageChange,
   onTargetLanguageChange,
+  onAudioPlaybackEnabledChange,
   onStart,
   onStop,
 }: {
@@ -1349,159 +1426,208 @@ export function LiveTranslationHero({
   sourceLanguage: string;
   targetLanguage: string;
   transcript: RealtimeTranscriptEntry[];
+  sourceTranscript: string;
+  translatedTranscript: string;
+  audioPlaybackEnabled: boolean;
   onModeChange: (mode: LiveTranslationMode) => void;
   onSourceLanguageChange: (language: string) => void;
   onTargetLanguageChange: (language: string) => void;
+  onAudioPlaybackEnabledChange: (enabled: boolean) => void;
   onStart: () => void;
   onStop: () => void;
 }) {
   const isActive = status !== "idle";
+  const sourcePanelText =
+    sourceTranscript ||
+    transcript
+      .filter((entry) => entry.source === "user")
+      .map((entry) => entry.text)
+      .join("\n");
+  const translatedPanelText =
+    translatedTranscript ||
+    transcript
+      .filter((entry) => entry.source === "assistant")
+      .map((entry) => entry.text)
+      .join("\n");
+  const hasOutput = isActive || Boolean(sourcePanelText || translatedPanelText);
   return (
-    <div className="w-full overflow-hidden rounded-3xl border border-cyan-200 bg-gradient-to-br from-white via-cyan-50/70 to-emerald-50 p-6 text-center shadow-sm dark:border-cyan-500/30 dark:from-[#39393d] dark:via-cyan-950/20 dark:to-emerald-950/20">
-      <DictationHero active={isActive} />
-      <div className="flex flex-wrap justify-center gap-2">
-        <Badge>Speech translation</Badge>
-        <Badge variant="outline">
-          {mode === "standard" ? "Standard neural voice" : "Personal Voice"}
-        </Badge>
-      </div>
-      <h3 className="mt-4 text-2xl font-semibold tracking-tight">
-        One room, many languages
-      </h3>
-      <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-        {mode === "standard"
-          ? "Translate a selected source language into text and a standard Azure neural voice in real time."
-          : "Automatically detect changing source languages and preserve the speaker's style and tone with Live Interpreter."}
-      </p>
-      <div className="mx-auto mt-5 grid max-w-xl gap-4 text-left sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <Label htmlFor="live-translation-mode">Voice mode</Label>
-          <Select
-            value={mode}
-            onValueChange={(value) =>
-              onModeChange(value as LiveTranslationMode)
-            }
-            disabled={isActive}
-          >
-            <SelectTrigger
-              id="live-translation-mode"
-              className="mt-2 bg-white/80 dark:bg-[#29292c]"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="standard">Standard neural voice</SelectItem>
-              <SelectItem value="personal">
-                Personal Voice (Live Interpreter)
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {mode === "standard" ? (
-          <div>
-            <Label htmlFor="live-translation-source">Speak in</Label>
-            <Select
-              value={sourceLanguage}
-              onValueChange={onSourceLanguageChange}
-              disabled={isActive}
-            >
-              <SelectTrigger
-                id="live-translation-source"
-                className="mt-2 bg-white/80 dark:bg-[#29292c]"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {liveTranslationSourceLanguages.map(([code, name]) => (
-                  <SelectItem key={code} value={code}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ) : null}
-        <div className={mode === "personal" ? "sm:col-span-2" : ""}>
-          <Label htmlFor="live-translation-target">Translate everyone to</Label>
-          <Select
-            value={targetLanguage}
-            onValueChange={onTargetLanguageChange}
-            disabled={isActive}
-          >
-            <SelectTrigger
-              id="live-translation-target"
-              className="mt-2 bg-white/80 dark:bg-[#29292c]"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {liveTranslationLanguages.map(([code, name]) => (
-                <SelectItem key={code} value={code}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="mt-5 flex justify-center">
-        <Button
-          type="button"
-          onClick={isActive ? onStop : onStart}
-          disabled={!configured && !isActive}
-          variant={isActive ? "destructive" : "default"}
-          className="rounded-full px-5"
-        >
-          {isActive ? (
-            <MicOff className="h-4 w-4" />
-          ) : (
-            <Mic className="h-4 w-4" />
-          )}
-          {status === "connecting"
-            ? "Connecting..."
-            : status === "live"
-              ? "Stop interpreting"
-              : "Start interpreting"}
-        </Button>
-      </div>
-      {!configured ? (
-        <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
-          Map this use case to a configured Foundry binding.
-        </p>
-      ) : null}
-      {error ? (
-        <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
-          {error}
-        </p>
-      ) : null}
-      {status === "live" && !transcript.length ? (
-        <p
-          className="mt-4 text-sm text-slate-600 dark:text-slate-300"
-          role="status"
-        >
-          Listening... Speak a complete phrase. Its translation will appear here
-          and play through your speakers.
-        </p>
-      ) : null}
-      {transcript.length ? (
-        <div className="mt-5 grid gap-2 text-left">
-          {transcript.map((entry) => (
-            <div
-              key={entry.id}
-              className="mr-auto max-w-[90%] rounded-2xl border bg-white/80 px-3 py-2 text-sm leading-5 dark:border-[#606066] dark:bg-[#29292c]"
-            >
-              {entry.text}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex-1 overflow-auto p-5">
+        {hasOutput ? (
+          <div className="mx-auto grid max-w-5xl gap-4 md:grid-cols-2">
+            <div className="min-h-64 rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm dark:border-[#606066] dark:bg-[#45454a]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                  ORIGINAL RAW TRANSCRIPT
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">
+                    {mode === "standard" ? sourceLanguage : "Auto-detected"}
+                  </Badge>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={audioPlaybackEnabled}
+                    onClick={() => onAudioPlaybackEnabledChange(!audioPlaybackEnabled)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      audioPlaybackEnabled
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200"
+                        : "border-slate-200 bg-white text-slate-500 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-300",
+                    )}
+                  >
+                    Audio playback {audioPlaybackEnabled ? "On" : "Off"}
+                  </button>
+                </div>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-300">
+                Microphone speech streams to Azure Speech as 16 kHz PCM.
+              </p>
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
+                {sourcePanelText || "Listening for original speech..."}
+              </p>
             </div>
-          ))}
+            <div className="min-h-64 rounded-2xl border border-fuchsia-200 bg-white p-5 shadow-sm dark:border-fuchsia-500/40 dark:bg-[#39393d]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700 dark:text-fuchsia-300">
+                  Translated voice, audio, and text
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!translatedPanelText}
+                  onClick={() =>
+                    void navigator.clipboard.writeText(translatedPanelText)
+                  }
+                >
+                  <Copy className="h-4 w-4" /> Copy
+                </Button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge variant="outline">{targetLanguage}</Badge>
+                <Badge variant="outline">
+                  {mode === "standard"
+                    ? "Standard neural voice"
+                    : "Personal Voice"}
+                </Badge>
+              </div>
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
+                {translatedPanelText ||
+                  "Waiting for translated speech and audio..."}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <div className="max-w-xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
+              <DictationHero active={isActive} />
+              <div className="flex flex-wrap justify-center gap-2">
+                <Badge>Azure Speech</Badge>
+                <Badge variant="outline">
+                  {mode === "standard" ? "Speech SDK" : "Live Interpreter"}
+                </Badge>
+              </div>
+              <h3 className="mt-3 text-2xl font-semibold tracking-tight">
+                Azure Speech Live Translation
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                {mode === "standard"
+                  ? "Streams 16 kHz PCM to Azure Speech translation with an explicit source locale and a standard neural target voice."
+                  : "Streams 16 kHz PCM to Live Interpreter with source-language auto-detection and Personal Voice synthesis when the resource is approved."}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t bg-slate-50 px-4 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
+        <div className="palette-focus mx-auto flex max-w-5xl flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_4px_rgba(15,23,42,0.16)] dark:border-[#606066] dark:bg-[#2f2f33] dark:shadow-none lg:flex-row lg:items-end">
+          <Label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Voice mode
+            <select
+              value={mode}
+              onChange={(event) =>
+                onModeChange(event.target.value as LiveTranslationMode)
+              }
+              disabled={isActive}
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+            >
+              <option value="standard">Standard neural voice</option>
+              <option value="personal">
+                Personal Voice (Live Interpreter)
+              </option>
+            </select>
+          </Label>
+          {mode === "standard" ? (
+            <Label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+              Translate from
+              <select
+                value={sourceLanguage}
+                onChange={(event) => onSourceLanguageChange(event.target.value)}
+                disabled={isActive}
+                className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+              >
+                {liveTranslationSourceLanguages.map(([code, name]) => (
+                  <option key={code} value={code}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </Label>
+          ) : null}
+          <Label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Translate to
+            <select
+              value={targetLanguage}
+              onChange={(event) => onTargetLanguageChange(event.target.value)}
+              disabled={isActive}
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+            >
+              {liveTranslationLanguages.map(([code, name]) => (
+                <option key={code} value={code}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </Label>
+          <Button
+            type="button"
+            onClick={isActive ? onStop : onStart}
+            disabled={!configured && !isActive}
+            variant={isActive ? "destructive" : "default"}
+          >
+            {isActive ? (
+              <MicOff className="h-4 w-4" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
+            {status === "connecting"
+              ? "Connecting..."
+              : status === "live"
+                ? "Stop translation"
+                : "Start translation"}
+          </Button>
         </div>
-      ) : null}
-      <p className="mt-5 text-xs text-slate-500 dark:text-slate-400">
-        {mode === "personal"
-          ? "Personal Voice requires Microsoft approval for the mapped resource. "
-          : ""}
-        Use headphones to prevent translated audio from being captured by the
-        microphone.
-      </p>
+        {!configured ? (
+          <p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">
+            Set AZURE_SPEECH_ENDPOINT or map this use case to a configured
+            Speech binding.
+          </p>
+        ) : null}
+        {error ? (
+          <p className="mx-auto mt-2 max-w-5xl rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
+            {error}
+          </p>
+        ) : null}
+        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+          {mode === "personal"
+            ? "Personal Voice requires Microsoft restricted-feature approval. "
+            : "Standard mode does not require Personal Voice approval. "}
+          Use headphones to prevent translated audio from feeding back into the
+          microphone.
+        </p>
+      </div>
     </div>
   );
 }

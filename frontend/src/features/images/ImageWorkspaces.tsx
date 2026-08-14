@@ -37,9 +37,11 @@ type TextToImageWorkspaceProps = {
   result: ImageGenerationResult | null;
   generating: boolean;
   error: string;
+  saveToGallery: boolean;
   onPromptChange: (prompt: string) => void;
   onSizeChange: (size: string) => void;
   onModelChange: (model: string) => void;
+  onSaveToGalleryChange: (save: boolean) => void;
   onGenerate: () => void;
 };
 
@@ -52,9 +54,11 @@ export function TextToImageWorkspace({
   result,
   generating,
   error,
+  saveToGallery,
   onPromptChange,
   onSizeChange,
   onModelChange,
+  onSaveToGalleryChange,
   onGenerate,
 }: TextToImageWorkspaceProps) {
   const [promptExpanded, setPromptExpanded] = useState(true);
@@ -215,6 +219,15 @@ export function TextToImageWorkspace({
                 label: formatModelName(modelName),
               }))}
             />
+            <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium text-slate-600 shadow-sm dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={saveToGallery}
+                onChange={(event) => onSaveToGalleryChange(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+              />
+              Save to image gallery
+            </label>
           </>
         }
       />

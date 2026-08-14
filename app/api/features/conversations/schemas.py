@@ -26,6 +26,7 @@ class MessageResponse(BaseModel):
     role: MessageRole
     content: str
     model: str | None
+    routed_model: str | None = None
     api_surface: str | None
     duration_ms: int | None
     error: str | None

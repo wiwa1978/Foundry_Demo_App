@@ -1,13 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { FetchClient, ModelModality } from "@/api/types";
-import type { UseCaseWorkspace } from "@/app/types";
+import type { UseCaseId, UseCaseWorkspace } from "@/app/types";
 import { maxImageComparisonModelCount } from "@/app/workspace/constants";
 import type { ImageGenerationResult } from "@/app/workspace/contracts";
+import type { Conversation, StoredMessage } from "@/features/textChat/types";
 
 import { editImage, generateImage } from "./api";
 
-type ImageResponse = Omit<ImageGenerationResult, "prompt">;
+type ImageResponse = Omit<ImageGenerationResult, "prompt"> & {
+  conversation?: Conversation;
+  user_message?: StoredMessage;
+  assistant_message?: StoredMessage;
+};
+
+type StoredImageGeneration = Omit<ImageGenerationResult, "prompt"> & {
+  kind?: string;
+  prompt?: string;
+};
 
 type ComparisonOutcome = {
   model: string;
@@ -25,18 +35,77 @@ function sameSelection(current: Set<string>, next: string[]) {
   );
 }
 
+function imageResultFromMessages(
+  messages: StoredMessage[],
+): ImageGenerationResult | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "assistant") {
+      continue;
+    }
+    const parsed = parseStoredImageGeneration(message.content);
+    if (!parsed) {
+      continue;
+    }
+    const prompt =
+      parsed.prompt ??
+      [...messages]
+        .slice(0, index)
+        .reverse()
+        .find((candidate) => candidate.role === "user")?.content ??
+      "";
+    return { ...parsed, prompt };
+  }
+  return null;
+}
+
+function parseStoredImageGeneration(
+  content: string,
+): StoredImageGeneration | null {
+  try {
+    const parsed = JSON.parse(content) as Partial<StoredImageGeneration>;
+    if (
+      typeof parsed.model !== "string" ||
+      typeof parsed.image_base64 !== "string" ||
+      typeof parsed.mime_type !== "string" ||
+      typeof parsed.width !== "number" ||
+      typeof parsed.height !== "number" ||
+      typeof parsed.duration_ms !== "number"
+    ) {
+      return null;
+    }
+    return {
+      model: parsed.model,
+      image_base64: parsed.image_base64,
+      mime_type: parsed.mime_type,
+      width: parsed.width,
+      height: parsed.height,
+      duration_ms: parsed.duration_ms,
+      prompt: typeof parsed.prompt === "string" ? parsed.prompt : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function useImageWorkspace({
   fetchClient,
   models,
   modelModalities,
   workspace,
+  useCase,
+  currentConversationId,
   onModelChange,
+  onConversationStored,
 }: {
   fetchClient: FetchClient;
   models: string[];
   modelModalities: Record<string, ModelModality[]>;
   workspace: UseCaseWorkspace;
+  useCase?: UseCaseId;
+  currentConversationId?: string | null;
   onModelChange: (model: string) => void;
+  onConversationStored?: (conversation: Conversation) => void;
 }) {
   const imageModels = useMemo(
     () => models.filter((model) => modelModalities[model]?.includes("image")),
@@ -54,6 +123,7 @@ export function useImageWorkspace({
   const [result, setResult] = useState<ImageGenerationResult | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
+  const [saveToGallery, setSaveToGallery] = useState(false);
   const [editSource, setEditSourceState] = useState<File | null>(null);
   const [editResult, setEditResult] = useState<ImageGenerationResult | null>(
     null,
@@ -175,7 +245,18 @@ export function useImageWorkspace({
       return;
     }
     const [width, height] = size.split("x").map(Number);
-    const request = { model, prompt: submittedPrompt, width, height };
+    const request = {
+      model,
+      prompt: submittedPrompt,
+      width,
+      height,
+      ...(useCase === "text_to_image"
+        ? { conversation_id: currentConversationId, use_case: useCase }
+        : {}),
+      ...(useCase === "text_to_image" && saveToGallery
+        ? { save_to_gallery: true }
+        : {}),
+    };
     const { controller, generation } = beginRequest();
     setSubmittedPrompt(request.prompt);
     setPrompt("");
@@ -189,7 +270,18 @@ export function useImageWorkspace({
       );
       const data = (await response.json()) as ImageResponse;
       if (isCurrent(generation, controller, request.model)) {
-        setResult({ ...data, prompt: request.prompt });
+        if (data.conversation) {
+          onConversationStored?.(data.conversation);
+        }
+        setResult({
+          model: data.model,
+          image_base64: data.image_base64,
+          mime_type: data.mime_type,
+          width: data.width,
+          height: data.height,
+          duration_ms: data.duration_ms,
+          prompt: request.prompt,
+        });
       }
     } catch (generationError) {
       if (isCurrent(generation, controller, request.model)) {
@@ -200,7 +292,19 @@ export function useImageWorkspace({
         setGenerating(false);
       }
     }
-  }, [beginRequest, fetchClient, generating, isCurrent, model, prompt, size]);
+  }, [
+    beginRequest,
+    currentConversationId,
+    fetchClient,
+    generating,
+    isCurrent,
+    model,
+    onConversationStored,
+    prompt,
+    saveToGallery,
+    size,
+    useCase,
+  ]);
 
   const runEdit = useCallback(async () => {
     const submittedPrompt = prompt.trim();
@@ -361,6 +465,36 @@ export function useImageWorkspace({
     [],
   );
 
+  const clearHistory = useCallback(() => {
+    invalidate();
+    setPrompt("");
+    setSubmittedPrompt("");
+    setResult(null);
+    setError("");
+  }, [invalidate]);
+
+  const loadGenerationFromMessages = useCallback(
+    (messages: StoredMessage[]) => {
+      const storedResult = imageResultFromMessages(messages);
+      invalidate();
+      setPrompt("");
+      setError("");
+      if (!storedResult) {
+        setSubmittedPrompt("");
+        setResult(null);
+        return;
+      }
+      setSubmittedPrompt(storedResult.prompt);
+      setResult(storedResult);
+      if (imageModels.includes(storedResult.model)) {
+        modelRef.current = storedResult.model;
+        setModelState(storedResult.model);
+        onModelChange(storedResult.model);
+      }
+    },
+    [imageModels, invalidate, onModelChange],
+  );
+
   return {
     model,
     models: imageModels,
@@ -383,11 +517,15 @@ export function useImageWorkspace({
     setModel,
     setPrompt,
     setSize,
+    saveToGallery,
+    setSaveToGallery,
     setEditSource,
     toggleComparisonModel,
     replaceComparisonModel,
     runGeneration,
     runEdit,
     runComparison,
+    clearHistory,
+    loadGenerationFromMessages,
   };
 }

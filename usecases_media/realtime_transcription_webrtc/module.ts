@@ -2,12 +2,12 @@ import type { UseCaseModule } from "@/app/types";
 
 export const realtimeTranscriptionWebRtcUseCase: UseCaseModule = {
   id: "realtime_transcription_webrtc",
-  title: "Realtime transcription",
-  typeLabel: "WebRTC",
-  shortTitle: "Transcription · WebRTC",
+  title: "Realtime Transcription webrtc",
+  typeLabel: "Realtime Transcription",
+  shortTitle: "Realtime Transcription webrtc",
   description:
-    "Stream browser microphone audio directly to gpt-realtime-whisper over WebRTC.",
-  badge: "Realtime",
+    "Browser-native transcription with the lowest latency: FastAPI creates the short-lived session, then microphone audio flows directly between the browser and Foundry over WebRTC.",
+  badge: "Audio",
   icon: "voiceWave",
   modalities: ["audio"],
   implementation: [

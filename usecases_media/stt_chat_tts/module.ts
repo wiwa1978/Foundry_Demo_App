@@ -2,11 +2,11 @@ import type { UseCaseModule } from "@/app/types";
 
 export const traditionalVoiceUseCase: UseCaseModule = {
   id: "traditional_voice",
-  title: "STT -> Chat -> TTS",
-  shortTitle: "STT -> TTS",
+  title: "STT-Chat-TTS",
+  shortTitle: "STT-Chat-TTS",
   description:
     "Record audio, transcribe it in Foundry, ask the chat model, then synthesize speech.",
-  badge: "Foundry audio",
+  badge: "Audio",
   icon: "voiceWave",
   modalities: ["audio"],
   implementation: [

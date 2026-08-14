@@ -17,6 +17,7 @@ class ConfigResponse(BaseModel):
     realtime_model: str | None
     is_realtime_transcription_configured: bool
     realtime_transcription_model: str | None
+    realtime_transcription_models: list[str]
     is_realtime_translation_configured: bool
     realtime_translation_model: str | None
     embedding_model: str
@@ -35,6 +36,8 @@ class ConfigResponse(BaseModel):
     voice_live_model: str | None
     voice_live_voice: str | None
     is_live_interpreter_configured: bool
+    is_text_translation_configured: bool
+    is_content_extractor_configured: bool
 
 
 class HealthResponse(BaseModel):

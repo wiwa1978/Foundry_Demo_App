@@ -97,6 +97,7 @@ def run_and_store_variant(
         guardrail_variant=variant,
         guardrail_policy_name=policy_name,
         guardrail_results=response["guardrail_results"],
+        routed_model=response.get("routed_model"),
     )
     return cast(
         ModelResult,

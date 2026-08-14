@@ -1,5 +1,6 @@
 import { readPublicApiError } from "@/api/errors";
 import type { FetchClient } from "@/api/types";
+import type { UseCaseId } from "@/app/types";
 
 export type ImageSample = {
   id: string;
@@ -44,7 +45,15 @@ export async function getImageSample(
 
 export async function generateImage(
   fetchClient: FetchClient,
-  request: { model: string; prompt: string; width: number; height: number },
+  request: {
+    model: string;
+    prompt: string;
+    width: number;
+    height: number;
+    conversation_id?: string | null;
+    use_case?: UseCaseId;
+    save_to_gallery?: boolean;
+  },
   signal?: AbortSignal,
 ) {
   const response = await fetchClient(

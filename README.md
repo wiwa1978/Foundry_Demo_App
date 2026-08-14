@@ -66,10 +66,10 @@ A lightweight local app for chatting with and comparing Microsoft Foundry model 
    https://<your-foundry-resource>.services.ai.azure.com/api/projects/<your-project-name>
    ```
 
-6. Run the backend.
+6. Run the backend. Use the launcher below instead of a bare `uvicorn --reload` command; it scopes the file watcher to source folders so `.venv` package installs such as `yt-dlp` do not trigger reload loops.
 
    ```powershell
-   uvicorn app.main:app --reload
+   python scripts/dev_api.py
    ```
 
 7. In another terminal, run the React frontend.
@@ -89,7 +89,7 @@ Build the frontend and let FastAPI serve it:
 Set-Location frontend
 npm run build
 Set-Location ..
-uvicorn app.main:app --reload
+python scripts/dev_api.py
 ```
 
 Then open http://127.0.0.1:8000.
@@ -102,12 +102,15 @@ endpoints do not exist on a developer machine.
 1. Create or select an app registration in Microsoft Entra ID.
 2. Under **Authentication**, add the Web redirect URI `http://localhost:5173/api/auth/callback`.
 3. Under **Certificates & secrets**, create a client secret and copy its value.
-4. Add the five `ENTRA_LOCAL_*` values shown in `.env.example` to `.env`.
+4. Add the five `ENTRA_LOCAL_*` values shown in `.env.example` to `.env` and set `APP_AUTH_MODE=local`.
 5. Run FastAPI on port 8000 and Vite on port 5173, then open `http://localhost:5173`.
 
 Use `localhost` consistently rather than mixing it with `127.0.0.1`, because the temporary sign-in
 cookie is scoped to the browser host. The local session is stored in an HTTP-only signed cookie and
 expires after eight hours.
+
+To bypass sign-in locally, set `APP_AUTH_MODE=disabled` in `.env`; this overrides any existing
+`ENTRA_LOCAL_*` values and unlocks the demo without a Microsoft account session.
 
 ## Configuration
 
@@ -120,6 +123,7 @@ expires after eight hours.
 | `FOUNDRY_OPENAI_ENDPOINT` | Optional compatibility fallback if you want to provide the direct endpoint explicitly, usually `https://<resource>.services.ai.azure.com/openai/v1`. `AZURE_OPENAI_ENDPOINT` is also accepted. |
 | `FOUNDRY_FLUX_ENDPOINT` | Optional FLUX provider endpoint override, usually `https://<resource>.services.ai.azure.com`. Defaults to the resource origin derived from `FOUNDRY_PROJECT_ENDPOINT`. |
 | `FOUNDRY_MODELS` | Optional comma-separated deployment names used to seed the configured model registry. New deployments and local endpoints are stored in the database, so this does not need to be updated after setup. |
+| `USE_CASE_MODEL_MAP` | Optional JSON object mapping use-case IDs to `/api/models` bucket names, or role-to-bucket objects for multi-model use cases. Example: `{"text_chat":"text_models","youtube_summary":{"text":"text_models","transcription":"transcription_models"}}`. Defaults cover the built-in use cases. |
 | `AZURE_COSMOS_ENDPOINT` | Required when `PERSISTENCE_BACKEND=cosmos`. Cosmos DB for NoSQL account endpoint. The app authenticates with `DefaultAzureCredential` unless `AZURE_COSMOS_KEY` is set. |
 | `AZURE_COSMOS_DATABASE_NAME` | Required when using Cosmos. Shared Cosmos DB database name. |
 | `AZURE_COSMOS_CONTAINER_NAME` | App-specific base container name. Defaults to `foundry-chat-app`; the app currently uses the versioned `-v3` container. The container partition key must be `/partition_key`. |
@@ -133,8 +137,13 @@ expires after eight hours.
 | `FOUNDRY_EMBEDDING_DIMENSIONS` | Optional embedding dimension override when reusing a pre-created index. When omitted, the app uses the dimensions returned by Foundry when the first document is uploaded. |
 | `FOUNDRY_REALTIME_ENDPOINT` | Optional OpenAI-compatible endpoint for the Realtime voice demo, usually `https://<resource>.services.ai.azure.com/openai/v1`. Defaults to `FOUNDRY_PROJECT_ENDPOINT` when omitted by deriving `/openai/v1` from the project endpoint. `AZURE_OPENAI_ENDPOINT` is also accepted. |
 | `FOUNDRY_REALTIME_MODEL` | Optional realtime deployment name used by the voice demo. Defaults to a realtime model in `FOUNDRY_MODELS`, or `gpt-realtime-2.1`. |
-| `FOUNDRY_REALTIME_TRANSCRIPTION_MODEL` | Existing realtime transcription deployment used by the WebRTC and WebSocket demos. Defaults to `gpt-realtime-whisper`. |
+| `FOUNDRY_REALTIME_TRANSCRIPTION_MODEL` | Optional fallback/default realtime transcription deployment when `/api/models` discovery is unavailable. The WebRTC, WebSocket, and YouTube realtime transcription UIs normally use discovered deployments. |
+| `FOUNDRY_REALTIME_TRANSCRIPTION_MODELS` | Optional comma-separated fallback realtime transcription deployment choices, for example `gpt-realtime-whisper,gpt-live-transcribe`. Discovered deployments from `/api/models` are preferred when available. |
 | `FOUNDRY_REALTIME_TRANSLATION_MODEL` | Existing dedicated realtime translation deployment. Defaults to `gpt-realtime-translate`. |
+| `FOUNDRY_TRANSLATOR_ENDPOINT` | Optional Azure AI Foundry or Cognitive Services resource root override for **Text Translation**, such as `https://<resource>.cognitiveservices.azure.com/`. When omitted, the backend derives this endpoint from `FOUNDRY_PROJECT_ENDPOINT` by mapping `<resource>.services.ai.azure.com` to `<resource>.cognitiveservices.azure.com`. `AZURE_TRANSLATOR_ENDPOINT` and `AZURE_AI_SERVICES_ENDPOINT` are also accepted. |
+| `FOUNDRY_TRANSLATOR_KEY` | Optional Azure Translator subscription key fallback for the Text Translation API. When omitted, the backend uses Microsoft Entra ID through the existing Azure credential flow. `AZURE_TRANSLATOR_KEY`, `AZURE_AI_SERVICES_KEY`, and `COGNITIVE_SERVICES_KEY` are also accepted. |
+| `FOUNDRY_CONTENT_UNDERSTANDING_ENDPOINT` | Optional Azure Content Understanding endpoint override for **Content Extractor**, such as `https://<resource>.cognitiveservices.azure.com/`. When omitted, the backend derives this endpoint from `FOUNDRY_PROJECT_ENDPOINT` by mapping `<resource>.services.ai.azure.com` to `<resource>.cognitiveservices.azure.com`. `AZURE_CONTENT_UNDERSTANDING_ENDPOINT` and `AZURE_AI_SERVICES_ENDPOINT` are also accepted. |
+| `FOUNDRY_CONTENT_UNDERSTANDING_KEY` | Optional Content Understanding subscription key fallback. When omitted, the backend uses Microsoft Entra ID through the existing Azure credential flow. `AZURE_CONTENT_UNDERSTANDING_KEY`, `AZURE_AI_SERVICES_KEY`, and `COGNITIVE_SERVICES_KEY` are also accepted. |
 | `FOUNDRY_TRANSCRIPTION_MODEL` | Optional OpenAI-compatible transcription deployment for the traditional voice pipeline. Defaults to `gpt-4o-mini-transcribe`. |
 | `FOUNDRY_TTS_MODEL` | Optional text-to-speech deployment for the traditional voice pipeline. Defaults to `gpt-audio-mini`. |
 | `FOUNDRY_TTS_VOICE` | Optional TTS voice name for the traditional voice pipeline. Defaults to `alloy`. |
@@ -144,7 +153,7 @@ expires after eight hours.
 | `AZURE_VOICELIVE_ENDPOINT` | Optional Foundry or Speech resource root endpoint for the Voice Live travel concierge. Defaults to `AZURE_SPEECH_ENDPOINT`. |
 | `AZURE_VOICELIVE_MODEL` | Managed Voice Live model name. Defaults to `gpt-realtime`. |
 | `AZURE_VOICELIVE_VOICE` | Azure Speech voice used by Voice Live. Defaults to `en-US-Ava:DragonHDLatestNeural`. |
-| `APP_AUTH_MODE` | Authentication mode: `disabled` for local demos only, `local` for the signed-cookie development flow, or `container_apps` for trusted Azure Container Apps identity headers. Azure infrastructure uses `container_apps`. |
+| `APP_AUTH_MODE` | Authentication mode: `disabled` for local demos only, `local` for the signed-cookie development flow, or `container_apps` for trusted Azure Container Apps identity headers. Set `disabled` in `.env` to bypass local sign-in even when `ENTRA_LOCAL_*` values are present. Azure infrastructure uses `container_apps`. |
 | `APP_AUTH_TENANT_ID` | Entra tenant ID used to scope compact identity headers supplied by Azure Container Apps authentication. Set automatically by the included infrastructure. |
 | `ADMIN_PRINCIPALS` | Comma-separated administrator Entra object IDs or normalized email addresses (case-insensitive) permitted to change global model settings, register models, and create Foundry deployments. Display names are never matched. **Use immutable Entra object IDs in production; email matching is intended mainly for local ergonomics. Required when `APP_AUTH_MODE` is `local` or `container_apps`: an empty list denies every caller.** Ignored when `APP_AUTH_MODE=disabled`. |
 | `ALLOWED_ORIGINS` | Optional comma-separated WebSocket origin allowlist. WebSockets require the request origin to match the host when omitted. |
@@ -203,12 +212,16 @@ Browse the source-oriented catalogs under [`usecases_media`](usecases_media/READ
 | **Research Assistant Agent (Prompt Agent)** | Invokes the portal-built `ResearchAgent` by agent reference. [Browse the implementation](usecases_agents/research_assistant_prompt/README.md). |
 | **Research Assistant Agent (Hosted Agent)** | Invokes custom Microsoft Agent Framework code deployed and registered in Foundry Agent Service. [Browse implementations and deployment guidance](usecases_agents/research_assistant_hosted/README.md). |
 | **Document Q&A** | Shows document upload/index controls, stores original files in Blob Storage, stores chunks in Azure AI Search, retrieves relevant chunks with Foundry embeddings, and answers with the selected Foundry chat deployment. [Browse the implementation](usecases_media/document_qa/README.md). |
+| **Text Translation** | Opens a two-pane source/translated text workspace with source auto-detection and target-language selection, backed by Azure Translator - Text Translation. [Browse the implementation](usecases_media/text_translation/). |
+| **Content Extractor** | Opens a left-pane source selector for document, image, or audio content. The first enabled path extracts text and fields from uploaded images with Azure Content Understanding `prebuilt-imageSearch`; document and audio modes are visible but staged. [Browse the implementation](usecases_media/content_extractor/). |
 | **Side by Side comparison** | Opens the comparison workspace and shows model multi-select controls. [Browse the implementation](usecases_media/text_chat_comparison/README.md). |
 | **Browser based voice** | Keeps the text chat workspace and exposes browser dictation/readback controls. [Browse the implementation](usecases_media/browser_voice/README.md). |
 | **STT -> Chat -> TTS** | Opens the traditional Foundry voice pipeline workspace. [Browse the implementation](usecases_media/stt_chat_tts/README.md). |
 | **Recorded Audio Transcription** | Records or uploads completed audio and returns a finalized transcript using `GPT-transcribe`, `GPT-4o-transcribe`, `GPT-4o-mini-transcribe`, or `MAI-Transcribe-1.5`. [Browse the implementation](usecases_media/recorded_transcription/README.md). |
-| **YouTube Video Summarization** | Retrieves available captions from a public YouTube URL, falls back to bounded audio transcription when needed, and summarizes long transcripts with the selected Foundry chat model. [Browse the implementation](usecases_media/youtube_summary/README.md). |
-| **Live translation** | Streams microphone audio to Azure Speech Live Interpreter and returns translated audio. [Browse the implementation](usecases_media/live_translation/README.md). |
+| **YouTube Video Summarization** | Retrieves available captions from a public YouTube URL, falls back to bounded recorded-audio transcription with `gpt-transcribe`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, or `MAI-Transcribe-1.5` when needed, and summarizes long transcripts with the selected Foundry chat model. [Browse the implementation](usecases_media/youtube_summary/README.md). |
+| **GPT Realtime Translation WebRTC** | Creates a short-lived Foundry Realtime token and attempts browser WebRTC negotiation with `/openai/v1/realtime/calls` for `gpt-realtime-translate`; if Foundry rejects WebRTC for the deployment, the app reports that provider limitation. [Browse the implementation](usecases_media/realtime_translation_webrtc/README.md). |
+| **GPT Realtime Translation WebSockets** | Streams 24 kHz microphone PCM through FastAPI to Foundry Realtime `gpt-realtime-translate` and returns translated text/audio; optional `gpt-realtime-whisper` source captions are used only when configured. [Browse the implementation](usecases_media/realtime_translation_websocket/README.md). |
+| **Azure Speech Live Translation** | Streams 16 kHz microphone audio to Azure Speech translation: Standard mode uses a fixed source locale and neural target voice, while Personal Voice mode uses Live Interpreter with approved resources. [Browse the implementation](usecases_media/live_translation/README.md). |
 | **Realtime Speech in / Speech out** | Opens the Foundry Realtime WebRTC workspace. [Browse the implementation](usecases_media/realtime_voice/README.md). |
 
 Settings, API trace, metrics, previous conversations, and model settings remain available outside the marketplace because they are shared app capabilities.
@@ -362,11 +375,13 @@ The traditional pipeline does not use browser speech recognition or OS voices. T
 
 The **Recorded Audio Transcription** use case records or uploads a complete audio file before transcription starts. `GPT-transcribe`, `GPT-4o-transcribe`, and `GPT-4o-mini-transcribe` deployments use the OpenAI-compatible `/audio/transcriptions` API. The deployment configured by `AZURE_SPEECH_TRANSCRIPTION_MODEL`, which defaults to `MAI-Transcribe-1.5`, uses the Azure Speech SDK. Set `AZURE_SPEECH_ENDPOINT` to the resource custom domain, such as `https://<resource>.cognitiveservices.azure.com/`, and grant the caller the **Cognitive Services Speech User** role. Local development uses the signed-in Azure CLI identity; Container Apps uses its managed identity. `AZURE_SPEECH_KEY` remains an optional fallback when API key authentication is enabled. This workflow is neither live streaming nor the dedicated Azure Speech Fast Transcription REST API.
 
-Foundry resources are configured as dynamic named bindings. A binding is discovered from `FOUNDRY_PROJECT_ENDPOINT_<BINDING>`; optional companion values include `<BINDING>` for the Azure region, `FOUNDRY_MODELS_<BINDING>`, and `AZURE_SPEECH_ENDPOINT_<BINDING>`. For example, `REGION2=eastus` and `FOUNDRY_PROJECT_ENDPOINT_REGION2=...` define `REGION2`. The database stores only a `use_case -> binding` mapping, such as `live_translation -> REGION2`; it never stores endpoints or credentials. Adding another binding suffix requires no code change.
+Foundry resources are configured as dynamic named bindings. A binding is discovered from `FOUNDRY_PROJECT_ENDPOINT_<BINDING>`; optional companion values include `<BINDING>` for the Azure region, `FOUNDRY_MODELS_<BINDING>`, `AZURE_SPEECH_ENDPOINT_<BINDING>`, and `AZURE_SPEECH_KEY_<BINDING>`. For example, `REGION2=eastus` and `FOUNDRY_PROJECT_ENDPOINT_REGION2=...` define `REGION2`. The database stores only a `use_case -> binding` mapping, such as `live_translation -> REGION2`; it never stores endpoints or credentials. Adding another binding suffix requires no code change.
 
-The app derives `wss://<resource>.cognitiveservices.azure.com/stt/speech/universal/v2` from that mapping. The browser streams 16 kHz mono PCM through the backend and receives translated text plus Personal Voice PCM. Before using it, [apply for Personal Voice access](https://aka.ms/customneural), select **Personal Voice** for question 20, and use a [region supported by Live Interpreter](https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=speech-translation). Use headphones during a session to avoid microphone feedback. Live Interpreter supports one synthesized target language per session and does not currently return source-language transcription.
+GPT Realtime Translation and Azure Speech Live Translation are intentionally separate. GPT Realtime Translation calls Foundry Realtime `/openai/v1/realtime/translations?model=gpt-realtime-translate`, uses 24 kHz PCM, and can omit source transcription entirely. Azure Speech Live Translation calls the Speech SDK/Live Interpreter path, uses 16 kHz PCM, and does not use a chat or GPT realtime deployment.
 
-Live translation offers two voice modes. **Standard neural voice** follows the documented Python Speech SDK translation flow with an explicit source locale and a regular target-language Azure neural voice; it does not require Personal Voice approval. **Personal Voice (Live Interpreter)** uses the v2 endpoint, open-range language detection, and `personal-voice`, and remains subject to Microsoft's restricted-feature approval.
+The Azure Speech Personal Voice mode derives `wss://<resource>.cognitiveservices.azure.com/stt/speech/universal/v2` from the mapped Speech endpoint. Before using it, [apply for Personal Voice access](https://aka.ms/customneural), select **Personal Voice** for question 20, and use a [region supported by Live Interpreter](https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=speech-translation). Use headphones during a session to avoid microphone feedback. Live Interpreter supports one synthesized target language per session and does not currently return source-language transcription.
+
+Azure Speech Live Translation offers two voice modes. **Standard neural voice** follows the documented Python Speech SDK translation flow with an explicit source locale and a regular target-language Azure neural voice; it does not require Personal Voice approval. **Personal Voice (Live Interpreter)** uses the v2 endpoint, open-range language detection, and `personal-voice`, and remains subject to Microsoft's restricted-feature approval.
 
 The Realtime demo asks the backend for a short-lived Realtime client secret using Microsoft Entra ID, opens a browser WebRTC connection to `/openai/v1/realtime/calls`, streams microphone audio to the `FOUNDRY_REALTIME_MODEL` deployment, and plays the model's audio response. If you only set `FOUNDRY_PROJECT_ENDPOINT`, the app derives the OpenAI-compatible base URL from it. You can also set `FOUNDRY_REALTIME_ENDPOINT` explicitly to the endpoint shown by Foundry, such as `https://<resource>.services.ai.azure.com/openai/v1`.
 

@@ -2,12 +2,12 @@ import type { UseCaseModule } from "@/app/types";
 
 export const realtimeTranscriptionWebSocketUseCase: UseCaseModule = {
   id: "realtime_transcription_websocket",
-  title: "Realtime transcription",
-  typeLabel: "WebSockets",
-  shortTitle: "Transcription · WebSockets",
+  title: "Realtime Transcription websockets",
+  typeLabel: "Realtime Transcription",
+  shortTitle: "Realtime Transcription websockets",
   description:
-    "Stream 24 kHz PCM through the application backend to gpt-realtime-whisper over WebSockets.",
-  badge: "Realtime",
+    "Backend-mediated transcription: the browser sends PCM audio to FastAPI, which keeps the Foundry WebSocket and credentials server-side and controls audio commits.",
+  badge: "Audio",
   icon: "voiceWave",
   modalities: ["audio"],
   implementation: [

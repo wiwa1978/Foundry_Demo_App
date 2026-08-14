@@ -25,9 +25,11 @@ export function ImageRoute({
         result={images.result}
         generating={images.generating}
         error={images.error}
+        saveToGallery={images.saveToGallery}
         onPromptChange={images.setPrompt}
         onSizeChange={images.setSize}
         onModelChange={images.setModel}
+        onSaveToGalleryChange={images.setSaveToGallery}
         onGenerate={() => void images.runGeneration()}
       />
     );

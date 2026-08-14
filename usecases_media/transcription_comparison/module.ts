@@ -2,11 +2,12 @@ import type { UseCaseModule } from "@/app/types";
 
 export const transcriptionComparisonUseCase: UseCaseModule = {
   id: "transcription_comparison",
-  title: "Side by Side - Recorded Audio Transcription",
-  shortTitle: "Side by Side - Audio Transcription",
+  title: "Side by Side Recorded Audio Transcription",
+  shortTitle: "Side by Side Recorded Audio Transcription",
   description:
     "Submit one recording to multiple speech-to-text deployments and compare their transcripts side by side.",
-  badge: "Speech models",
+  badge: "Audio",
+  typeLabel: "Transcription",
   icon: "comparison",
   modalities: ["audio"],
   implementation: [

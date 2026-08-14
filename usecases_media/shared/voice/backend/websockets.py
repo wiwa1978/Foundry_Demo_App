@@ -6,13 +6,13 @@ import math
 import struct
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from websockets.asyncio.client import connect as websocket_connect
 
 from app.api.security import AuthMode, auth_mode, authenticated_user, websocket_origin_allowed
-from app.application.use_case_settings import LIVE_TRANSLATION_USE_CASE
+from app.application.use_case_settings import LIVE_TRANSLATION_USE_CASE, FoundryBinding
 from app.core.concurrency import run_model_call
 from app.infrastructure.azure.foundry.realtime import (
     create_realtime_transcription_connection_info,
@@ -34,6 +34,7 @@ SILENCE_COMMIT_SECONDS = 0.9
 STOP_DRAIN_SECONDS = 2.2
 SUPPORTED_DELAYS = {"minimal", "low", "medium", "high", "xhigh"}
 SUPPORTED_TURN_DETECTION = {"none", "server_vad", "semantic_vad"}
+MAX_MODEL_NAME_LENGTH = 200
 
 
 @dataclass
@@ -57,17 +58,24 @@ def _pcm16_rms(audio: bytes) -> float:
     return math.sqrt(sum(sample * sample for sample in samples) / sample_count) / 32768
 
 
-def _transcription_options(websocket: WebSocket) -> tuple[str | None, str | None, str]:
+def _transcription_options(
+    websocket: WebSocket,
+) -> tuple[str | None, str | None, str | None, str]:
+    model = websocket.query_params.get("model") or None
     language = websocket.query_params.get("language") or None
     delay = websocket.query_params.get("delay") or None
     turn_detection = websocket.query_params.get("turnDetection", "none").lower()
+    if model:
+        model = model.strip() or None
+        if model and len(model) > MAX_MODEL_NAME_LENGTH:
+            raise ValueError("Realtime transcription model name is too long.")
     if language and (len(language) != 2 or not language.isalpha()):
         raise ValueError("Language must be an ISO-639-1 code.")
     if delay and delay not in SUPPORTED_DELAYS:
         raise ValueError("Unsupported transcription delay.")
     if turn_detection not in SUPPORTED_TURN_DETECTION:
         raise ValueError("Unsupported turn detection mode.")
-    return language, delay, turn_detection
+    return model, language, delay, turn_detection
 
 
 def _assign_sequence(state: TranscriptionProxyState, item_id: str | None) -> int | None:
@@ -201,9 +209,10 @@ async def realtime_transcription_proxy(websocket: WebSocket) -> None:
     await websocket.accept()
     state = TranscriptionProxyState()
     try:
-        language, delay, turn_detection = _transcription_options(websocket)
+        model, language, delay, turn_detection = _transcription_options(websocket)
         connection = await run_model_call(
             create_realtime_transcription_connection_info,
+            model=model,
             language=language,
             delay=delay,
             turn_detection=turn_detection,
@@ -343,9 +352,15 @@ async def realtime_translation_proxy(websocket: WebSocket) -> None:
     session_closed = asyncio.Event()
     try:
         target_language = websocket.query_params.get("targetLanguage", "fr")
+        source_language = websocket.query_params.get("sourceLanguage") or None
+        model = websocket.query_params.get("model") or None
+        transcription_model = websocket.query_params.get("transcriptionModel") or None
         connection = await run_model_call(
             create_realtime_translation_connection_info,
             target_language=target_language,
+            source_language=source_language,
+            model=model,
+            transcription_model=transcription_model,
         )
         async with websocket_connect(
             connection["url"],
@@ -356,6 +371,31 @@ async def realtime_translation_proxy(websocket: WebSocket) -> None:
             max_size=None,
         ) as upstream:
             await upstream.send(json.dumps(connection["session_update"]))
+
+            async def read_upstream_event() -> dict[str, Any]:
+                while True:
+                    message = await upstream.recv()
+                    if isinstance(message, bytes):
+                        continue
+                    return cast(dict[str, Any], json.loads(message))
+
+            while True:
+                event = await asyncio.wait_for(read_upstream_event(), timeout=15)
+                event_type = event.get("type")
+                if event_type == "error":
+                    error = event.get("error")
+                    message = (
+                        error.get("message")
+                        if isinstance(error, dict)
+                        else "Realtime translation session configuration failed."
+                    )
+                    raise RuntimeError(str(message))
+                if event_type == "session.created":
+                    await websocket.send_json(event)
+                    continue
+                if event_type == "session.updated":
+                    break
+
             await websocket.send_json(
                 {
                     "type": "ready",
@@ -369,6 +409,11 @@ async def realtime_translation_proxy(websocket: WebSocket) -> None:
                 while True:
                     message = await websocket.receive()
                     if message["type"] == "websocket.disconnect":
+                        await upstream.send(json.dumps({"type": "session.close"}))
+                        try:
+                            await asyncio.wait_for(session_closed.wait(), timeout=20)
+                        except TimeoutError:
+                            pass
                         return
                     audio = message.get("bytes")
                     if audio is not None:
@@ -391,23 +436,20 @@ async def realtime_translation_proxy(websocket: WebSocket) -> None:
                         if control.get("type") != "stop":
                             raise ValueError("Unsupported realtime translation control event.")
                         await upstream.send(json.dumps({"type": "session.close"}))
-                        try:
-                            await asyncio.wait_for(session_closed.wait(), timeout=5)
-                        except TimeoutError:
-                            pass
+                        await asyncio.wait_for(session_closed.wait(), timeout=20)
                         return
 
             async def relay_translation_to_browser() -> None:
-                async for message in upstream:
-                    if isinstance(message, bytes):
-                        continue
-                    event = json.loads(message)
+                while True:
+                    event = await read_upstream_event()
                     event_type = event.get("type")
                     if event_type == "session.closed":
                         session_closed.set()
                     if event_type in {
                         "session.created",
                         "session.updated",
+                        "session.closed",
+                        "error",
                         "session.input_transcript.delta",
                         "session.input_transcript.completed",
                         "session.input_transcript.done",
@@ -415,8 +457,23 @@ async def realtime_translation_proxy(websocket: WebSocket) -> None:
                         "session.output_transcript.completed",
                         "session.output_transcript.done",
                         "session.output_audio.delta",
-                        "session.closed",
-                        "error",
+                        "response.text.delta",
+                        "response.text.done",
+                        "response.audio.delta",
+                        "response.audio.done",
+                        "response.audio_transcript.delta",
+                        "response.output_audio.delta",
+                        "response.output_audio.done",
+                        "response.output_audio_transcript.delta",
+                        "conversation.item.input_audio_transcription.delta",
+                        "conversation.item.input_audio_transcription.completed",
+                        "conversation.item.input_audio_transcription.failed",
+                        "transcript.delta",
+                        "transcript.completed",
+                        "transcript.done",
+                        "translation.delta",
+                        "translation.completed",
+                        "translation.done",
                     }:
                         await websocket.send_json(event)
 
@@ -461,13 +518,25 @@ async def live_interpreter(websocket: WebSocket) -> None:
             raise ValueError("The first message must start a Live Interpreter session.")
         services = websocket.app.state.services
         binding = services.use_case_settings.resolve(LIVE_TRANSLATION_USE_CASE)
+        settings = load_settings(
+            services.models.list(),
+            live_interpreter_configured=binding is not None,
+        )
         if binding is None:
-            raise RuntimeError("Map Live translation to a configured Foundry binding first.")
+            if not settings.speech_endpoint:
+                raise RuntimeError(
+                    "Set AZURE_SPEECH_ENDPOINT or map Live translation to a configured Speech binding."
+                )
+            binding = FoundryBinding(
+                name="DEFAULT",
+                project_endpoint=settings.endpoint or "",
+                models=tuple(settings.models),
+                speech_key=settings.speech_key,
+                speech_endpoint=settings.speech_endpoint,
+                region=None,
+            )
         session = LiveInterpreterSession(
-            settings=load_settings(
-                services.models.list(),
-                live_interpreter_configured=True,
-            ),
+
             binding=binding,
             mode=str(start_message.get("mode", "standard")),
             source_language=str(start_message.get("source_language", "")),

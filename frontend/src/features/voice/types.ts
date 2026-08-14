@@ -49,6 +49,7 @@ declare global {
 export type RealtimeServerEvent = {
   type?: string;
   transcript?: string;
+  text?: string;
   delta?: string;
   item_id?: string;
   model?: string;
@@ -69,8 +70,15 @@ export type VoiceLiveServerEvent = RealtimeServerEvent & {
 };
 
 export type LiveInterpreterServerEvent = {
-  type: "ready" | "translation" | "audio_end" | "session_stopped" | "error";
+  type:
+    | "ready"
+    | "partial_translation"
+    | "translation"
+    | "audio_end"
+    | "session_stopped"
+    | "error";
   text?: string;
+  source_text?: string;
   detected_language?: string | null;
   target_language?: string;
   error?: string;
@@ -79,10 +87,14 @@ export type LiveInterpreterServerEvent = {
 export type RealtimeTranslationServerEvent = {
   type: string;
   delta?: string;
+  text?: string;
   transcript?: string;
   translation?: string;
   model?: string;
   transcription_model?: string;
+  language?: string;
+  detected_language?: string;
+  source_language?: string;
   sample_rate?: number;
   channels?: number;
   format?: string;
