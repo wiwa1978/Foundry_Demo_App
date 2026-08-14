@@ -8,13 +8,13 @@ from app.application.foundry_deployments import (
     get_deployment_guardrail_policy,
     get_model_router_routing,
     list_foundry_deployments,
+    update_model_router_routing,
 )
 from app.application.foundry_guardrails import (
     SYSTEM_GUARDRAIL_POLICY_COPIES,
     create_system_guardrail_policy_copies,
     guardrail_policy_exists,
     list_guardrail_policies,
-    update_model_router_routing,
 )
 from app.domain.identity import UserScope
 from app.domain.models import DEPLOYMENT_DEFAULT_GUARDRAIL, ModelSettings

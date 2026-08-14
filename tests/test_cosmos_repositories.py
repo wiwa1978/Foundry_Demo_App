@@ -261,7 +261,7 @@ class ModelSettingsStoreTests(unittest.TestCase):
         settings = get_model_settings(self.models, "Kimi-K2.5")
         self.assertEqual(settings.api_surface, "chat_completions")
         self.assertEqual(settings.modalities, ("text",))
-        mai_settings = get_model_settings("MAI-THINKING-1")
+        mai_settings = get_model_settings(self.models, "MAI-THINKING-1")
         self.assertEqual(mai_settings.api_surface, "chat_completions")
         self.assertEqual(mai_settings.modalities, ("text",))
 

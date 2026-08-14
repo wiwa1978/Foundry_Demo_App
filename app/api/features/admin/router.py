@@ -31,7 +31,11 @@ from app.api.features.models.service import (
     normalize_use_case_model_map,
     use_case_model_map,
 )
-from app.application.foundry_admin import AdminConfigDocument, AdministrationService
+from app.application.foundry_admin import (
+    AdminConfigDocument,
+    AdministrationService,
+    ModelRouterRouting,
+)
 from app.application.models import ModelService
 from app.application.use_case_settings import (
     LIVE_TRANSLATION_USE_CASE,
@@ -80,7 +84,7 @@ async def get_model_router_routing_mode(
     _admin: Annotated[UserScope, Depends(privileged_user_scope)],
     administration: Annotated[AdministrationService, Depends(get_administration_service)],
     deployment: Annotated[str, Query(min_length=1)] = "model-router",
-) -> dict:
+) -> ModelRouterRouting:
     return await get_model_router_routing(administration, deployment)
 
 
@@ -94,7 +98,7 @@ async def put_model_router_routing_mode(
     _admin: Annotated[UserScope, Depends(privileged_user_scope)],
     administration: Annotated[AdministrationService, Depends(get_administration_service)],
     deployment: Annotated[str, Query(min_length=1)] = "model-router",
-) -> dict:
+) -> ModelRouterRouting:
     result = await save_model_router_routing(administration, deployment, payload)
     audit_event(
         "model_router_routing_updated",

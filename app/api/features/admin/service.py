@@ -5,6 +5,7 @@ from app.application.foundry_admin import (
     AdminConfigDocument,
     AdministrationService,
     DeploymentRequest,
+    ModelRouterRouting,
     admin_config_to_dict,
     load_admin_config,
 )
@@ -66,7 +67,7 @@ async def create_deployment(
 async def get_model_router_routing(
     administration: AdministrationService,
     deployment_name: str,
-) -> dict[str, Any]:
+) -> ModelRouterRouting:
     try:
         return await run_model_call(administration.model_router_routing, deployment_name)
     except Exception as exc:
@@ -77,7 +78,7 @@ async def save_model_router_routing(
     administration: AdministrationService,
     deployment_name: str,
     payload: ModelRouterRoutingRequest,
-) -> dict[str, Any]:
+) -> ModelRouterRouting:
     try:
         return await run_model_call(
             administration.update_model_router_routing,

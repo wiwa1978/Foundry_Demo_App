@@ -148,31 +148,35 @@ class SqliteRepositoryTests(unittest.TestCase):
         self.assertEqual(settings.modalities, ("image",))
 
     def test_model_router_uses_responses(self) -> None:
-        settings = get_model_settings("model-router")
+        settings = get_model_settings(self.models, "model-router")
 
         self.assertEqual(settings.api_surface, "responses")
         self.assertEqual(settings.modalities, ("text",))
 
 
     def test_mai_thinking_uses_chat_completions(self) -> None:
-        settings = get_model_settings("MAI-THINKING-1")
+        settings = get_model_settings(self.models, "MAI-THINKING-1")
 
         self.assertEqual(settings.api_surface, "chat_completions")
         self.assertEqual(settings.modalities, ("text",))
 
     def test_stale_mai_thinking_response_surface_is_corrected(self) -> None:
         save_model_settings(
-            ModelSettings(model="MAI-THINKIN-1", api_surface="responses")
+            self.models,
+            ModelSettings(model="MAI-THINKIN-1", api_surface="responses"),
         )
 
-        settings = get_model_settings("MAI-THINKIN-1")
+        settings = get_model_settings(self.models, "MAI-THINKIN-1")
 
         self.assertEqual(settings.api_surface, "chat_completions")
 
     def test_stale_model_router_chat_surface_is_corrected(self) -> None:
-        save_model_settings(ModelSettings(model="model-router", api_surface="chat_completions"))
+        save_model_settings(
+            self.models,
+            ModelSettings(model="model-router", api_surface="chat_completions"),
+        )
 
-        settings = get_model_settings("model-router")
+        settings = get_model_settings(self.models, "model-router")
 
         self.assertEqual(settings.api_surface, "responses")
 
@@ -229,7 +233,7 @@ class SqliteRepositoryTests(unittest.TestCase):
         database_path = os.environ["SQLITE_DATABASE_PATH"]
         connection = sqlite3.connect(database_path)
         try:
-            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION - 1}")
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION - 2}")
             connection.commit()
         finally:
             connection.close()
