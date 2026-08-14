@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -53,6 +53,9 @@ function renderPage() {
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.setPointerCapture = vi.fn();
+  Element.prototype.releasePointerCapture = vi.fn();
 });
 
 describe("AppSettingsPage use case model map", () => {
@@ -72,10 +75,8 @@ describe("AppSettingsPage use case model map", () => {
     const textChatBucket = screen.getByRole("combobox", {
       name: "Text Chat model bucket",
     });
-    fireEvent.keyDown(textChatBucket, { key: "ArrowDown" });
-    fireEvent.keyDown(await screen.findByRole("option", { name: "models" }), {
-      key: "Enter",
-    });
+    await user.click(textChatBucket);
+    await user.click(await screen.findByRole("option", { name: "models" }));
     await user.click(screen.getByRole("button", { name: "Save use case map" }));
 
     await waitFor(() => expect(onSaveUseCaseModelMap).toHaveBeenCalledOnce());
