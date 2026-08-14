@@ -19,8 +19,8 @@ vi.mock("./api", () => ({
     }),
   ),
   exchangeRealtimeSdp: vi.fn(() => Promise.resolve("mock-answer")),
-  realtimeTranscriptionWebSocketUrl: vi.fn(() =>
-    "ws://example.test/api/realtime-transcription",
+  realtimeTranscriptionWebSocketUrl: vi.fn(
+    () => "ws://example.test/api/realtime-transcription",
   ),
 }));
 

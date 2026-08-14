@@ -59,7 +59,9 @@ export function useUseCaseModelMapSettings({
       setMessage("Use case model map saved.");
     } catch (error) {
       setMessage(
-        error instanceof Error ? error.message : "Failed to save use case model map.",
+        error instanceof Error
+          ? error.message
+          : "Failed to save use case model map.",
       );
       throw error;
     } finally {

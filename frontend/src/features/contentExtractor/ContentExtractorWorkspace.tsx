@@ -48,7 +48,9 @@ export function ContentExtractorWorkspace({
             {previewUrl ? (
               <img
                 src={previewUrl}
-                alt={file?.name ? `Uploaded image ${file.name}` : "Uploaded image"}
+                alt={
+                  file?.name ? `Uploaded image ${file.name}` : "Uploaded image"
+                }
                 className="max-h-[34rem] w-full rounded-xl object-contain"
               />
             ) : (

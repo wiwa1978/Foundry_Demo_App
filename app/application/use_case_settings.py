@@ -1,7 +1,6 @@
 import os
 import re
 from dataclasses import dataclass
-from typing import Any
 from urllib.parse import urlparse
 
 from app.application.ports.use_case_settings import UseCaseResourceSettingsRepository

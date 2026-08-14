@@ -8,7 +8,11 @@ import type { TextTranslationResult } from "./types";
 const defaultSourceText =
   "Doctor is available next Monday. Do you want to schedule an appointment?";
 
-export function useTextTranslation({ fetchClient }: { fetchClient: FetchClient }) {
+export function useTextTranslation({
+  fetchClient,
+}: {
+  fetchClient: FetchClient;
+}) {
   const [sourceText, setSourceText] = useState(defaultSourceText);
   const [sourceLanguage, setSourceLanguage] = useState("auto");
   const [targetLanguage, setTargetLanguage] = useState("es");

@@ -1468,7 +1468,9 @@ export function AzureSpeechLiveTranslationWorkspace({
                     type="button"
                     role="switch"
                     aria-checked={audioPlaybackEnabled}
-                    onClick={() => onAudioPlaybackEnabledChange(!audioPlaybackEnabled)}
+                    onClick={() =>
+                      onAudioPlaybackEnabledChange(!audioPlaybackEnabled)
+                    }
                     className={cn(
                       "rounded-full border px-3 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       audioPlaybackEnabled

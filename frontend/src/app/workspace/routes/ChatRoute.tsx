@@ -29,7 +29,6 @@ const modelRouterRoutingOptions = [
   { value: "cost", label: "Cost routing" },
 ] as const;
 
-
 type ChatRouteProps = {
   route: WorkspaceContentRoute;
   access: WorkspaceAccessViewModel;

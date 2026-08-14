@@ -88,7 +88,6 @@ export function WorkspaceContentRouter(props: WorkspaceContentRouterProps) {
     return <ContentExtractorWorkspace {...props.contentExtractor} />;
   }
 
-
   switch (route.renderer) {
     case "agent":
       return (

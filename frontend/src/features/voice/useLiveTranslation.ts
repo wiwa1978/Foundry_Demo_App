@@ -52,18 +52,21 @@ export function useLiveTranslation() {
     return mountedRef.current && generationRef.current === generation;
   }
 
-  const stopPlayback = useCallback((resources: LiveTranslationResources | null) => {
-    resources?.playbackSources.forEach((source) => {
-      try {
-        source.stop();
-      } catch {
-        // A source that already ended cannot be stopped again in every browser.
-      }
-      source.disconnect();
-    });
-    resources?.playbackSources.clear();
-    playAtRef.current = 0;
-  }, []);
+  const stopPlayback = useCallback(
+    (resources: LiveTranslationResources | null) => {
+      resources?.playbackSources.forEach((source) => {
+        try {
+          source.stop();
+        } catch {
+          // A source that already ended cannot be stopped again in every browser.
+        }
+        source.disconnect();
+      });
+      resources?.playbackSources.clear();
+      playAtRef.current = 0;
+    },
+    [],
+  );
 
   const setAudioPlaybackEnabled = useCallback(
     (enabled: boolean) => {
@@ -125,7 +128,8 @@ export function useLiveTranslation() {
   ) {
     const cleanedTranslation = translatedText.trim();
     const cleanedSource = sourceText?.trim() ?? "";
-    if ((!cleanedTranslation && !cleanedSource) || !isCurrent(generation)) return;
+    if ((!cleanedTranslation && !cleanedSource) || !isCurrent(generation))
+      return;
     setSourceInterimTranscript("");
     setTranslatedInterimTranscript("");
     const entries: RealtimeTranscriptEntry[] = [];
@@ -162,7 +166,11 @@ export function useLiveTranslation() {
     data: ArrayBuffer,
   ) {
     const context = resources.audioContext;
-    if (!context || !isCurrent(generation) || !audioPlaybackEnabledRef.current) {
+    if (
+      !context ||
+      !isCurrent(generation) ||
+      !audioPlaybackEnabledRef.current
+    ) {
       return;
     }
     const pcm = new Int16Array(data);

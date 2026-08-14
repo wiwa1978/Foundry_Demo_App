@@ -17,13 +17,11 @@ import { cn } from "@/lib/utils";
 
 import { useWorkspaceController } from "./useWorkspaceController";
 
-
 function isAdminView(view: ViewMode) {
   return view === "evaluation-admin" || view === "admin-monitor";
 }
 
 export default function AppWorkspace() {
-
   const {
     activeView,
     setActiveView,
@@ -218,7 +216,8 @@ export default function AppWorkspace() {
               inputRef: contentExtractorFileInputRef,
               onModeChange: contentExtractor.setMode,
               onFileChange: (file) => void contentExtractor.extractFile(file),
-              onSelectSample: (sample) => void contentExtractor.selectSample(sample),
+              onSelectSample: (sample) =>
+                void contentExtractor.selectSample(sample),
             }}
             browserSpeech={{
               availableSpeechVoices,
@@ -273,7 +272,9 @@ export default function AppWorkspace() {
         ) : null}
 
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white shadow-sm dark:border-[#55555a] dark:bg-[#39393d]">
-          {!workspaceLocked && !isAdminView(activeView) && activeUseCaseDetails.workspace !== "contentExtractor" ? (
+          {!workspaceLocked &&
+          !isAdminView(activeView) &&
+          activeUseCaseDetails.workspace !== "contentExtractor" ? (
             <div className="flex items-center justify-between border-b px-5 py-4 dark:border-[#55555a]">
               <div>
                 <h2 className="palette-heading font-semibold">

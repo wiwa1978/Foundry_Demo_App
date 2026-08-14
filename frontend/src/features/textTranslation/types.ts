@@ -38,14 +38,14 @@ export const sourceLanguages: TextTranslationLanguage[] = [
   { value: "hi", label: "Hindi" },
 ];
 
-export const targetLanguages: TextTranslationLanguage[] = sourceLanguages.filter(
-  (language) => language.value !== "auto",
-);
+export const targetLanguages: TextTranslationLanguage[] =
+  sourceLanguages.filter((language) => language.value !== "auto");
 
 export function languageLabel(value: string | null | undefined) {
   return (
     sourceLanguages.find(
-      (language) => language.value.toLowerCase() === (value ?? "").toLowerCase(),
+      (language) =>
+        language.value.toLowerCase() === (value ?? "").toLowerCase(),
     )?.label ?? value
   );
 }

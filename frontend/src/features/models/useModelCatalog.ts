@@ -252,7 +252,9 @@ function discoveryUpdate(data: ModelsResponse): CatalogUpdate {
   ).deployments;
   const realtimeTranscriptionDeployments = (deployments ?? [])
     .filter((deployment) =>
-      isRealtimeOnlyTranscriptionModel(deployment.model_name ?? deployment.name),
+      isRealtimeOnlyTranscriptionModel(
+        deployment.model_name ?? deployment.name,
+      ),
     )
     .map((deployment) => deployment.name);
   return {
@@ -267,7 +269,9 @@ function discoveryUpdate(data: ModelsResponse): CatalogUpdate {
     realtimeTranscriptionModels: uniqueModels([
       ...(data.realtime_transcription_models ?? []),
       ...realtimeTranscriptionDeployments,
-      ...(data.transcription_models ?? []).filter(isRealtimeOnlyTranscriptionModel),
+      ...(data.transcription_models ?? []).filter(
+        isRealtimeOnlyTranscriptionModel,
+      ),
     ]),
     traditionalTranscriptionModels: data.traditional_transcription_models ?? [],
     ttsModels: data.tts_models ?? [],

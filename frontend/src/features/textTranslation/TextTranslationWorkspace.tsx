@@ -21,7 +21,10 @@ function TranslationSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" htmlFor={id}>
+    <label
+      className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+      htmlFor={id}
+    >
       {label}
       <select
         id={id}
@@ -83,7 +86,8 @@ export function TextTranslationWorkspace({
               Text Translation
             </h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-              Translate plain text with source auto-detection or an explicit source language. Credentials stay on the backend.
+              Translate plain text with source auto-detection or an explicit
+              source language. Credentials stay on the backend.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-3">
@@ -109,14 +113,18 @@ export function TextTranslationWorkspace({
               onClick={onTranslate}
               className="h-10 rounded-xl"
             >
-              {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+              {loading ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : null}
               Translate
             </Button>
           </div>
         </div>
         {!configured ? (
           <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-            Configure FOUNDRY_PROJECT_ENDPOINT or FOUNDRY_TRANSLATOR_ENDPOINT to enable this use case. Microsoft Entra ID is used by default; FOUNDRY_TRANSLATOR_KEY remains an optional key fallback.
+            Configure FOUNDRY_PROJECT_ENDPOINT or FOUNDRY_TRANSLATOR_ENDPOINT to
+            enable this use case. Microsoft Entra ID is used by default;
+            FOUNDRY_TRANSLATOR_KEY remains an optional key fallback.
           </p>
         ) : null}
         {error ? (

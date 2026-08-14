@@ -79,10 +79,9 @@ export async function loadModelRouterRouting(
   );
   return {
     response,
-    data: await readJsonResponse<ModelRouterRoutingSettings & { detail?: string }>(
-      response,
-      { deployment_name: deployment, mode: "balanced" },
-    ),
+    data: await readJsonResponse<
+      ModelRouterRoutingSettings & { detail?: string }
+    >(response, { deployment_name: deployment, mode: "balanced" }),
   };
 }
 
@@ -106,10 +105,9 @@ export async function saveModelRouterRouting(
   );
   return {
     response,
-    data: await readJsonResponse<ModelRouterRoutingSettings & { detail?: string }>(
-      response,
-      { deployment_name: deployment, mode },
-    ),
+    data: await readJsonResponse<
+      ModelRouterRoutingSettings & { detail?: string }
+    >(response, { deployment_name: deployment, mode }),
   };
 }
 

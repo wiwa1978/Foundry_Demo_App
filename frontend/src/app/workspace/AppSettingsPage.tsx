@@ -190,7 +190,9 @@ export function AppSettingsPage({
     setUseCaseMapDraft((current) => {
       const mapping = current[useCaseId];
       const roleMapping: Record<string, ModelBucketName> =
-        mapping && typeof mapping !== "string" ? mapping : { primary: "models" };
+        mapping && typeof mapping !== "string"
+          ? mapping
+          : { primary: "models" };
       return {
         ...current,
         [useCaseId]: { ...roleMapping, [role]: bucket },
@@ -346,7 +348,9 @@ export function AppSettingsPage({
                 {visibleUseCases.map((useCase) => {
                   const mapping = useCaseMapping(useCase.id);
                   const roleEntries =
-                    typeof mapping === "string" ? null : Object.entries(mapping);
+                    typeof mapping === "string"
+                      ? null
+                      : Object.entries(mapping);
                   return (
                     <div
                       key={useCase.id}
@@ -365,7 +369,9 @@ export function AppSettingsPage({
                               key={role}
                               className="grid gap-1 text-xs text-slate-500 dark:text-slate-400 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-center"
                             >
-                              <span className="font-medium capitalize">{role}</span>
+                              <span className="font-medium capitalize">
+                                {role}
+                              </span>
                               <Select
                                 value={bucket}
                                 onValueChange={(value) =>
@@ -392,12 +398,19 @@ export function AppSettingsPage({
                         </div>
                       ) : (
                         <Select
-                          value={typeof mapping === "string" ? mapping : "models"}
+                          value={
+                            typeof mapping === "string" ? mapping : "models"
+                          }
                           onValueChange={(value) =>
-                            setUseCaseBucket(useCase.id, value as ModelBucketName)
+                            setUseCaseBucket(
+                              useCase.id,
+                              value as ModelBucketName,
+                            )
                           }
                         >
-                          <SelectTrigger aria-label={`${useCase.title} model bucket`}>
+                          <SelectTrigger
+                            aria-label={`${useCase.title} model bucket`}
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>

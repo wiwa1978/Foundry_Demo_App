@@ -64,7 +64,6 @@ describe("AppSettingsPage use case model map", () => {
     expect(screen.getByText("agent_research")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "media" }));
 
-
     expect(screen.getByText("Use case model buckets")).toBeVisible();
     expect(screen.getByText("text_chat")).toBeVisible();
     expect(screen.getByText("youtube_summary")).toBeVisible();

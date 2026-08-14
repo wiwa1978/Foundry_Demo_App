@@ -31,8 +31,8 @@ export function ApiUnavailableDialog({
           id="api-unavailable-description"
           className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300"
         >
-          The frontend cannot contact the Foundry Chat API. Use cases are blocked
-          until the backend is running and reachable.
+          The frontend cannot contact the Foundry Chat API. Use cases are
+          blocked until the backend is running and reachable.
         </p>
         {reason ? (
           <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs text-slate-600 dark:border-[#606066] dark:bg-[#303033] dark:text-slate-300">

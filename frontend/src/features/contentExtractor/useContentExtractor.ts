@@ -7,7 +7,11 @@ import type { ImageSample } from "@/features/images/api";
 import { extractContent } from "./api";
 import type { ContentExtractorMode, ContentExtractorResult } from "./types";
 
-export function useContentExtractor({ fetchClient }: { fetchClient: FetchClient }) {
+export function useContentExtractor({
+  fetchClient,
+}: {
+  fetchClient: FetchClient;
+}) {
   const [mode, setMode] = useState<ContentExtractorMode>("image");
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ContentExtractorResult | null>(null);
@@ -56,7 +60,9 @@ export function useContentExtractor({ fetchClient }: { fetchClient: FetchClient 
           return;
         }
         setError(
-          caught instanceof Error ? caught.message : "Content extraction failed.",
+          caught instanceof Error
+            ? caught.message
+            : "Content extraction failed.",
         );
       } finally {
         if (abortRef.current === controller) {
@@ -81,7 +87,9 @@ export function useContentExtractor({ fetchClient }: { fetchClient: FetchClient 
         await runExtraction(sampleFile);
       } catch (caught) {
         setSampleError(
-          caught instanceof Error ? caught.message : "Could not load image sample.",
+          caught instanceof Error
+            ? caught.message
+            : "Could not load image sample.",
         );
       } finally {
         setSamplesLoading(false);
@@ -101,7 +109,9 @@ export function useContentExtractor({ fetchClient }: { fetchClient: FetchClient 
           return;
         }
         setSampleError(
-          caught instanceof Error ? caught.message : "Could not load image samples.",
+          caught instanceof Error
+            ? caught.message
+            : "Could not load image samples.",
         );
       })
       .finally(() => setSamplesLoading(false));

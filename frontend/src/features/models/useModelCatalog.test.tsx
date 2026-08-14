@@ -435,7 +435,10 @@ describe("useModelCatalog", () => {
       "legacy-stt",
       "live-stt",
     ]);
-    expect(result.current.transcriptionModels).toEqual(["transcribe-a", "gpt-transcribe"]);
+    expect(result.current.transcriptionModels).toEqual([
+      "transcribe-a",
+      "gpt-transcribe",
+    ]);
   });
   it("falls back when transcription and TTS choices disappear", async () => {
     vi.useFakeTimers();

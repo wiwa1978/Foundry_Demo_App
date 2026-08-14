@@ -240,7 +240,6 @@ function contentExtractorModeIcon(mode: ContentExtractorMode) {
   return <ImageIcon className="h-4 w-4" />;
 }
 
-
 export function WorkspaceSidebar({
   workspace,
   models,
@@ -484,7 +483,11 @@ export function WorkspaceSidebar({
                 </select>
                 {contentExtractor.mode !== "image" ? (
                   <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    {contentExtractor.mode === "document" ? "Document" : "Audio"} extraction is visible for the workflow layout and will be enabled after the image path.
+                    {contentExtractor.mode === "document"
+                      ? "Document"
+                      : "Audio"}{" "}
+                    extraction is visible for the workflow layout and will be
+                    enabled after the image path.
                   </p>
                 ) : null}
                 <input
@@ -494,14 +497,19 @@ export function WorkspaceSidebar({
                   accept="image/jpeg,image/png,image/webp,image/bmp,image/tiff"
                   className="hidden"
                   onChange={(event) => {
-                    void contentExtractor.onFileChange(event.target.files?.[0] ?? null);
+                    void contentExtractor.onFileChange(
+                      event.target.files?.[0] ?? null,
+                    );
                   }}
                 />
                 <Button
                   type="button"
                   variant="outline"
                   className="w-full justify-start"
-                  disabled={contentExtractor.loading || contentExtractor.mode !== "image"}
+                  disabled={
+                    contentExtractor.loading ||
+                    contentExtractor.mode !== "image"
+                  }
                   onClick={() => contentExtractor.inputRef.current?.click()}
                 >
                   {contentExtractor.loading ? (
@@ -522,15 +530,18 @@ export function WorkspaceSidebar({
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                     Image Prompt gallery
                   </div>
-                  {contentExtractor.samplesLoading && !contentExtractor.samples.length ? (
+                  {contentExtractor.samplesLoading &&
+                  !contentExtractor.samples.length ? (
                     <div className="flex items-center gap-2 text-xs text-slate-400">
                       <LoaderCircle className="h-4 w-4 animate-spin" />
                       Loading images...
                     </div>
                   ) : null}
-                  {!contentExtractor.samplesLoading && !contentExtractor.samples.length ? (
+                  {!contentExtractor.samplesLoading &&
+                  !contentExtractor.samples.length ? (
                     <p className="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs leading-5 text-slate-500 dark:border-[#606066] dark:text-slate-400">
-                      No gallery images yet. Generate images in Text to Image, or seed Blob Storage under image-samples/.
+                      No gallery images yet. Generate images in Text to Image,
+                      or seed Blob Storage under image-samples/.
                     </p>
                   ) : null}
                   {contentExtractor.samples.length ? (
@@ -539,8 +550,13 @@ export function WorkspaceSidebar({
                         <button
                           key={sample.id}
                           type="button"
-                          disabled={contentExtractor.samplesLoading || contentExtractor.loading}
-                          onClick={() => void contentExtractor.onSelectSample(sample)}
+                          disabled={
+                            contentExtractor.samplesLoading ||
+                            contentExtractor.loading
+                          }
+                          onClick={() =>
+                            void contentExtractor.onSelectSample(sample)
+                          }
                           className="group overflow-hidden rounded-lg border border-slate-200 bg-white text-left text-xs shadow-sm transition hover:border-blue-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:hover:border-violet-400"
                           title={sample.name}
                         >
@@ -565,7 +581,8 @@ export function WorkspaceSidebar({
                 ) : null}
                 {!contentExtractor.configured ? (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                    Configure FOUNDRY_PROJECT_ENDPOINT or FOUNDRY_CONTENT_UNDERSTANDING_ENDPOINT.
+                    Configure FOUNDRY_PROJECT_ENDPOINT or
+                    FOUNDRY_CONTENT_UNDERSTANDING_ENDPOINT.
                   </p>
                 ) : null}
                 {contentExtractor.error ? (

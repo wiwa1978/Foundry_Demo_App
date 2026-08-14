@@ -31,7 +31,9 @@ describe("translation workspaces", () => {
     );
 
     expect(screen.getByText("Translate from")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Auto-detect" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Auto-detect" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Translate to")).toBeInTheDocument();
   });
 
@@ -59,9 +61,13 @@ describe("translation workspaces", () => {
 
     expect(screen.getByText("ORIGINAL RAW TRANSCRIPT")).toBeInTheDocument();
     expect(screen.getByText("Good morning")).toBeInTheDocument();
-    expect(screen.getByText("Translated voice, audio, and text")).toBeInTheDocument();
+    expect(
+      screen.getByText("Translated voice, audio, and text"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Bonjour")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Audio playback On" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Audio playback On" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Translate from")).toBeInTheDocument();
     expect(screen.getByText("Translate to")).toBeInTheDocument();
   });
@@ -89,12 +95,18 @@ describe("translation workspaces", () => {
     );
 
     expect(screen.getByText("ORIGINAL RAW TRANSCRIPT")).toBeInTheDocument();
-    expect(screen.getByText("Listening for original speech...")).toBeInTheDocument();
-    expect(screen.getByText("Translated voice, audio, and text")).toBeInTheDocument();
+    expect(
+      screen.getByText("Listening for original speech..."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Translated voice, audio, and text"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Waiting for translated speech and audio..."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Audio playback Off" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Audio playback Off" }),
+    ).toBeInTheDocument();
   });
 
   it("toggles Azure Speech audio playback from the left pane", () => {

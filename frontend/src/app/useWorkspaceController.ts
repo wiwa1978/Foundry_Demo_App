@@ -125,18 +125,49 @@ function buildModelUsages({
   addMany(imageEditModels, "Image to Image", "Image editing");
   addMany(textModels, "Youtube Video Summarization", "Summarization");
   addMany(transcriptionModels, "Youtube Video Summarization", "Transcription");
-  addMany(realtimeTranscriptionModels, "Youtube Video Transcription", "Realtime transcription");
+  addMany(
+    realtimeTranscriptionModels,
+    "Youtube Video Transcription",
+    "Realtime transcription",
+  );
   addMany(textModels, "Browser based Voice", "Chat completion");
   addMany(transcriptionModels, "STT-Chat-TTS", "Speech to text");
   addMany(textModels, "STT-Chat-TTS", "Chat completion");
   addMany(ttsModels, "STT-Chat-TTS", "Text to speech");
   addMany(transcriptionModels, "Recorded Audio Transcription", "Transcription");
-  addMany(transcriptionModels, "Side by Side Recorded Audio Transcription", "Transcription comparison");
-  addMany(realtimeTranscriptionModels, "Realtime Transcription webrtc", "Realtime transcription");
-  addMany(realtimeTranscriptionModels, "Realtime Transcription websockets", "Realtime transcription");
-  addModelUsage(usages, realtimeTranslationModel, "GPT Realtime Translation", "Foundry realtime translation");
-  addModelUsage(usages, realtimeModel, "Realtime Speech in / Speech Out", "Realtime speech");
-  addModelUsage(usages, voiceLiveModel, "Voice Live travel Concierge", "Voice Live");
+  addMany(
+    transcriptionModels,
+    "Side by Side Recorded Audio Transcription",
+    "Transcription comparison",
+  );
+  addMany(
+    realtimeTranscriptionModels,
+    "Realtime Transcription webrtc",
+    "Realtime transcription",
+  );
+  addMany(
+    realtimeTranscriptionModels,
+    "Realtime Transcription websockets",
+    "Realtime transcription",
+  );
+  addModelUsage(
+    usages,
+    realtimeTranslationModel,
+    "GPT Realtime Translation",
+    "Foundry realtime translation",
+  );
+  addModelUsage(
+    usages,
+    realtimeModel,
+    "Realtime Speech in / Speech Out",
+    "Realtime speech",
+  );
+  addModelUsage(
+    usages,
+    voiceLiveModel,
+    "Voice Live travel Concierge",
+    "Voice Live",
+  );
 
   return Array.from(usages.values()).sort((left, right) =>
     left.model.localeCompare(right.model),

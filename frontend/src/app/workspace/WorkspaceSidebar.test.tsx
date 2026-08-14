@@ -462,11 +462,15 @@ describe("WorkspaceSidebar", () => {
       previousConversations.compareDocumentPosition(sourceType) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Extract content" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Extract content" }),
+    ).toBeNull();
     expect(screen.getByText("Image Prompt gallery")).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: /generated fox/i }));
-    expect(onSelectSample).toHaveBeenCalledWith(props.contentExtractor.samples[0]);
+    expect(onSelectSample).toHaveBeenCalledWith(
+      props.contentExtractor.samples[0],
+    );
 
     await user.upload(
       screen.getByLabelText("Upload image for content extraction"),

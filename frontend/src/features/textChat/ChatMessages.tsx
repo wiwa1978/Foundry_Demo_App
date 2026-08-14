@@ -20,7 +20,6 @@ import { Badge } from "@/components/ui/badge";
 import type { ChatMessage } from "@/features/textChat/types";
 import { cn } from "@/lib/utils";
 
-
 function routedModelLabel(message: ChatMessage) {
   if (!message.routed_model || message.routed_model === message.model) {
     return null;

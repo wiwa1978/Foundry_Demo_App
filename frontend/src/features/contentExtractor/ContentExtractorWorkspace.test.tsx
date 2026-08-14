@@ -57,7 +57,9 @@ describe("ContentExtractorWorkspace", () => {
     renderWorkspace({ nextFile: null, nextResult: null });
 
     expect(screen.getByText("No image uploaded yet.")).toBeInTheDocument();
-    expect(screen.getByText("Extracted text appears here.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Extracted text appears here."),
+    ).toBeInTheDocument();
   });
 
   it("shows progress while extraction runs", () => {
@@ -65,5 +67,4 @@ describe("ContentExtractorWorkspace", () => {
 
     expect(screen.getByText("Extracting content...")).toBeInTheDocument();
   });
-
 });

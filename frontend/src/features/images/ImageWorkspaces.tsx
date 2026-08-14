@@ -223,7 +223,9 @@ export function TextToImageWorkspace({
               <input
                 type="checkbox"
                 checked={saveToGallery}
-                onChange={(event) => onSaveToGalleryChange(event.target.checked)}
+                onChange={(event) =>
+                  onSaveToGalleryChange(event.target.checked)
+                }
                 className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
               />
               Save to image gallery
