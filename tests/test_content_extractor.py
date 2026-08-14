@@ -201,7 +201,8 @@ def test_config_reports_content_extractor_from_project_endpoint(monkeypatch) -> 
     ):
         monkeypatch.delenv(name, raising=False)
 
-    response = TestClient(create_app()).get("/api/config")
+    with TestClient(create_app()) as client:
+        response = client.get("/api/config")
 
     assert response.status_code == 200
     assert response.json()["is_content_extractor_configured"] is True

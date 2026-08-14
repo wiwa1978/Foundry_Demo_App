@@ -97,16 +97,17 @@ def test_text_to_image_generation_does_not_store_image_sample_by_default(monkeyp
             with patch(
                 "usecases_media.shared.images.backend.router._sample_container_client"
             ) as sample_container_client:
-                response = TestClient(create_app()).post(
-                    "/api/images/generate",
-                    json={
-                        "model": "image",
-                        "prompt": "A fox in a forest",
-                        "width": 1024,
-                        "height": 1024,
-                        "use_case": "text_to_image",
-                    },
-                )
+                with TestClient(create_app()) as client:
+                    response = client.post(
+                        "/api/images/generate",
+                        json={
+                            "model": "image",
+                            "prompt": "A fox in a forest",
+                            "width": 1024,
+                            "height": 1024,
+                            "use_case": "text_to_image",
+                        },
+                    )
 
     assert response.status_code == 200
     sample_container_client.assert_not_called()
@@ -149,17 +150,18 @@ def test_text_to_image_generation_is_stored_as_image_sample(monkeypatch):
                 "usecases_media.shared.images.backend.router._sample_container_client",
                 return_value=(BlobService(), BlobContainer()),
             ):
-                response = TestClient(create_app()).post(
-                    "/api/images/generate",
-                    json={
-                        "model": "image",
-                        "prompt": "A fox in a forest",
-                        "width": 1024,
-                        "height": 1024,
-                        "use_case": "text_to_image",
-                        "save_to_gallery": True,
-                    },
-                )
+                with TestClient(create_app()) as client:
+                    response = client.post(
+                        "/api/images/generate",
+                        json={
+                            "model": "image",
+                            "prompt": "A fox in a forest",
+                            "width": 1024,
+                            "height": 1024,
+                            "use_case": "text_to_image",
+                            "save_to_gallery": True,
+                        },
+                    )
 
     assert response.status_code == 200
     assert uploaded["name"].startswith("image-samples/generated-a-fox-in-a-forest-")
