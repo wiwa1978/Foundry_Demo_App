@@ -71,7 +71,7 @@ jobs:
 
   deploy:
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, foundry-demo-app]
 
     steps:
       - name: Checkout

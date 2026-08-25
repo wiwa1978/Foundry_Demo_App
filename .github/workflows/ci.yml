@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, foundry-demo-app]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -41,7 +41,7 @@ jobs:
       - run: python -m pip_audit -r requirements.lock --strict
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, foundry-demo-app]
     defaults:
       run:
         working-directory: frontend
@@ -60,7 +60,7 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
 
   infrastructure:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, foundry-demo-app]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Bicep CLI
@@ -70,7 +70,7 @@ jobs:
       - run: az bicep build --file infra/main-hub-additions.bicep --stdout > /dev/null
 
   security:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, foundry-demo-app]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
