@@ -10,8 +10,6 @@ import json
 import logging
 import os
 import re
-from functools import lru_cache
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -21,6 +19,7 @@ from app.infrastructure.azure.credentials import get_azure_credential
 from app.infrastructure.azure.foundry.settings import load_settings
 
 from ..agent.agent_registry import resolve_retail_agent_name
+from ..agent.catalog import catalog_cosmos_configured, load_catalog, search_products  # noqa: F401
 from ..agent.demo_inventory import DEMO_STOCK
 from ..agent.handoff_service import HandoffService
 from .schemas import RetailCartItem
@@ -29,49 +28,11 @@ logger = logging.getLogger(__name__)
 _PRODUCT_ID = re.compile(r"\bPROD\d{4}\b", re.IGNORECASE)
 _handoff_service = HandoffService()
 
-
-@lru_cache(maxsize=1)
-def load_catalog() -> tuple[dict[str, Any], ...]:
-    path = Path(__file__).resolve().parents[1] / "data" / "product_catalog.json"
-    with path.open(encoding="utf-8") as source:
-        records = json.load(source)
-    return tuple(
-        {
-            "id": item.get("ProductID"),
-            "name": item.get("ProductName"),
-            "type": item.get("ProductCategory"),
-            "description": item.get("ProductDescription"),
-            "imageURL": item.get("ImageURL"),
-            "punchLine": item.get("ProductPunchLine"),
-            "price": item.get("Price"),
-        }
-        for item in records
-        if item.get("ProductID") and item.get("ProductName")
-    )
-
-
 def _step(label: str, status: str, detail: str | None = None) -> dict[str, Any]:
     event: dict[str, Any] = {"type": "step", "label": label, "status": status}
     if detail:
         event["detail"] = detail
     return event
-
-
-def _search(message: str, limit: int = 6) -> list[dict[str, Any]]:
-    terms = {term.lower() for term in re.findall(r"[a-z0-9]+", message) if len(term) > 2}
-    if not terms:
-        return list(load_catalog()[:limit])
-    ranked: list[tuple[int, dict[str, Any]]] = []
-    for product in load_catalog():
-        haystack = " ".join(
-            str(product.get(key) or "")
-            for key in ("id", "name", "type", "description", "punchLine")
-        ).lower()
-        score = sum(term in haystack for term in terms)
-        if score:
-            ranked.append((score, product))
-    ranked.sort(key=lambda item: (-item[0], str(item[1]["name"])))
-    return [product for _, product in ranked[:limit]]
 
 
 def _stock(product_id: str) -> int:
@@ -172,10 +133,11 @@ async def stream_retail_agent(
         "cart": current_cart,
     }
     try:
-        yield _step("Search demo marketplace", "running")
+        yield _step("Search product catalog", "running")
         await asyncio.sleep(0)
-        products = _search(message)
-        yield _step("Search demo marketplace", "done", f"{len(products)} products matched")
+        products = search_products(message)
+        catalog_source = "Cosmos DB vector catalog" if catalog_cosmos_configured() else "bundled demo catalog"
+        yield _step("Search product catalog", "done", f"{len(products)} products matched ({catalog_source})")
         if products:
             yield {"type": "products", "products": products}
 
@@ -201,7 +163,7 @@ async def stream_retail_agent(
             return
 
         project_client = None
-        if settings.endpoint and configured_agent_name:
+        if settings.endpoint and configured_agent_name and not offline_mode:
             project_client = AIProjectClient(
                 endpoint=settings.endpoint,
                 credential=get_azure_credential(),
@@ -234,6 +196,8 @@ async def stream_retail_agent(
 
             yield _step(f"Invoke {selected_agent_type}", "running")
             agent_context = message
+            if selected_agent_type == "cora":
+                agent_context = f"{message}\n\nAvailable products:\n{json.dumps(products)}"
             if selected_agent_type == "interior_designer":
                 agent_context = json.dumps(
                     [

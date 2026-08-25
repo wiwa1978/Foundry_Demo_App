@@ -6,7 +6,7 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "mcp_product_recommendations": {
         "type": "function",
         "name": "mcp_product_recommendations",
-        "description": "Search the Zava demo catalog for products.",
+        "description": "Search the Zava product catalog in Cosmos DB for relevant products.",
         "parameters": {
             "type": "object",
             "properties": {"question": {"type": "string"}},

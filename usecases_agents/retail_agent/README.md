@@ -39,3 +39,24 @@ This creates a new version of `zava-shop-assistant-agent`, `zava-inventory-agent
 `zava-customer-loyalty-agent`, `zava-cart-manager-agent`,
 `zava-interior-designer-agent`, and `zava-handoff-service-agent`. Afterward set
 `FOUNDRY_RETAIL_AGENT_NAME=zava-shop-assistant-agent` and restart the backend.
+
+For Cosmos-backed product retrieval, configure the product catalog database and
+container separately from the app conversation container:
+
+```dotenv
+FOUNDRY_RETAIL_CATALOG_COSMOS_ENDPOINT=https://<cosmos-account>.documents.azure.com:443/
+FOUNDRY_RETAIL_CATALOG_COSMOS_DATABASE_NAME=zava
+FOUNDRY_RETAIL_CATALOG_COSMOS_CONTAINER_NAME=product_catalog
+FOUNDRY_RETAIL_CATALOG_EMBEDDING_MODEL=text-embedding-3-large
+```
+
+The container must contain `request_vector` embeddings. Seed the bundled catalog
+from the repository root with:
+
+```powershell
+.venv\Scripts\python.exe scripts\seed_retail_catalog.py
+```
+
+Without the product-catalog Cosmos settings, the app intentionally uses the
+bundled JSON catalog. If Cosmos is configured but empty, retrieval returns no
+products rather than silently mixing data sources.

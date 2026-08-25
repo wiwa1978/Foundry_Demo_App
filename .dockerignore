@@ -6,6 +6,8 @@
 __pycache__
 *.pyc
 data
+!data/
+!data/product_catalog.json
 frontend/dist
 frontend/node_modules
 infra/main.json

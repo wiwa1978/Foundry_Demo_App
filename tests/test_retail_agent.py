@@ -11,7 +11,8 @@ def test_retail_request_normalizes_message_and_accepts_cart():
 
 
 @pytest.mark.anyio
-async def test_retail_stream_round_trips_cart_and_emits_products():
+async def test_retail_stream_round_trips_cart_and_emits_products(monkeypatch):
+    monkeypatch.setenv("FOUNDRY_RETAIL_OFFLINE_MODE", "true")
     events = [
         event
         async for event in stream_retail_agent("Add PROD0001 to my cart", cart=[])

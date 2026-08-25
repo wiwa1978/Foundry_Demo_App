@@ -6,11 +6,12 @@ available to a future Foundry-hosted multi-agent deployment.
 
 from typing import Any
 
-from ..backend.service import _search, _stock
+from ..backend.service import _stock
+from .catalog import search_products
 
 
 async def mcp_product_recommendations(question: str) -> list[dict[str, Any]]:
-    return _search(question)
+    return search_products(question)
 
 
 async def mcp_inventory_check(product_list: list[str]) -> list[dict[str, Any]]:

@@ -36,6 +36,8 @@ RUN pip install \
 COPY app ./app
 COPY usecases_agents ./usecases_agents
 COPY usecases_media ./usecases_media
+COPY pipelines ./pipelines
+COPY data ./data
 COPY --from=frontend-build /src/frontend/dist ./frontend/dist
 RUN python -c "from app.api.static import FRONTEND_INDEX; assert FRONTEND_INDEX.is_file(), f'Frontend build missing at {FRONTEND_INDEX}'"
 
