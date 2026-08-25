@@ -65,10 +65,10 @@ def create_app() -> FastAPI:
     from app.api.features.conversations.router import router as conversations_router
     from app.api.features.models.router import router as models_router
     from app.api.features.system.router import router as system_router
-    from usecases_agents.hosted_agent.backend.router import router as hosted_agent_router
     from usecases_agents.azure_architect_agent.prompt.backend.router import (
         router as azure_architect_agent_router,
     )
+    from usecases_agents.hosted_agent.backend.router import router as hosted_agent_router
     from usecases_agents.investment_planner_prompt.backend.router import (
         router as investment_planner_router,
     )

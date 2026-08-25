@@ -18,6 +18,7 @@ import {
   comparisonStreamEndpoint,
   streamComparison,
 } from "@media/text_chat_comparison/frontend";
+import { useTextToSpeechAvatar } from "@media/text_to_speech_avatar/frontend";
 import { useTextTranslation } from "@media/text_translation/frontend";
 import { useVoiceLive } from "@media/voice_live/frontend";
 import { useYouTubeRealtimeTranscription } from "@media/youtube_realtime_transcription/frontend";
@@ -543,6 +544,10 @@ export function useWorkspaceController() {
     model: config?.voice_live_model ?? "gpt-realtime",
     voice: config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural",
   });
+  const textToSpeechAvatar = useTextToSpeechAvatar({
+    configured: config?.is_speech_transcription_configured ?? false,
+    fetchClient: apiTrace.tracedFetch,
+  });
   const liveTranslation = useLiveTranslation();
   const contentExtractor = useContentExtractor({
     fetchClient: apiTrace.tracedFetch,
@@ -766,6 +771,12 @@ export function useWorkspaceController() {
     }
     if (nextUseCase.workspace !== "voiceLive" && voiceLive.status !== "idle") {
       voiceLive.stop();
+    }
+    if (
+      nextUseCase.workspace !== "textToSpeechAvatar" &&
+      textToSpeechAvatar.status !== "idle"
+    ) {
+      textToSpeechAvatar.stop();
     }
     if (
       nextUseCase.workspace !== "liveTranslation" &&
@@ -1151,6 +1162,7 @@ export function useWorkspaceController() {
     },
     azureSpeechTtsConfigured:
       config?.is_speech_transcription_configured ?? false,
+    textToSpeechAvatar,
     foundryGptAudioConfigured: config?.is_traditional_voice_configured ?? false,
     textToSpeech: {
       azureSpeechModel,

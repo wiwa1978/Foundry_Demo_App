@@ -4,7 +4,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from openai import PermissionDeniedError
 
-from usecases_agents.azure_architect_agent.prompt.backend.service import stream_azure_architect_agent
+from usecases_agents.azure_architect_agent.prompt.backend.service import (
+    stream_azure_architect_agent,
+)
 
 
 async def _events(question: str) -> list[dict]:

@@ -30,10 +30,16 @@ export async function streamRetailAgent({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     },
-    { label: "Run Retail Shopping Assistant", request: body, responseKind: "stream" },
+    {
+      label: "Run Retail Shopping Assistant",
+      request: body,
+      responseKind: "stream",
+    },
   );
   if (!response.ok) {
-    throw new Error(await readPublicApiError(response, "Retail assistant failed."));
+    throw new Error(
+      await readPublicApiError(response, "Retail assistant failed."),
+    );
   }
   return readServerSentEvents<RetailAgentStreamEvent>(response, onEvent);
 }

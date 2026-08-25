@@ -73,6 +73,7 @@ import type {
   RetailProduct,
 } from "@/features/retailAgent/types";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
+import type { TextToSpeechAvatarViewModel } from "@/features/voice/useTextToSpeechAvatar";
 
 export type WorkspaceContentRoute = {
   view: ViewMode;
@@ -245,6 +246,8 @@ export type WorkspaceTraditionalVoiceViewModel = {
   onStart: (request: TraditionalVoiceRequest) => void;
   onStop: () => void;
 };
+
+export type WorkspaceTextToSpeechAvatarViewModel = TextToSpeechAvatarViewModel;
 
 export type WorkspaceTranscriptionViewModel = {
   configured: boolean;
@@ -564,6 +567,7 @@ export type WorkspaceContentRouterProps = {
   images: WorkspaceImagesViewModel;
   comparison: WorkspaceComparisonViewModel;
   traditionalVoice: WorkspaceTraditionalVoiceViewModel;
+  textToSpeechAvatar?: WorkspaceTextToSpeechAvatarViewModel;
   azureSpeechTtsConfigured?: boolean;
   foundryGptAudioConfigured?: boolean;
   textToSpeech?: WorkspaceTextToSpeechSettings;

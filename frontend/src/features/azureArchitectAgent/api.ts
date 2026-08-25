@@ -2,10 +2,15 @@ import { readPublicApiError } from "@/api/errors";
 import type { FetchClient } from "@/api/types";
 import { readServerSentEvents } from "@/features/textChat/sse";
 
-import type { AzureArchitectAgentStreamEvent, AzureArchitectAgentTrace } from "./types";
+import type {
+  AzureArchitectAgentStreamEvent,
+  AzureArchitectAgentTrace,
+} from "./types";
 
-export const azureArchitectAgentStreamEndpoint = "/api/azure-architect-agent/stream";
-export const azureArchitectAgentTraceEndpoint = "/api/azure-architect-agent/trace";
+export const azureArchitectAgentStreamEndpoint =
+  "/api/azure-architect-agent/stream";
+export const azureArchitectAgentTraceEndpoint =
+  "/api/azure-architect-agent/trace";
 
 export async function getAzureArchitectAgentTrace({
   fetchClient,

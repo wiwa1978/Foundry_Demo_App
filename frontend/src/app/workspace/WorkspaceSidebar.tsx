@@ -380,9 +380,7 @@ function SidebarRange({
   disabled: boolean;
 }) {
   return (
-    <div
-      className="grid gap-2 text-sm font-medium text-slate-600 dark:text-slate-300"
-    >
+    <div className="grid gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
       <span className="flex items-center justify-between">
         <span>{label}</span>
         <span className="rounded-md bg-slate-100 px-2 py-1 text-xs dark:bg-[#29292c]">
@@ -647,7 +645,8 @@ export function WorkspaceSidebar({
             />
           </div>
         ) : workspace.workspace === "hostedAgent" ||
-          workspace.workspace === "azureArchitectAgent" ? null : hidesModelSelector ? (
+          workspace.workspace ===
+            "azureArchitectAgent" ? null : hidesModelSelector ? (
           <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-300">
             <p className="font-medium text-slate-700 dark:text-slate-100">
               {workspace.workspace === "contentExtractor"
@@ -1014,7 +1013,9 @@ export function WorkspaceSidebar({
                   id="text-translation-mode"
                   value={textTranslation.mode}
                   disabled={textTranslation.loading}
-                  onChange={(event) => textTranslation.onModeChange(event.target.value)}
+                  onChange={(event) =>
+                    textTranslation.onModeChange(event.target.value)
+                  }
                   className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
                 >
                   {textTranslation.modeOptions.map((option) => (
@@ -1034,7 +1035,9 @@ export function WorkspaceSidebar({
                   id="text-translation-source-language"
                   value={textTranslation.sourceLanguage}
                   disabled={textTranslation.loading}
-                  onChange={(event) => textTranslation.onSourceLanguageChange(event.target.value)}
+                  onChange={(event) =>
+                    textTranslation.onSourceLanguageChange(event.target.value)
+                  }
                   className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
                 >
                   {textTranslation.sourceLanguageOptions.map((option) => (
@@ -1057,7 +1060,9 @@ export function WorkspaceSidebar({
                       value={textTranslation.targetLanguage}
                       disabled={textTranslation.loading}
                       onChange={(event) =>
-                        textTranslation.onTargetLanguageChange(event.target.value)
+                        textTranslation.onTargetLanguageChange(
+                          event.target.value,
+                        )
                       }
                       className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
                     >
@@ -1101,7 +1106,9 @@ export function WorkspaceSidebar({
                       checked={textTranslation.audioEnabled}
                       disabled={textTranslation.loading}
                       onChange={(event) =>
-                        textTranslation.onAudioEnabledChange(event.target.checked)
+                        textTranslation.onAudioEnabledChange(
+                          event.target.checked,
+                        )
                       }
                       className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-[#707076] dark:bg-[#29292c] dark:text-violet-400"
                     />

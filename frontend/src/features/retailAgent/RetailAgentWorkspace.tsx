@@ -43,10 +43,15 @@ export function RetailAgentWorkspace(props: Props) {
         {props.products.length ? (
           <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
             {props.products.slice(0, 4).map((product) => (
-              <div key={product.id} className="min-w-44 rounded-xl border bg-white p-3 text-xs shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
+              <div
+                key={product.id}
+                className="min-w-44 rounded-xl border bg-white p-3 text-xs shadow-sm dark:border-[#606066] dark:bg-[#39393d]"
+              >
                 <div className="font-medium">{product.name}</div>
                 <div className="mt-1 text-slate-500">{product.type}</div>
-                <div className="mt-2 font-semibold">${product.price?.toFixed(2) ?? "—"}</div>
+                <div className="mt-2 font-semibold">
+                  ${product.price?.toFixed(2) ?? "—"}
+                </div>
               </div>
             ))}
           </div>

@@ -128,10 +128,22 @@ describe("useCaseModules", () => {
         typeLabel: null,
       },
       {
+        id: "language_learning",
+        title: "Language Learning",
+        badge: "Speech AI",
+        typeLabel: null,
+      },
+      {
         id: "azure_speech_tts",
         title: "Azure Speech Text to Speech",
         badge: "Audio",
         typeLabel: null,
+      },
+      {
+        id: "text_to_speech_avatar",
+        title: "Azure Speech Text to Speech Avatar",
+        badge: "Video",
+        typeLabel: "Text to Speech Avatar",
       },
       {
         id: "foundry_gpt_audio",

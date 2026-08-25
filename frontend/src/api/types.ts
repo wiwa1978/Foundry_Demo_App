@@ -83,6 +83,14 @@ export type ConfigResponse = {
   is_content_extractor_configured?: boolean;
 };
 
+export type TextToSpeechAvatarJob = {
+  id: string;
+  status: string;
+  output_url?: string | null;
+  summary_url?: string | null;
+  error?: string | null;
+};
+
 export type ModelBucketName =
   | "models"
   | "text_models"
@@ -275,6 +283,15 @@ export type TraditionalVoiceResult = {
   conversation: Conversation;
   user_message: StoredMessage;
   assistant_message?: StoredMessage;
+  pronunciation_assessment?: {
+    accuracy_score: number | null;
+    fluency_score: number | null;
+    completeness_score: number | null;
+    pronunciation_score: number | null;
+    prosody_score: number | null;
+    language: string;
+  };
+  pronunciation_assessment_error?: string;
 };
 
 export type TranscriptionResult = {

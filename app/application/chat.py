@@ -10,13 +10,13 @@ from app.application.chat_preparation import (
     prepare_chat,
 )
 from app.application.chat_streaming import stream_chat
-from app.application.guardrail_batch import evaluate_statement
 from app.application.contracts.chat import (
     ChatCommand,
     ChatCompletionResult,
     ChatStreamEvent,
     ModelResult,
 )
+from app.application.guardrail_batch import evaluate_statement
 from app.application.ports.conversations import ConversationRepository
 from app.application.ports.foundry_chat import FoundryChatGateway
 from app.application.ports.model_settings import ModelSettingsRepository

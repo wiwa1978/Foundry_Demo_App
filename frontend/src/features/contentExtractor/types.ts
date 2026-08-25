@@ -1,11 +1,7 @@
 export type ContentExtractorMode = "image" | "document" | "audio";
 
 export type ContentExtractorDocumentAnalyzer =
-  | "layout"
-  | "invoice"
-  | "tax_us"
-  | "fields"
-  | "read";
+  "layout" | "invoice" | "tax_us" | "fields" | "read";
 
 export type ContentExtractorResult = {
   mode: ContentExtractorMode;

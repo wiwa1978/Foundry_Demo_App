@@ -32,7 +32,10 @@ export async function getContentExtractorSample(
   );
   if (!response.ok) {
     throw new Error(
-      await readPublicApiError(response, "Could not load Content Extractor sample."),
+      await readPublicApiError(
+        response,
+        "Could not load Content Extractor sample.",
+      ),
     );
   }
   const blob = await response.blob();

@@ -36,9 +36,7 @@ export function useHostedAgentStream({
   variants?: HostedAgentVariant[];
 }) {
   const [state, setState] = useState(initialState);
-  const [variantKey, setVariantKey] = useState<string>(
-    variants[0]?.key ?? "",
-  );
+  const [variantKey, setVariantKey] = useState<string>(variants[0]?.key ?? "");
   const controllerRef = useRef<AbortController | null>(null);
   const runSequenceRef = useRef(0);
 

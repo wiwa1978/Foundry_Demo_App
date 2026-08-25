@@ -16,7 +16,10 @@ import {
   type TranslationModelOption,
 } from "./types";
 
-const speechSettingsByLanguage: Record<string, { language: string; voice: string }> = {
+const speechSettingsByLanguage: Record<
+  string,
+  { language: string; voice: string }
+> = {
   en: { language: "en-US", voice: "en-US-JennyNeural" },
   es: { language: "es-ES", voice: "es-ES-ElviraNeural" },
   fr: { language: "fr-FR", voice: "fr-FR-DeniseNeural" },

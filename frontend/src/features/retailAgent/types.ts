@@ -32,7 +32,12 @@ export type RetailAgentStreamEvent =
       project_endpoint: string | null;
       cart: RetailCartItem[];
     }
-  | { type: "step"; label: string; status: RetailAgentStep["status"]; detail?: string | null }
+  | {
+      type: "step";
+      label: string;
+      status: RetailAgentStep["status"];
+      detail?: string | null;
+    }
   | {
       type: "agent_selected";
       agent_type: string;

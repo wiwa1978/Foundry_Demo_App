@@ -216,7 +216,9 @@ export function useAzureArchitectAgentStream({
         ...current,
         isRunning: false,
         error:
-          error instanceof Error ? error.message : "Azure Architect Agent failed.",
+          error instanceof Error
+            ? error.message
+            : "Azure Architect Agent failed.",
       }));
     } finally {
       if (runSequence === runSequenceRef.current) {

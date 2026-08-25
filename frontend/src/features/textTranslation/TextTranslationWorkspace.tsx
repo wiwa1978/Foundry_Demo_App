@@ -13,42 +13,41 @@ import type {
 } from "./types";
 import { languageLabel } from "./types";
 
-export function TextTranslationWorkspace(
-  {
-    configured,
-    sourceText,
-    draftText,
-    result,
-    loading,
-    error,
-    audioEnabled,
-    speaking,
-    onDraftTextChange,
-    onTranslate,
-    onSpeakTranslation,
-    useCase,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    mode: _mode,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    modeOptions: _modeOptions,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    modeImplemented: _modeImplemented,
-    sourceLanguage,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    targetLanguage: _targetLanguage,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    model: _model,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    modelOptions: _modelOptions,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    onSourceLanguageChange: _onSourceLanguageChange,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    onTargetLanguageChange: _onTargetLanguageChange,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    onModelChange: _onModelChange,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    onModeChange: _onModeChange,
-  }: {
+export function TextTranslationWorkspace({
+  configured,
+  sourceText,
+  draftText,
+  result,
+  loading,
+  error,
+  audioEnabled,
+  speaking,
+  onDraftTextChange,
+  onTranslate,
+  onSpeakTranslation,
+  useCase,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  mode: _mode,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  modeOptions: _modeOptions,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  modeImplemented: _modeImplemented,
+  sourceLanguage,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  targetLanguage: _targetLanguage,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  model: _model,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  modelOptions: _modelOptions,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onSourceLanguageChange: _onSourceLanguageChange,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onTargetLanguageChange: _onTargetLanguageChange,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onModelChange: _onModelChange,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onModeChange: _onModeChange,
+}: {
   configured: boolean;
   useCase: LanguageServiceUseCaseId;
   mode: LanguageServiceMode;
@@ -187,7 +186,9 @@ export function TextTranslationWorkspace(
             translatedText ? (
               <button
                 type="button"
-                aria-label={speaking ? "Pause translated audio" : "Play translated audio"}
+                aria-label={
+                  speaking ? "Pause translated audio" : "Play translated audio"
+                }
                 onClick={onSpeakTranslation}
                 className="mt-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-blue-400 hover:text-blue-600 dark:border-[#606066] dark:text-slate-300 dark:hover:border-violet-400 dark:hover:text-violet-200"
               >

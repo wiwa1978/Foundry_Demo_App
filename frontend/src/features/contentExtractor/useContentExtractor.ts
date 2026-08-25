@@ -31,9 +31,9 @@ export function useContentExtractor({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [samples, setSamples] = useState<ImageSample[]>([]);
-  const [contentSamples, setContentSamples] = useState<ContentExtractorSample[]>(
-    [],
-  );
+  const [contentSamples, setContentSamples] = useState<
+    ContentExtractorSample[]
+  >([]);
   const [samplesLoading, setSamplesLoading] = useState(true);
   const [sampleError, setSampleError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
@@ -144,7 +144,8 @@ export function useContentExtractor({
     void listContentExtractorSamples(fetchClient, mode, controller.signal)
       .then(setContentSamples)
       .catch((caught: unknown) => {
-        if (caught instanceof DOMException && caught.name === "AbortError") return;
+        if (caught instanceof DOMException && caught.name === "AbortError")
+          return;
         setSampleError(
           caught instanceof Error
             ? caught.message

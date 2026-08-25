@@ -37,7 +37,11 @@ const initialState: State = {
   error: "",
 };
 
-export function useRetailAgentStream({ fetchClient }: { fetchClient: FetchClient }) {
+export function useRetailAgentStream({
+  fetchClient,
+}: {
+  fetchClient: FetchClient;
+}) {
   const [state, setState] = useState(initialState);
   const controllerRef = useRef<AbortController | null>(null);
   const sequenceRef = useRef(0);
@@ -117,7 +121,10 @@ export function useRetailAgentStream({ fetchClient }: { fetchClient: FetchClient
           } else if (event.type === "products") {
             setState((current) => ({ ...current, products: event.products }));
           } else if (event.type === "delta") {
-            setState((current) => ({ ...current, answer: current.answer + event.delta }));
+            setState((current) => ({
+              ...current,
+              answer: current.answer + event.delta,
+            }));
           } else if (event.type === "completed") {
             setState((current) => ({
               ...current,
@@ -127,7 +134,11 @@ export function useRetailAgentStream({ fetchClient }: { fetchClient: FetchClient
               isRunning: false,
             }));
           } else {
-            setState((current) => ({ ...current, error: event.error, isRunning: false }));
+            setState((current) => ({
+              ...current,
+              error: event.error,
+              isRunning: false,
+            }));
           }
         },
       });
@@ -137,7 +148,8 @@ export function useRetailAgentStream({ fetchClient }: { fetchClient: FetchClient
       setState((current) => ({
         ...current,
         isRunning: false,
-        error: error instanceof Error ? error.message : "Retail assistant failed.",
+        error:
+          error instanceof Error ? error.message : "Retail assistant failed.",
       }));
     } finally {
       if (sequence === sequenceRef.current) {
@@ -148,7 +160,8 @@ export function useRetailAgentStream({ fetchClient }: { fetchClient: FetchClient
 
   return {
     ...state,
-    setMessage: (message: string) => setState((current) => ({ ...current, message })),
+    setMessage: (message: string) =>
+      setState((current) => ({ ...current, message })),
     submit,
     cancel: () => controllerRef.current?.abort(),
     reset,

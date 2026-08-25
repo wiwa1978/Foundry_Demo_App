@@ -99,7 +99,10 @@ export function MarkdownContent({
         className,
       )}
     >
-      <ReactMarkdown components={markdownComponents} remarkPlugins={markdownPlugins}>
+      <ReactMarkdown
+        components={markdownComponents}
+        remarkPlugins={markdownPlugins}
+      >
         {value}
       </ReactMarkdown>
     </div>

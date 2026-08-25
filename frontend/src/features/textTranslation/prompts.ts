@@ -44,8 +44,7 @@ export const translationPromptGallery: readonly PromptExample[] = [
   {
     id: "idiom",
     title: "Idiom",
-    prompt:
-      "Let's get the ball rolling before the opportunity passes us by.",
+    prompt: "Let's get the ball rolling before the opportunity passes us by.",
     description: "Natural expression that tests contextual translation.",
     badges: ["Idiomatic", "Context"],
   },
@@ -92,8 +91,7 @@ export const translationPromptGallery: readonly PromptExample[] = [
   {
     id: "arabic-welcome",
     title: "Arabic welcome",
-    prompt:
-      "مرحباً بكم في مركز الدعم. كيف يمكننا مساعدتكم اليوم؟",
+    prompt: "مرحباً بكم في مركز الدعم. كيف يمكننا مساعدتكم اليوم؟",
     description: "Arabic right-to-left customer greeting.",
     badges: ["Arabic", "RTL script"],
   },

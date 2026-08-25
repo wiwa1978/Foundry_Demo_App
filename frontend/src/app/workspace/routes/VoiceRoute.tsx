@@ -1,3 +1,5 @@
+import { AzureSpeechTtsWorkspace } from "@media/azure_speech_tts/frontend";
+import { FoundryGptAudioWorkspace } from "@media/foundry_gpt_audio/frontend";
 import { AzureSpeechLiveTranslationWorkspace } from "@media/live_translation/frontend";
 import { RealtimeTranscriptionHero as RealtimeTranscriptionWebRtcHero } from "@media/realtime_transcription_webrtc/frontend";
 import { RealtimeTranscriptionHero as RealtimeTranscriptionWebSocketHero } from "@media/realtime_transcription_websocket/frontend";
@@ -5,14 +7,14 @@ import { GptRealtimeTranslationWorkspace } from "@media/realtime_translation_web
 import { RealtimeVoiceHero } from "@media/realtime_voice/frontend";
 import { TranscriptionWorkspace } from "@media/recorded_transcription/frontend";
 import { TraditionalVoiceWorkspace } from "@media/stt_chat_tts/frontend";
-import { AzureSpeechTtsWorkspace } from "@media/azure_speech_tts/frontend";
-import { FoundryGptAudioWorkspace } from "@media/foundry_gpt_audio/frontend";
+import { TextToSpeechAvatarWorkspace } from "@media/text_to_speech_avatar/frontend";
 import { TranscriptionComparisonWorkspace } from "@media/transcription_comparison/frontend";
 import { VoiceLiveHero } from "@media/voice_live/frontend";
 
 import type {
   WorkspaceContentRoute,
   WorkspaceRealtimeViewModel,
+  WorkspaceTextToSpeechAvatarViewModel,
   WorkspaceTextToSpeechSettings,
   WorkspaceTraditionalVoiceViewModel,
   WorkspaceTranscriptionComparisonViewModel,
@@ -23,6 +25,7 @@ type VoiceRouteProps = {
   route: WorkspaceContentRoute;
   traditionalVoice: WorkspaceTraditionalVoiceViewModel;
   azureSpeechTtsConfigured: boolean;
+  textToSpeechAvatar?: WorkspaceTextToSpeechAvatarViewModel;
   foundryGptAudioConfigured: boolean;
   textToSpeech: WorkspaceTextToSpeechSettings;
   transcription: WorkspaceTranscriptionViewModel;
@@ -34,6 +37,7 @@ export function VoiceRoute({
   route,
   traditionalVoice,
   azureSpeechTtsConfigured,
+  textToSpeechAvatar,
   foundryGptAudioConfigured,
   textToSpeech,
   transcription,
@@ -44,6 +48,7 @@ export function VoiceRoute({
     return (
       <TraditionalVoiceWorkspace
         configured={traditionalVoice.configured}
+        languageLearning={route.useCase === "language_learning"}
         activeModel={traditionalVoice.activeModel}
         chatModels={traditionalVoice.chatModels}
         onChatModelChange={traditionalVoice.onChatModelChange}
@@ -71,6 +76,11 @@ export function VoiceRoute({
         settings={textToSpeech}
       />
     );
+  }
+  if (route.workspace === "textToSpeechAvatar") {
+    return textToSpeechAvatar ? (
+      <TextToSpeechAvatarWorkspace {...textToSpeechAvatar} />
+    ) : null;
   }
   if (route.workspace === "foundryGptAudio") {
     return (

@@ -93,7 +93,9 @@ describe("UseCaseMarketplace", () => {
     expect(
       screen.queryByText("Prompt Agent · Hosted Agent"),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Microsoft Agent Framework")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Microsoft Agent Framework"),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText(/Ask the Azure Architect Agent to look things up/),
     ).toBeInTheDocument();

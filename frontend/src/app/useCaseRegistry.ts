@@ -6,6 +6,7 @@ import { foundryGptAudioUseCase } from "@media/foundry_gpt_audio/module";
 import { imageComparisonUseCase } from "@media/image_comparison/module";
 import { imageToImageUseCase } from "@media/image_to_image/module";
 import { liveTranslationUseCase } from "@media/live_translation/module";
+import { languageLearningUseCase } from "@media/language_learning/module";
 import { piiRedactionUseCase } from "@media/pii_redaction/module";
 import { realtimeTranscriptionWebRtcUseCase } from "@media/realtime_transcription_webrtc/module";
 import { realtimeTranscriptionWebSocketUseCase } from "@media/realtime_transcription_websocket/module";
@@ -19,6 +20,7 @@ import { textAnalyticsForHealthUseCase } from "@media/text_analytics_health/modu
 import { textChatUseCase } from "@media/text_chat/module";
 import { comparisonUseCase } from "@media/text_chat_comparison/module";
 import { textToImageUseCase } from "@media/text_to_image/module";
+import { textToSpeechAvatarUseCase } from "@media/text_to_speech_avatar/module";
 import { textTranslationUseCase } from "@media/text_translation/module";
 import { transcriptionComparisonUseCase } from "@media/transcription_comparison/module";
 import { voiceLiveUseCase } from "@media/voice_live/module";
@@ -49,6 +51,7 @@ const rendererByWorkspace = {
   imageComparison: "image",
   traditionalVoice: "voice",
   azureSpeechTts: "voice",
+  textToSpeechAvatar: "voice",
   foundryGptAudio: "voice",
   realtimeVoice: "voice",
   realtimeTranscriptionWebRtc: "voice",
@@ -83,7 +86,9 @@ const definitions = [
   youtubeRealtimeTranscriptionUseCase,
   browserVoiceUseCase,
   traditionalVoiceUseCase,
+  languageLearningUseCase,
   azureSpeechTtsUseCase,
+  textToSpeechAvatarUseCase,
   foundryGptAudioUseCase,
   transcribeUseCase,
   transcriptionComparisonUseCase,

@@ -139,7 +139,7 @@ def evaluate_statement(
             history=[],
             guardrail_policy_name=policy_name,
         )
-    except Exception as exc:  # noqa: BLE001 - the outcome is reported, not raised
+    except Exception as exc:
         blocked = is_content_filter_error(exc)
         if not blocked:
             logger.exception("guardrail_batch_statement_failed")

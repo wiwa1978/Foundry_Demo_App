@@ -115,7 +115,9 @@ describe("TextTranslationWorkspace", () => {
         "El doctor está disponible el próximo lunes.",
       ),
     ).toBeInTheDocument();
-    expect(within(translated!).getByText(/Detected English/)).toBeInTheDocument();
+    expect(
+      within(translated!).getByText(/Detected English/),
+    ).toBeInTheDocument();
   });
 
   it("shows configuration guidance when Translator is not configured", () => {

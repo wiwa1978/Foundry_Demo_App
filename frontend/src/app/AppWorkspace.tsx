@@ -325,11 +325,15 @@ export default function AppWorkspace() {
                 contentRouterProps.hostedAgent.isRunning,
             }}
             textTranslation={
-              contentRouterProps.textTranslation && activeUseCaseDetails.workspace === "textTranslation"
+              contentRouterProps.textTranslation &&
+              activeUseCaseDetails.workspace === "textTranslation"
                 ? {
                     mode: contentRouterProps.textTranslation.mode,
-                    modeOptions: [...contentRouterProps.textTranslation.modeOptions],
-                    sourceLanguage: contentRouterProps.textTranslation.sourceLanguage,
+                    modeOptions: [
+                      ...contentRouterProps.textTranslation.modeOptions,
+                    ],
+                    sourceLanguage:
+                      contentRouterProps.textTranslation.sourceLanguage,
                     sourceLanguageOptions: [
                       { value: "auto", label: "Auto detect" },
                       { value: "en", label: "English" },
@@ -345,7 +349,8 @@ export default function AppWorkspace() {
                       { value: "ar", label: "Arabic" },
                       { value: "hi", label: "Hindi" },
                     ],
-                    targetLanguage: contentRouterProps.textTranslation.targetLanguage,
+                    targetLanguage:
+                      contentRouterProps.textTranslation.targetLanguage,
                     targetLanguageOptions: [
                       { value: "en", label: "English" },
                       { value: "es", label: "Spanish" },
@@ -361,18 +366,25 @@ export default function AppWorkspace() {
                       { value: "hi", label: "Hindi" },
                     ],
                     model: contentRouterProps.textTranslation.model,
-                    modelOptions: contentRouterProps.textTranslation.modelOptions.map(
-                      (opt) => opt.value,
-                    ),
+                    modelOptions:
+                      contentRouterProps.textTranslation.modelOptions.map(
+                        (opt) => opt.value,
+                      ),
                     loading: contentRouterProps.textTranslation.loading,
-                    audioEnabled: contentRouterProps.textTranslation.audioEnabled,
+                    audioEnabled:
+                      contentRouterProps.textTranslation.audioEnabled,
                     onAudioEnabledChange:
                       contentRouterProps.textTranslation.onAudioEnabledChange,
                     onModeChange: (mode) =>
-                      contentRouterProps.textTranslation.onModeChange(mode as LanguageServiceMode),
-                    onSourceLanguageChange: contentRouterProps.textTranslation.onSourceLanguageChange,
-                    onTargetLanguageChange: contentRouterProps.textTranslation.onTargetLanguageChange,
-                    onModelChange: contentRouterProps.textTranslation.onModelChange,
+                      contentRouterProps.textTranslation.onModeChange(
+                        mode as LanguageServiceMode,
+                      ),
+                    onSourceLanguageChange:
+                      contentRouterProps.textTranslation.onSourceLanguageChange,
+                    onTargetLanguageChange:
+                      contentRouterProps.textTranslation.onTargetLanguageChange,
+                    onModelChange:
+                      contentRouterProps.textTranslation.onModelChange,
                   }
                 : undefined
             }
@@ -459,14 +471,14 @@ export default function AppWorkspace() {
                                                 )
                                               }`
                                             : `${
-                                            currentConversationId
-                                              ? (conversations.find(
-                                                  (item) =>
-                                                    item.id ===
-                                                    currentConversationId,
-                                                )?.title ?? "Saved chat")
-                                              : "New unsaved chat"
-                                          } - active model: ${formatModelName(activeModel)}`}
+                                                currentConversationId
+                                                  ? (conversations.find(
+                                                      (item) =>
+                                                        item.id ===
+                                                        currentConversationId,
+                                                    )?.title ?? "Saved chat")
+                                                  : "New unsaved chat"
+                                              } - active model: ${formatModelName(activeModel)}`}
                 </p>
               </div>
               <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
