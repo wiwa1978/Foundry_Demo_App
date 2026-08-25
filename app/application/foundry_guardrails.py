@@ -31,6 +31,43 @@ SYSTEM_GUARDRAIL_POLICY_COPIES = {
     "Microsoft.DefaultV2": "FoundryChat-Microsoft-DefaultV2",
 }
 
+CONTENT_HARM_CATEGORIES = ("Hate", "Sexual", "Violence", "Selfharm")
+LOOSE_GUARDRAIL_POLICY_NAME = "FoundryChat-Loose"
+STRICT_GUARDRAIL_POLICY_NAME = "FoundryChat-Strict"
+CUSTOM_COMPARISON_GUARDRAIL_BASE = "Microsoft.DefaultV2"
+PII_FILTER_NAMES = (
+    "PII_Person",
+    "PII_PhoneNumber",
+    "PII_Address",
+    "PII_Email",
+    "PII_Age",
+    "PII_ABARoutingNumber",
+    "PII_SWIFTCode",
+    "PII_AUBankAccountNumber",
+    "PII_AUDriversLicenseNumber",
+    "PII_AUMedicalAccountNumber",
+    "PII_AUTaxFileNumber",
+    "PII_CABankAccountNumber",
+    "PII_CADriversLicenseNumber",
+    "PII_CAHealthServiceNumber",
+    "PII_CAPassportNumber",
+    "PII_EUDriversLicenseNumber",
+    "PII_EUNationalIdentificationNumber",
+    "PII_EUPassportNumber",
+    "PII_UKDriversLicenseNumber",
+    "PII_UKElectoralRollNumber",
+    "PII_UKNationalHealthNumber",
+    "PII_UKNationalInsuranceNumber",
+    "PII_USBankAccountNumber",
+    "PII_USDriversLicenseNumber",
+    "PII_USIndividualTaxpayerIdentification",
+    "PII_USSocialSecurityNumber",
+    "PII_USUKPassportNumber",
+    "PII_CreditCardNumber",
+    "PII_InternationalBankingAccountNumber",
+    "PII_IPAddress",
+)
+
 
 def list_guardrail_policies(
     gateway: FoundryManagementGateway,
@@ -95,6 +132,33 @@ def create_system_guardrail_policy_copies(
     )
 
 
+def create_custom_comparison_guardrails(
+    gateway: FoundryManagementGateway,
+) -> list[GuardrailPolicy]:
+    config = load_admin_config()
+    if not config.is_configured:
+        raise RuntimeError(
+            "Foundry guardrail administration is not configured. Set "
+            f"{', '.join(config.missing)} in the environment."
+        )
+
+    client = create_management_client(gateway, config)
+    created: list[Any] = []
+    for name, resource in _custom_comparison_guardrail_resources().items():
+        created.append(
+            client.rai_policies.create_or_update(
+                resource_group_name=config.resource_group,
+                account_name=config.account_name,
+                rai_policy_name=name,
+                rai_policy=resource,
+            )
+        )
+    return sorted(
+        (_guardrail_policy_to_dict(policy) for policy in created),
+        key=lambda policy: policy["name"].lower(),
+    )
+
+
 def guardrail_policy_exists(
     gateway: FoundryManagementGateway,
     policy_name: str,
@@ -104,6 +168,119 @@ def guardrail_policy_exists(
         policy["name"].lower() == normalized_name and policy["is_selectable"]
         for policy in list_guardrail_policies(gateway)
     )
+
+
+def _custom_comparison_guardrail_resources() -> dict[str, dict[str, Any]]:
+    return {
+        LOOSE_GUARDRAIL_POLICY_NAME: _custom_guardrail_resource(
+            source_name="Loose",
+            content_filters=[
+                *_severity_filters(threshold="High", enabled=True, blocking=True),
+                _flag_filter("Jailbreak", "Prompt", enabled=True, blocking=True),
+                _flag_filter("Indirect Attack", "Prompt", enabled=False, blocking=False),
+                _flag_filter(
+                    "Protected Material Code",
+                    "Completion",
+                    enabled=False,
+                    blocking=False,
+                ),
+                _flag_filter(
+                    "Protected Material Text",
+                    "Completion",
+                    enabled=False,
+                    blocking=False,
+                ),
+            ],
+        ),
+        STRICT_GUARDRAIL_POLICY_NAME: _custom_guardrail_resource(
+            source_name="Strict",
+            content_filters=[
+                *_severity_filters(threshold="Low", enabled=True, blocking=True),
+                _flag_filter("Jailbreak", "Prompt", enabled=True, blocking=True),
+                _flag_filter("Indirect Attack", "Prompt", enabled=True, blocking=True),
+                _flag_filter(
+                    "Protected Material Code",
+                    "Completion",
+                    enabled=True,
+                    blocking=True,
+                ),
+                _flag_filter(
+                    "Protected Material Text",
+                    "Completion",
+                    enabled=True,
+                    blocking=True,
+                ),
+                *_pii_filters(enabled=True, blocking=True),
+                _flag_filter("Task Adherence", "Prompt", enabled=True, blocking=True),
+                _flag_filter(
+                    "Task Adherence",
+                    "Completion",
+                    enabled=True,
+                    blocking=True,
+                ),
+            ],
+        ),
+    }
+
+
+def _custom_guardrail_resource(
+    *,
+    source_name: str,
+    content_filters: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "tags": {
+            "managedBy": "FoundryChatApp",
+            "sourcePolicy": source_name,
+        },
+        "properties": {
+            "basePolicyName": CUSTOM_COMPARISON_GUARDRAIL_BASE,
+            "mode": "Blocking",
+            "contentFilters": content_filters,
+        },
+    }
+
+
+def _severity_filters(
+    *,
+    threshold: str,
+    enabled: bool,
+    blocking: bool,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": name,
+            "source": source,
+            "enabled": enabled,
+            "blocking": blocking,
+            "severityThreshold": threshold,
+        }
+        for name in CONTENT_HARM_CATEGORIES
+        for source in ("Prompt", "Completion")
+    ]
+
+
+def _pii_filters(*, enabled: bool, blocking: bool) -> list[dict[str, Any]]:
+    return [
+        _flag_filter(name, source, enabled=enabled, blocking=blocking)
+        for name in PII_FILTER_NAMES
+        for source in ("Prompt", "Completion")
+    ]
+
+
+def _flag_filter(
+    name: str,
+    source: str,
+    *,
+    enabled: bool,
+    blocking: bool,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "source": source,
+        "enabled": enabled,
+        "blocking": blocking,
+    }
 
 
 def _guardrail_policy_copy_resource(policy: Any, source_name: str) -> dict[str, Any]:

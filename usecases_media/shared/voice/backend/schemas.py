@@ -49,6 +49,28 @@ class SpeechResponse(BaseModel):
     foundry_response: ProviderTrace | None = None
 
 
+class TextToSpeechRequest(BaseModel):
+    text: str
+    model: str = "azure-speech"
+    voice: str = "en-US-Ava:DragonHDLatestNeural"
+    language: str = "en-US"
+    emotion: str = "neutral"
+    pitch: str = "0%"
+    rate: str = "0%"
+    volume: str = "0%"
+
+
+class TextToSpeechResponse(BaseModel):
+    model: str
+    voice: str
+    language: str
+    emotion: str
+    audio_base64: str
+    audio_mime_type: str
+    duration_ms: int
+    speech_request: dict[str, str | int]
+
+
 class TraditionalVoiceVariantResponse(ModelResultResponse):
     speech: SpeechResponse | None = None
     speech_error: str | None = None

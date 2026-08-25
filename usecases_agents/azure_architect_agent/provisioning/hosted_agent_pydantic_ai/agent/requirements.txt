@@ -1,0 +1,6 @@
+azure-ai-agentserver-responses==1.0.0b9
+azure-identity==1.25.3
+fastmcp>=2.0.0
+openai>=1.68.0
+pydantic>=2.10.0
+pydantic-ai[mcp]>=1.0.0

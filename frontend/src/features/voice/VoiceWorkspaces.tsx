@@ -1315,6 +1315,7 @@ export function VoiceLiveHero({
   status,
   error,
   transcript,
+  avatar,
   onStart,
   onStop,
 }: {
@@ -1324,79 +1325,204 @@ export function VoiceLiveHero({
   status: RealtimeStatus;
   error: string;
   transcript: RealtimeTranscriptEntry[];
+  avatar: {
+    audioRef: RefObject<HTMLAudioElement>;
+    error: string;
+    status: "idle" | "connecting" | "ready" | "speaking" | "unavailable";
+    videoRef: RefObject<HTMLVideoElement>;
+  };
   onStart: () => void;
   onStop: () => void;
 }) {
   const isActive = status !== "idle";
+  const travelerText = transcript
+    .filter((entry) => entry.source === "user")
+    .map((entry) => entry.text)
+    .join("\n");
+  const conciergeText = transcript
+    .filter((entry) => entry.source === "assistant")
+    .map((entry) => entry.text)
+    .join("\n");
+  const systemText = transcript
+    .filter((entry) => entry.source === "system")
+    .map((entry) => entry.text)
+    .at(-1);
+  const hasOutput = isActive || Boolean(travelerText || conciergeText);
+
   return (
-    <div className="w-full overflow-hidden rounded-3xl border border-violet-200 bg-gradient-to-br from-white via-violet-50/60 to-sky-50 p-6 text-center shadow-sm dark:border-violet-500/30 dark:from-[#39393d] dark:via-violet-950/20 dark:to-sky-950/20">
-      <DictationHero active={isActive} />
-      <div className="flex flex-wrap justify-center gap-2">
-        <Badge>Voice Live API</Badge>
-        <Badge variant="outline">Multilingual VAD</Badge>
-        <Badge variant="outline">Barge-in</Badge>
-        <Badge variant="outline">Noise + echo control</Badge>
-      </div>
-      <h3 className="mt-4 text-2xl font-semibold tracking-tight">
-        Meet Ava, your travel concierge
-      </h3>
-      <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-        Plan a trip in natural conversation. Pause to think, switch language, or
-        interrupt Ava while she is speaking. Voice Live combines{" "}
-        <span className="font-medium">{formatModelName(model)}</span> with the
-        Azure HD voice <span className="font-medium">{voice}</span>.
-      </p>
-      <div className="mt-5 flex justify-center">
-        <Button
-          type="button"
-          onClick={isActive ? onStop : onStart}
-          disabled={!configured && !isActive}
-          variant={isActive ? "destructive" : "default"}
-          className="rounded-full px-5"
-        >
-          {isActive ? (
-            <MicOff className="h-4 w-4" />
-          ) : (
-            <Mic className="h-4 w-4" />
-          )}
-          {status === "connecting"
-            ? "Connecting..."
-            : status === "live"
-              ? "End concierge call"
-              : "Call the concierge"}
-        </Button>
-      </div>
-      {!configured ? (
-        <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
-          Set AZURE_VOICELIVE_ENDPOINT and grant the app identity Cognitive
-          Services User and Foundry User access.
-        </p>
-      ) : null}
-      {error ? (
-        <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
-          {error}
-        </p>
-      ) : null}
-      {transcript.length ? (
-        <div className="mt-5 grid gap-2 text-left">
-          {transcript.map((entry) => (
-            <div
-              key={entry.id}
-              className={cn(
-                "rounded-2xl px-3 py-2 text-sm leading-5",
-                entry.source === "user" &&
-                  "ml-auto max-w-[85%] bg-blue-600 text-white dark:bg-violet-600",
-                entry.source === "assistant" &&
-                  "mr-auto max-w-[85%] border bg-white/80 dark:border-[#606066] dark:bg-[#29292c]",
-                entry.source === "system" &&
-                  "mx-auto bg-white/70 text-xs text-slate-500 dark:bg-[#45454a] dark:text-slate-300",
-              )}
-            >
-              {entry.text}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex-1 overflow-auto p-5">
+        {hasOutput ? (
+          <div className="mx-auto grid max-w-5xl gap-4 lg:grid-cols-[minmax(260px,0.9fr)_minmax(0,1.1fr)]">
+            <div className="min-h-80 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-sm dark:border-[#606066]">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-5 py-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-200">
+                  Avatar
+                </span>
+                <Badge
+                  variant={
+                    avatar.status === "speaking" ? "secondary" : "outline"
+                  }
+                >
+                  {avatar.status === "speaking"
+                    ? "Speaking"
+                    : avatar.status === "ready"
+                      ? "Ready"
+                      : avatar.status === "connecting"
+                        ? "Connecting"
+                        : avatar.status === "unavailable"
+                          ? "Unavailable"
+                          : "Idle"}
+                </Badge>
+              </div>
+              <div className="relative flex aspect-[9/12] min-h-80 items-center justify-center bg-gradient-to-br from-slate-950 via-violet-950 to-slate-900">
+                <video
+                  ref={avatar.videoRef}
+                  aria-label="Voice Live avatar video"
+                  autoPlay
+                  className="h-full w-full object-cover"
+                  playsInline
+                />
+                <audio
+                  ref={avatar.audioRef}
+                  aria-label="Voice Live avatar audio"
+                  autoPlay
+                />
+                {avatar.status !== "ready" && avatar.status !== "speaking" ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/70 p-6 text-center text-slate-100">
+                    <DictationHero active={isActive} />
+                    <p className="text-sm font-medium">
+                      {avatar.status === "unavailable"
+                        ? "Avatar video is unavailable"
+                        : avatar.status === "connecting"
+                          ? "Connecting Ava's avatar..."
+                          : "Ava's avatar will appear here"}
+                    </p>
+                    {avatar.error ? (
+                      <p className="max-w-xs text-xs text-red-200">
+                        {avatar.error}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
-          ))}
+            <div className="min-h-80 rounded-2xl border border-fuchsia-200 bg-white p-5 shadow-sm dark:border-fuchsia-500/40 dark:bg-[#39393d]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700 dark:text-fuchsia-300">
+                  Travel conversation
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!conciergeText}
+                  onClick={() =>
+                    void navigator.clipboard.writeText(conciergeText)
+                  }
+                >
+                  <Copy className="h-4 w-4" /> Copy
+                </Button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge variant="outline">{formatModelName(model)}</Badge>
+                <Badge variant="outline">{voice}</Badge>
+              </div>
+              <div className="mt-4 grid gap-4">
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                    Traveler speech
+                  </span>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
+                    {travelerText || "Listening for trip details..."}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700 dark:text-fuchsia-300">
+                    Ava travel concierge
+                  </span>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
+                    {conciergeText ||
+                      "Waiting for Ava's spoken itinerary guidance..."}
+                  </p>
+                </div>
+              </div>
+            </div>
+            {systemText ? (
+              <p className="md:col-span-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-xs text-slate-500 shadow-sm dark:border-[#606066] dark:bg-[#39393d] dark:text-slate-300">
+                {systemText}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <div className="max-w-xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
+              <DictationHero active={isActive} />
+              <div className="flex flex-wrap justify-center gap-2">
+                <Badge>Voice Live API</Badge>
+                <Badge variant="outline">{formatModelName(model)}</Badge>
+              </div>
+              <h3 className="mt-3 text-2xl font-semibold tracking-tight">
+                Voice Live travel concierge
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                Start a low-latency WebRTC call with Ava. Switch language, pause
+                naturally, or interrupt while she is speaking.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t bg-slate-50 px-4 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
+        <div className="palette-focus mx-auto flex max-w-5xl flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_4px_rgba(15,23,42,0.16)] dark:border-[#606066] dark:bg-[#2f2f33] dark:shadow-none sm:flex-row sm:items-end">
+          <Label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Voice Live model
+            <div className="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100">
+              {formatModelName(model)}
+            </div>
+          </Label>
+          <Label className="grid min-w-0 flex-1 gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Azure voice
+            <div className="flex h-10 items-center truncate rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100">
+              {voice}
+            </div>
+          </Label>
+          <Button
+            type="button"
+            onClick={isActive ? onStop : onStart}
+            disabled={!configured && !isActive}
+            variant={isActive ? "destructive" : "default"}
+          >
+            {isActive ? (
+              <MicOff className="h-4 w-4" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
+            {status === "connecting"
+              ? "Connecting..."
+              : status === "live"
+                ? "End concierge call"
+                : "Call the concierge"}
+          </Button>
         </div>
-      ) : null}
+        {!configured ? (
+          <p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">
+            Set AZURE_VOICELIVE_ENDPOINT and grant the app identity Cognitive
+            Services User and Foundry User access.
+          </p>
+        ) : null}
+        {error ? (
+          <p className="mx-auto mt-2 max-w-5xl rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
+            {error}
+          </p>
+        ) : null}
+        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+          Uses Voice Live WebRTC media with a backend-mediated control WebSocket
+          · Azure semantic multilingual VAD, barge-in, noise suppression, and
+          echo control. Use headphones to prevent feedback.
+        </p>
+      </div>
     </div>
   );
 }

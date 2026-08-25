@@ -11,7 +11,11 @@ from app.application.foundry_deployments import (
     update_model_router_routing,
 )
 from app.application.foundry_guardrails import (
+    LOOSE_GUARDRAIL_POLICY_NAME,
+    PII_FILTER_NAMES,
+    STRICT_GUARDRAIL_POLICY_NAME,
     SYSTEM_GUARDRAIL_POLICY_COPIES,
+    create_custom_comparison_guardrails,
     create_system_guardrail_policy_copies,
     guardrail_policy_exists,
     list_guardrail_policies,
@@ -69,6 +73,21 @@ def test_other_provider_errors_remain_generic():
 
     assert public_provider_error("Model request", error) == (
         "Model request failed. Try again later."
+    )
+
+
+def test_provider_message_is_preserved_for_policy_diagnostics():
+    error = ProviderError(
+        {
+            "error": {
+                "code": "invalid_request_error",
+                "message": "The selected RAI policy cannot be applied to this deployment.",
+            }
+        }
+    )
+
+    assert public_provider_error("Model request", error) == (
+        "Model request failed: The selected RAI policy cannot be applied to this deployment."
     )
 
 
@@ -183,6 +202,86 @@ def test_policy_copy_creation_preserves_existing_copies():
 
     assert len(policies) == 4
     client.rai_policies.create_or_update.assert_not_called()
+
+
+def test_creates_loose_and_strict_custom_guardrails():
+    config = SimpleNamespace(
+        is_configured=True,
+        subscription_id="subscription",
+        resource_group="group",
+        account_name="account",
+    )
+    client = MagicMock()
+    client.rai_policies.create_or_update.side_effect = [
+        _policy(LOOSE_GUARDRAIL_POLICY_NAME, "UserManaged"),
+        _policy(STRICT_GUARDRAIL_POLICY_NAME, "UserManaged"),
+    ]
+    gateway = MagicMock()
+    gateway.create_client.return_value = client
+
+    with patch(
+        "app.application.foundry_guardrails.load_admin_config",
+        return_value=config,
+    ):
+        policies = create_custom_comparison_guardrails(gateway)
+
+    assert [policy["name"] for policy in policies] == [
+        LOOSE_GUARDRAIL_POLICY_NAME,
+        STRICT_GUARDRAIL_POLICY_NAME,
+    ]
+    created_names = [
+        call.kwargs["rai_policy_name"]
+        for call in client.rai_policies.create_or_update.call_args_list
+    ]
+    assert created_names == [LOOSE_GUARDRAIL_POLICY_NAME, STRICT_GUARDRAIL_POLICY_NAME]
+    loose_filters = client.rai_policies.create_or_update.call_args_list[0].kwargs[
+        "rai_policy"
+    ]["properties"]["contentFilters"]
+    strict_filters = client.rai_policies.create_or_update.call_args_list[1].kwargs[
+        "rai_policy"
+    ]["properties"]["contentFilters"]
+    hate_prompt_loose = next(
+        item
+        for item in loose_filters
+        if item["name"] == "Hate" and item["source"] == "Prompt"
+    )
+    hate_prompt_strict = next(
+        item
+        for item in strict_filters
+        if item["name"] == "Hate" and item["source"] == "Prompt"
+    )
+    jailbreak_strict = next(item for item in strict_filters if item["name"] == "Jailbreak")
+    pii_filters = [
+        item
+        for item in strict_filters
+        if item["name"].startswith("PII_") and item["enabled"]
+    ]
+    task_filters = [
+        item
+        for item in strict_filters
+        if item["name"] == "Task Adherence" and item["enabled"]
+    ]
+    assert hate_prompt_loose == {
+        "name": "Hate",
+        "source": "Prompt",
+        "enabled": True,
+        "blocking": True,
+        "severityThreshold": "High",
+    }
+    assert hate_prompt_strict == {
+        "name": "Hate",
+        "source": "Prompt",
+        "enabled": True,
+        "blocking": True,
+        "severityThreshold": "Low",
+    }
+    assert jailbreak_strict["enabled"] is True
+    assert jailbreak_strict["blocking"] is True
+    assert {item["source"] for item in pii_filters} == {"Prompt", "Completion"}
+    assert {item["name"] for item in pii_filters} == set(PII_FILTER_NAMES)
+    assert all(item["blocking"] for item in pii_filters)
+    assert {item["source"] for item in task_filters} == {"Prompt", "Completion"}
+    assert all(item["blocking"] for item in task_filters)
 
 
 def test_policy_validation_rejects_system_policy():

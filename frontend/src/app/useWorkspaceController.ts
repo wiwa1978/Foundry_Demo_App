@@ -32,7 +32,7 @@ import {
   loadConversation as loadConversationRequest,
 } from "@/api/conversations";
 import type { ModelRouterRoutingMode } from "@/api/types";
-import type { UseCaseId } from "@/app/types";
+import type { UseCaseId, UseCaseWorkspace } from "@/app/types";
 import { useCaseModules } from "@/app/useCaseRegistry";
 import {
   deploymentDefaultGuardrail,
@@ -52,13 +52,16 @@ import type { ModelUsageSummary } from "@/features/admin/ModelMonitoringPage";
 import { useAdminDeployment } from "@/features/admin/useAdminDeployment";
 import { useLiveTranslationSettings } from "@/features/admin/useLiveTranslationSettings";
 import { useUseCaseModelMapSettings } from "@/features/admin/useUseCaseModelMapSettings";
-import { useAgentResearchStream } from "@/features/agentResearch/useAgentResearchStream";
+import { useAzureArchitectAgentStream } from "@/features/azureArchitectAgent/useAzureArchitectAgentStream";
+import { useGuardrailBatch } from "@/features/guardrails/useGuardrailBatch";
 import { useGuardrailComparison } from "@/features/guardrails/useGuardrailComparison";
 import { useHostedAgentStream } from "@/features/hostedAgent/useHostedAgentStream";
+import { useInvestmentPlannerStream } from "@/features/investmentPlanner/useInvestmentPlannerStream";
 import { useModelMetrics } from "@/features/metrics/useModelMetrics";
 import { useModelMonitoring } from "@/features/metrics/useModelMonitoring";
 import { useModelCatalog } from "@/features/models/useModelCatalog";
 import { useModelSettingsController } from "@/features/models/useModelSettingsController";
+import { useRetailAgentStream } from "@/features/retailAgent/useRetailAgentStream";
 import type {
   ChatMessage,
   Conversation,
@@ -177,8 +180,15 @@ function buildModelUsages({
 export function useWorkspaceController() {
   const [comparisonMode, setComparisonMode] = useState(false);
   const [activeUseCase, setActiveUseCase] = useState<UseCaseId>("text_chat");
+  useEffect(() => {
+    if (activeUseCase === "language_detection") {
+      setActiveUseCase("text_translation");
+    }
+  }, [activeUseCase]);
   const [useCaseMarketplaceOpen, setUseCaseMarketplaceOpen] = useState(false);
   const [useCaseDetailsOpen, setUseCaseDetailsOpen] = useState(false);
+  const [useCaseDocumentationOpen, setUseCaseDocumentationOpen] =
+    useState(false);
   const [prompt, setPrompt] = useState("");
   const [reasoningEffort, setReasoningEffort] =
     useState<ReasoningEffort>("medium");
@@ -215,6 +225,13 @@ export function useWorkspaceController() {
       useCaseModules[0],
     [activeUseCase],
   );
+  const [agentMode, setAgentModeState] = useState<"prompt" | "hosted">(
+    "prompt",
+  );
+  const effectiveWorkspace: UseCaseWorkspace =
+    activeUseCase === "azure_architect_agent" && agentMode === "hosted"
+      ? "hostedAgent"
+      : activeUseCaseDetails.workspace;
   const {
     models,
     modelModalities,
@@ -252,6 +269,32 @@ export function useWorkspaceController() {
     canUseProtectedApis,
     workspace: activeUseCaseDetails.workspace,
   });
+  const gptAudioModels = useMemo(
+    () =>
+      ttsModels.filter((model) => model.toLowerCase().includes("gpt-audio")),
+    [ttsModels],
+  );
+  const [azureSpeechModel, setAzureSpeechModel] = useState(
+    "DragonHDLatestNeural",
+  );
+  const [azureSpeechVoiceName, setAzureSpeechVoiceName] = useState("Ava");
+  const [azureSpeechLanguageSkill, setAzureSpeechLanguageSkill] =
+    useState("auto");
+  const [azureSpeechEmotion, setAzureSpeechEmotion] = useState("neutral");
+  const [azureSpeechPitch, setAzureSpeechPitch] = useState(1);
+  const [azureSpeechRate, setAzureSpeechRate] = useState(1);
+  const [azureSpeechVolume, setAzureSpeechVolume] = useState(1);
+  const [foundryGptAudioModel, setFoundryGptAudioModel] =
+    useState("gpt-audio-mini");
+  const [foundryGptAudioVoice, setFoundryGptAudioVoice] = useState("alloy");
+  useEffect(() => {
+    if (
+      gptAudioModels.length > 0 &&
+      !gptAudioModels.includes(foundryGptAudioModel)
+    ) {
+      setFoundryGptAudioModel(gptAudioModels[0]);
+    }
+  }, [foundryGptAudioModel, gptAudioModels]);
   const onDeploymentCreated = useCallback(
     (model: string, modalities: Parameters<typeof upsertModel>[1]) => {
       upsertModel(model, modalities);
@@ -368,6 +411,10 @@ export function useWorkspaceController() {
     onOpen: openModelSettingsView,
   });
   const guardrailComparison = useGuardrailComparison({
+    fetchClient: apiTrace.tracedFetch,
+    activeModel,
+  });
+  const guardrailBatch = useGuardrailBatch({
     fetchClient: apiTrace.tracedFetch,
     activeModel,
   });
@@ -507,6 +554,8 @@ export function useWorkspaceController() {
   });
   const textTranslation = useTextTranslation({
     fetchClient: apiTrace.tracedFetch,
+    activeUseCase,
+    textModels,
   });
   const chatStream = useChatStream({
     fetchClient: apiTrace.tracedFetch,
@@ -550,10 +599,34 @@ export function useWorkspaceController() {
     },
     speakResponses,
   });
-  const agentResearch = useAgentResearchStream({
+  const azureArchitectAgent = useAzureArchitectAgentStream({
     fetchClient: apiTrace.tracedFetch,
   });
+  const hostedAgentVariants = useMemo(
+    () =>
+      (config?.hosted_agent_variants ?? []).map((variant) => ({
+        key: variant.key,
+        label: variant.label,
+        agentName: variant.agent_name,
+      })),
+    [config?.hosted_agent_variants],
+  );
   const hostedAgent = useHostedAgentStream({
+    fetchClient: apiTrace.tracedFetch,
+    variants: hostedAgentVariants,
+  });
+  const setAgentMode = useCallback(
+    (mode: "prompt" | "hosted") => {
+      azureArchitectAgent.cancel();
+      hostedAgent.cancel();
+      setAgentModeState(mode);
+    },
+    [azureArchitectAgent, hostedAgent],
+  );
+  const investmentPlanner = useInvestmentPlannerStream({
+    fetchClient: apiTrace.tracedFetch,
+  });
+  const retailAgent = useRetailAgentStream({
     fetchClient: apiTrace.tracedFetch,
   });
   const cancelChatStreamRef = useRef(chatStream.cancel);
@@ -588,8 +661,10 @@ export function useWorkspaceController() {
   }
 
   function selectUseCase(useCase: UseCaseId) {
+    const normalizedUseCase =
+      useCase === "language_detection" ? "text_translation" : useCase;
     const nextUseCase =
-      useCaseModules.find((module) => module.id === useCase) ??
+      useCaseModules.find((module) => module.id === normalizedUseCase) ??
       useCaseModules[0];
     if (
       (nextUseCase.workspace === "image" ||
@@ -600,25 +675,56 @@ export function useWorkspaceController() {
       setActiveModel(imageWorkspace.model);
     }
     if (nextUseCase.workspace === "comparison") {
-      textModels
-        .filter((model) => !selectedModels.has(model))
-        .slice(0, Math.max(0, 2 - selectedModels.size))
-        .forEach(toggleModel);
       if (useCase === "reasoning_comparison") {
         setReasoningEffort("high");
+        const reasoningModel = textModels.find(
+          (model) => model.toLowerCase() === "mai-thinking-1",
+        );
+        if (reasoningModel) {
+          let projectedSize = selectedModels.size;
+          if (!selectedModels.has(reasoningModel)) {
+            if (selectedModels.size >= 2) {
+              const [modelToReplace] = selectedModels;
+              if (modelToReplace) {
+                replaceComparisonModel(modelToReplace, reasoningModel);
+              }
+            } else {
+              toggleModel(reasoningModel);
+              projectedSize += 1;
+            }
+          }
+          textModels
+            .filter(
+              (model) => model !== reasoningModel && !selectedModels.has(model),
+            )
+            .slice(0, Math.max(0, 2 - projectedSize))
+            .forEach(toggleModel);
+        } else {
+          textModels
+            .filter((model) => !selectedModels.has(model))
+            .slice(0, Math.max(0, 2 - selectedModels.size))
+            .forEach(toggleModel);
+        }
+      } else {
+        textModels
+          .filter((model) => !selectedModels.has(model))
+          .slice(0, Math.max(0, 2 - selectedModels.size))
+          .forEach(toggleModel);
       }
     }
-    if (useCase !== activeUseCase) {
+    if (normalizedUseCase !== activeUseCase) {
       chatStream.cancel();
-      agentResearch.reset();
+      azureArchitectAgent.reset();
       hostedAgent.reset();
+      investmentPlanner.reset();
+      retailAgent.reset();
       useCaseSessionRef.current += 1;
       setCurrentConversationId(null);
       setMessages([]);
       setPrompt("");
       setIsRunning(false);
     }
-    setActiveUseCase(useCase);
+    setActiveUseCase(normalizedUseCase);
     setActiveView("chat");
     setUseCaseMarketplaceOpen(false);
     setComparisonMode(
@@ -912,7 +1018,7 @@ export function useWorkspaceController() {
   const contentRouterProps: WorkspaceContentRouterProps = {
     route: {
       view: activeView,
-      workspace: activeUseCaseDetails.workspace,
+      workspace: effectiveWorkspace,
       useCase: activeUseCase,
       renderer: activeUseCaseDetails.renderer,
       enableComposerDictation:
@@ -1042,6 +1148,20 @@ export function useWorkspaceController() {
       onTtsVoiceChange: setTtsVoice,
       onStart: (request) => void traditionalVoice.start(request),
       onStop: traditionalVoice.stop,
+    },
+    azureSpeechTtsConfigured:
+      config?.is_speech_transcription_configured ?? false,
+    foundryGptAudioConfigured: config?.is_traditional_voice_configured ?? false,
+    textToSpeech: {
+      azureSpeechModel,
+      azureVoiceName: azureSpeechVoiceName,
+      languageSkill: azureSpeechLanguageSkill,
+      emotion: azureSpeechEmotion,
+      pitch: azureSpeechPitch,
+      rate: azureSpeechRate,
+      volume: azureSpeechVolume,
+      gptAudioModel: foundryGptAudioModel,
+      gptAudioVoice: foundryGptAudioVoice,
     },
     transcription: {
       configured: transcriptionModel.toLowerCase().startsWith("mai-transcribe")
@@ -1178,6 +1298,7 @@ export function useWorkspaceController() {
         status: voiceLive.status,
         error: voiceLive.error,
         transcript: voiceLive.transcript,
+        avatar: voiceLive.avatar,
         onStart: () => void voiceLive.start(),
         onStop: voiceLive.stop,
       },
@@ -1204,6 +1325,7 @@ export function useWorkspaceController() {
       enabled: guardrailComparison.enabled,
       policyNames: guardrailComparison.activePolicies,
       deploymentPolicyName: guardrailComparison.deploymentPolicy?.policy_name,
+      batch: guardrailBatch,
     },
     contentExtractor: {
       configured: config?.is_content_extractor_configured ?? false,
@@ -1219,16 +1341,29 @@ export function useWorkspaceController() {
     },
     textTranslation: {
       configured: config?.is_text_translation_configured ?? false,
+      useCase: textTranslation.useCase,
+      mode: textTranslation.mode,
+      modeOptions: textTranslation.modeOptions,
+      modeImplemented: textTranslation.modeImplemented,
       sourceText: textTranslation.sourceText,
+      draftText: textTranslation.draftText,
       sourceLanguage: textTranslation.sourceLanguage,
       targetLanguage: textTranslation.targetLanguage,
+      model: textTranslation.model,
+      modelOptions: textTranslation.modelOptions,
       result: textTranslation.result,
       loading: textTranslation.loading,
       error: textTranslation.error,
-      onSourceTextChange: textTranslation.setSourceText,
+      audioEnabled: textTranslation.audioEnabled,
+      speaking: textTranslation.speaking,
+      onDraftTextChange: textTranslation.setDraftText,
       onSourceLanguageChange: textTranslation.setSourceLanguage,
       onTargetLanguageChange: textTranslation.setTargetLanguage,
+      onModelChange: textTranslation.setModel,
+      onModeChange: textTranslation.setMode,
       onTranslate: () => void textTranslation.translate(),
+      onAudioEnabledChange: textTranslation.setAudioEnabled,
+      onSpeakTranslation: () => void textTranslation.speakTranslation(),
     },
     youtubeSummary: {
       url: youtubeSummary.url,
@@ -1302,22 +1437,22 @@ export function useWorkspaceController() {
       onReasoningEffortChange: setReasoningEffort,
       onOpenUseCases: () => setUseCaseMarketplaceOpen(true),
     },
-    agentResearch: {
-      configured: config?.is_agent_research_configured ?? false,
+    azureArchitectAgent: {
+      configured: config?.is_azure_architect_agent_configured ?? false,
       projectEndpoint: config?.endpoint ?? null,
-      question: agentResearch.question,
-      answer: agentResearch.answer,
-      steps: agentResearch.steps,
-      citations: agentResearch.citations,
-      runConfig: agentResearch.runConfig,
-      isRunning: agentResearch.isRunning,
-      error: agentResearch.error,
-      trace: agentResearch.trace,
-      traceLoading: agentResearch.traceLoading,
-      traceError: agentResearch.traceError,
-      onQuestionChange: agentResearch.setQuestion,
-      onSubmit: () => void agentResearch.submit(),
-      onCancel: agentResearch.cancel,
+      question: azureArchitectAgent.question,
+      answer: azureArchitectAgent.answer,
+      steps: azureArchitectAgent.steps,
+      citations: azureArchitectAgent.citations,
+      runConfig: azureArchitectAgent.runConfig,
+      isRunning: azureArchitectAgent.isRunning,
+      error: azureArchitectAgent.error,
+      trace: azureArchitectAgent.trace,
+      traceLoading: azureArchitectAgent.traceLoading,
+      traceError: azureArchitectAgent.traceError,
+      onQuestionChange: azureArchitectAgent.setQuestion,
+      onSubmit: () => void azureArchitectAgent.submit(),
+      onCancel: azureArchitectAgent.cancel,
     },
     hostedAgent: {
       configured: config?.is_hosted_agent_configured ?? false,
@@ -1329,9 +1464,43 @@ export function useWorkspaceController() {
       runConfig: hostedAgent.runConfig,
       isRunning: hostedAgent.isRunning,
       error: hostedAgent.error,
+      variants: hostedAgentVariants,
+      variantKey: hostedAgent.variantKey,
+      onVariantChange: hostedAgent.setVariantKey,
       onMessageChange: hostedAgent.setMessage,
       onSubmit: () => void hostedAgent.submit(),
       onCancel: hostedAgent.cancel,
+    },
+    investmentPlanner: {
+      configured: config?.is_investment_planner_configured ?? false,
+      agentName: config?.investment_planner_agent_name ?? null,
+      projectEndpoint: config?.endpoint ?? null,
+      question: investmentPlanner.question,
+      answer: investmentPlanner.answer,
+      steps: investmentPlanner.steps,
+      runConfig: investmentPlanner.runConfig,
+      isRunning: investmentPlanner.isRunning,
+      error: investmentPlanner.error,
+      onQuestionChange: investmentPlanner.setQuestion,
+      onSubmit: () => void investmentPlanner.submit(),
+      onCancel: investmentPlanner.cancel,
+    },
+    retailAgent: {
+      configured: config?.is_retail_agent_configured ?? false,
+      agentName: config?.retail_agent_name ?? null,
+      projectEndpoint: config?.endpoint ?? null,
+      message: retailAgent.message,
+      submittedMessage: retailAgent.submittedMessage,
+      answer: retailAgent.answer,
+      steps: retailAgent.steps,
+      products: retailAgent.products,
+      cart: retailAgent.cart,
+      runConfig: retailAgent.runConfig,
+      isRunning: retailAgent.isRunning,
+      error: retailAgent.error,
+      onMessageChange: retailAgent.setMessage,
+      onSubmit: () => void retailAgent.submit(),
+      onCancel: retailAgent.cancel,
     },
   };
   return {
@@ -1339,12 +1508,17 @@ export function useWorkspaceController() {
     setActiveView,
     activeUseCase,
     activeUseCaseDetails,
+    effectiveWorkspace,
+    agentMode,
+    setAgentMode,
     selectUseCase,
     comparisonMode,
     useCaseMarketplaceOpen,
     setUseCaseMarketplaceOpen,
     useCaseDetailsOpen,
     setUseCaseDetailsOpen,
+    useCaseDocumentationOpen,
+    setUseCaseDocumentationOpen,
     appearance,
     auth,
     entraAuthEnabled,
@@ -1404,6 +1578,25 @@ export function useWorkspaceController() {
     setTraditionalTranscriptionModel,
     setTtsModel,
     setTtsVoice,
+    gptAudioModels,
+    azureSpeechModel,
+    setAzureSpeechModel,
+    azureSpeechVoiceName,
+    setAzureSpeechVoiceName,
+    azureSpeechLanguageSkill,
+    setAzureSpeechLanguageSkill,
+    azureSpeechEmotion,
+    setAzureSpeechEmotion,
+    azureSpeechPitch,
+    setAzureSpeechPitch,
+    azureSpeechRate,
+    setAzureSpeechRate,
+    azureSpeechVolume,
+    setAzureSpeechVolume,
+    foundryGptAudioModel,
+    setFoundryGptAudioModel,
+    foundryGptAudioVoice,
+    setFoundryGptAudioVoice,
     liveTranslation,
     selected,
     selectedTranscriptions,

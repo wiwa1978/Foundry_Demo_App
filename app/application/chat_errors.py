@@ -18,4 +18,7 @@ def public_provider_error(operation: str, exc: Exception) -> str:
         code = details.get("code")
         if isinstance(code, str) and code.lower() == "content_filter":
             return CONTENT_FILTER_MESSAGE
+        message = details.get("message")
+        if isinstance(message, str) and message.strip():
+            return f"{operation} failed: {message.strip()}"
     return f"{operation} failed. Try again later."

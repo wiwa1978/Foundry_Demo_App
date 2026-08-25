@@ -47,9 +47,14 @@ export type ConfigResponse = {
   is_configured: boolean;
   endpoint: string | null;
   models: string[];
-  is_agent_research_configured?: boolean;
+  is_azure_architect_agent_configured?: boolean;
   is_hosted_agent_configured?: boolean;
   hosted_agent_name?: string | null;
+  hosted_agent_variants?: { key: string; label: string; agent_name: string }[];
+  is_retail_agent_configured?: boolean;
+  retail_agent_name?: string | null;
+  is_investment_planner_configured?: boolean;
+  investment_planner_agent_name?: string | null;
   is_realtime_configured: boolean;
   realtime_endpoint: string | null;
   realtime_model: string | null;

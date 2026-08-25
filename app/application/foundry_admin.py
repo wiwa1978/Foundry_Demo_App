@@ -22,6 +22,7 @@ from app.application.foundry_guardrails import (
     SYSTEM_GUARDRAIL_POLICY_COPIES,
     GuardrailContentFilter,
     GuardrailPolicy,
+    create_custom_comparison_guardrails,
     create_system_guardrail_policy_copies,
     guardrail_policy_exists,
     list_guardrail_policies,
@@ -38,6 +39,9 @@ class AdministrationService:
 
     def create_guardrail_policy_copies(self) -> list[GuardrailPolicy]:
         return create_system_guardrail_policy_copies(self.gateway)
+
+    def create_custom_comparison_guardrails(self) -> list[GuardrailPolicy]:
+        return create_custom_comparison_guardrails(self.gateway)
 
     def list_deployments(self) -> list[DeploymentSummary]:
         return list_foundry_deployments(self.gateway)

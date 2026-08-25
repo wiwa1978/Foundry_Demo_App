@@ -4,7 +4,13 @@ import type {
 } from "@media/content_extractor/frontend";
 import type { LiveTranslationMode } from "@media/live_translation/frontend";
 import type { TraditionalVoiceRequest } from "@media/stt_chat_tts/frontend";
-import type { TextTranslationResult } from "@media/text_translation/frontend";
+import type {
+  LanguageServiceMode,
+  LanguageServiceModeOption,
+  LanguageServiceUseCaseId,
+  TextTranslationResult,
+  TranslationModelOption,
+} from "@media/text_translation/frontend";
 import type { YouTubeSummaryResult } from "@media/youtube_summary/frontend";
 import type { RefObject } from "react";
 
@@ -32,6 +38,7 @@ import type {
   RealtimeTranscriptionDelay,
   RealtimeTranscriptionTurnDetection,
   RealtimeTranscriptEntry,
+  VoiceLiveAvatarStatus,
   StatusMessage,
   TraditionalVoiceResult,
   TraditionalVoiceStatus,
@@ -44,15 +51,27 @@ import type {
   ModelUsageSummary,
 } from "@/features/admin/ModelMonitoringPage";
 import type {
-  AgentResearchCitation,
-  AgentResearchRunConfig,
-  AgentResearchStep,
-  AgentResearchTrace,
-} from "@/features/agentResearch/types";
+  AzureArchitectAgentCitation,
+  AzureArchitectAgentRunConfig,
+  AzureArchitectAgentStep,
+  AzureArchitectAgentTrace,
+} from "@/features/azureArchitectAgent/types";
+import type { GuardrailBatchViewModel } from "@/features/guardrails/GuardrailBatchPanel";
 import type {
   HostedAgentRunConfig,
   HostedAgentStep,
+  HostedAgentVariant,
 } from "@/features/hostedAgent/types";
+import type {
+  InvestmentPlannerRunConfig,
+  InvestmentPlannerStep,
+} from "@/features/investmentPlanner/types";
+import type {
+  RetailAgentRunConfig,
+  RetailAgentStep,
+  RetailCartItem,
+  RetailProduct,
+} from "@/features/retailAgent/types";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
 
 export type WorkspaceContentRoute = {
@@ -305,6 +324,12 @@ export type WorkspaceVoiceLiveViewModel = {
   status: RealtimeStatus;
   error: string;
   transcript: RealtimeTranscriptEntry[];
+  avatar: {
+    audioRef: RefObject<HTMLAudioElement>;
+    error: string;
+    status: VoiceLiveAvatarStatus;
+    videoRef: RefObject<HTMLVideoElement>;
+  };
   onStart: () => void;
   onStop: () => void;
 };
@@ -342,6 +367,7 @@ export type WorkspaceGuardrailsViewModel = {
   enabled: boolean;
   policyNames: string[];
   deploymentPolicyName?: string | null;
+  batch?: GuardrailBatchViewModel;
 };
 
 export type WorkspaceYouTubeSummaryViewModel = {
@@ -376,16 +402,29 @@ export type WorkspaceContentExtractorViewModel = {
 
 export type WorkspaceTextTranslationViewModel = {
   configured: boolean;
+  useCase: LanguageServiceUseCaseId;
+  mode: LanguageServiceMode;
+  modeOptions: readonly LanguageServiceModeOption[];
+  modeImplemented: boolean;
   sourceText: string;
+  draftText: string;
   sourceLanguage: string;
   targetLanguage: string;
+  model: string;
+  modelOptions: readonly TranslationModelOption[];
   result: TextTranslationResult | null;
   loading: boolean;
   error: string;
-  onSourceTextChange: (value: string) => void;
+  audioEnabled: boolean;
+  speaking: boolean;
+  onDraftTextChange: (value: string) => void;
   onSourceLanguageChange: (value: string) => void;
   onTargetLanguageChange: (value: string) => void;
+  onModelChange: (model: string) => void;
+  onModeChange: (mode: LanguageServiceMode) => void;
   onTranslate: () => void;
+  onAudioEnabledChange: (enabled: boolean) => void;
+  onSpeakTranslation: () => void;
 };
 
 export type WorkspaceYouTubeRealtimeTranscriptionViewModel = {
@@ -435,17 +474,17 @@ export type WorkspaceChatViewModel = {
   onOpenUseCases: () => void;
 };
 
-export type WorkspaceAgentResearchViewModel = {
+export type WorkspaceAzureArchitectAgentViewModel = {
   configured: boolean;
   projectEndpoint: string | null;
   question: string;
   answer: string;
-  steps: AgentResearchStep[];
-  citations: AgentResearchCitation[];
-  runConfig: AgentResearchRunConfig | null;
+  steps: AzureArchitectAgentStep[];
+  citations: AzureArchitectAgentCitation[];
+  runConfig: AzureArchitectAgentRunConfig | null;
   isRunning: boolean;
   error: string;
-  trace: AgentResearchTrace | null;
+  trace: AzureArchitectAgentTrace | null;
   traceLoading: boolean;
   traceError: string;
   onQuestionChange: (value: string) => void;
@@ -463,9 +502,57 @@ export type WorkspaceHostedAgentViewModel = {
   runConfig: HostedAgentRunConfig | null;
   isRunning: boolean;
   error: string;
+  variants: HostedAgentVariant[];
+  variantKey: string;
+  onVariantChange: (key: string) => void;
   onMessageChange: (value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
+};
+
+export type WorkspaceInvestmentPlannerViewModel = {
+  configured: boolean;
+  agentName: string | null;
+  projectEndpoint: string | null;
+  question: string;
+  answer: string;
+  steps: InvestmentPlannerStep[];
+  runConfig: InvestmentPlannerRunConfig | null;
+  isRunning: boolean;
+  error: string;
+  onQuestionChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+};
+
+export type WorkspaceRetailAgentViewModel = {
+  configured: boolean;
+  agentName: string | null;
+  projectEndpoint: string | null;
+  message: string;
+  submittedMessage: string;
+  answer: string;
+  steps: RetailAgentStep[];
+  products: RetailProduct[];
+  cart: RetailCartItem[];
+  runConfig: RetailAgentRunConfig | null;
+  isRunning: boolean;
+  error: string;
+  onMessageChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+};
+
+export type WorkspaceTextToSpeechSettings = {
+  azureSpeechModel: string;
+  azureVoiceName: string;
+  languageSkill: string;
+  emotion: string;
+  pitch: number;
+  rate: number;
+  volume: number;
+  gptAudioModel: string;
+  gptAudioVoice: string;
 };
 
 export type WorkspaceContentRouterProps = {
@@ -477,6 +564,9 @@ export type WorkspaceContentRouterProps = {
   images: WorkspaceImagesViewModel;
   comparison: WorkspaceComparisonViewModel;
   traditionalVoice: WorkspaceTraditionalVoiceViewModel;
+  azureSpeechTtsConfigured?: boolean;
+  foundryGptAudioConfigured?: boolean;
+  textToSpeech?: WorkspaceTextToSpeechSettings;
   transcription: WorkspaceTranscriptionViewModel;
   transcriptionComparison: WorkspaceTranscriptionComparisonViewModel;
   realtime: WorkspaceRealtimeViewModel;
@@ -486,6 +576,8 @@ export type WorkspaceContentRouterProps = {
   contentExtractor: WorkspaceContentExtractorViewModel;
   textTranslation: WorkspaceTextTranslationViewModel;
   chat: WorkspaceChatViewModel;
-  agentResearch: WorkspaceAgentResearchViewModel;
+  azureArchitectAgent: WorkspaceAzureArchitectAgentViewModel;
   hostedAgent: WorkspaceHostedAgentViewModel;
+  investmentPlanner: WorkspaceInvestmentPlannerViewModel;
+  retailAgent?: WorkspaceRetailAgentViewModel;
 };

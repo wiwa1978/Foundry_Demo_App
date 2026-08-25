@@ -87,14 +87,15 @@ describe("UseCaseMarketplace", () => {
 
     expect(
       screen.getByRole("button", {
-        name: /research assistant agent.*prompt agent/i,
+        name: /Azure Architect/i,
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Prompt Agent")).toBeInTheDocument();
-    expect(screen.getByText("Hosted Agent")).toBeInTheDocument();
-    expect(screen.getByText("Microsoft Agent Framework")).toBeInTheDocument();
     expect(
-      screen.getByText(/Microsoft Agent Framework code/),
+      screen.queryByText("Prompt Agent · Hosted Agent"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Microsoft Agent Framework")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Ask the Azure Architect Agent to look things up/),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /text chat/i }),
@@ -102,10 +103,10 @@ describe("UseCaseMarketplace", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: /research assistant agent.*prompt agent/i,
+        name: /Azure Architect/i,
       }),
     );
-    expect(onSelect).toHaveBeenCalledWith("agent_research");
+    expect(onSelect).toHaveBeenCalledWith("azure_architect_agent");
   });
 
   it("filters use cases by modality", async () => {

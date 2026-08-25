@@ -48,11 +48,15 @@ def get_model_settings(repository: ModelSettingsRepository, model: str) -> Model
     normalized_model = _normalize_model(model)
     settings = repository.get_settings(normalized_model)
     if settings is None:
-        return ModelSettings(
+        settings = ModelSettings(
             model=normalized_model,
             api_surface=_default_api_surface(normalized_model),
             modalities=_default_modalities(normalized_model),
         )
+    if len(settings.guardrail_policy_names) != 2:
+        inherited_policies = _find_guardrail_policy_defaults(repository, normalized_model)
+        if inherited_policies:
+            settings = replace(settings, guardrail_policy_names=inherited_policies)
     inferred_modalities = _default_modalities(normalized_model)
     if inferred_modalities == ("image",) and settings.modalities == ("text",):
         settings = replace(settings, modalities=inferred_modalities)
@@ -62,6 +66,20 @@ def get_model_settings(repository: ModelSettingsRepository, model: str) -> Model
     if _requires_responses(normalized_model) and settings.api_surface == "chat_completions":
         settings = replace(settings, api_surface="responses")
     return settings
+
+
+def _find_guardrail_policy_defaults(
+    repository: ModelSettingsRepository,
+    excluded_model: str,
+) -> tuple[str, ...] | None:
+    """Use the first complete policy pair as the shared default for new models."""
+    for model in repository.list_models():
+        if model.strip().lower() == excluded_model.lower():
+            continue
+        settings = repository.get_settings(model)
+        if settings is not None and len(settings.guardrail_policy_names) == 2:
+            return settings.guardrail_policy_names
+    return None
 
 
 def save_model_settings(

@@ -2,18 +2,18 @@ import type { UseCaseModule } from "@/app/types";
 
 export const textTranslationUseCase: UseCaseModule = {
   id: "text_translation",
-  title: "Text Translation",
-  shortTitle: "Text Translation",
+  title: "Azure Translator",
+  shortTitle: "Detecting language and translating...",
   description:
-    "Translate source text into another language with Azure Translator - Text Translation on an Azure AI Foundry resource.",
+    "Detect the source language and translate text with Azure Translator in a single workspace.",
   badge: "Text",
-  typeLabel: "Azure Translator",
+  typeLabel: "Detection + Translation",
   icon: "chat",
   modalities: ["text"],
   implementation: [
-    "The browser sends source text, source language or auto-detect, and target language to an authenticated FastAPI endpoint.",
+    "The workspace uses a mode selector to switch between Text and Document Translation workflows.",
+    "For text mode, the browser sends source text, source language or auto-detect, and target language to an authenticated FastAPI endpoint; the result includes the detected source language alongside the translation.",
     "The backend derives the Translator resource endpoint from the Foundry project endpoint, then authenticates with Microsoft Entra ID or an optional Translator key.",
-    "The response returns the detected source language when available and renders the translated text in a side-by-side workspace.",
   ],
   codeSnippet: {
     title: "Azure Translator - Text Translation",

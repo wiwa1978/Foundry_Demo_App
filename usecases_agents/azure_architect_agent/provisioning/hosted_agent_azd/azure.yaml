@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: azure-architect-hosted-azd
+services:
+    azure-architect-hosted-azd:
+        project: src/azure-architect-hosted-azd
+        host: azure.ai.agent
+        env:
+            FOUNDRY_PROJECT_ENDPOINT: https://aifoundrydemo66fb.services.ai.azure.com/api/projects/proj66fb
+            AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+            TOOLBOX_NAME: ${TOOLBOX_NAME}
+        codeConfiguration:
+            dependencyResolution: remote_build
+            entryPoint: main.py
+            runtime: python_3_13
+        kind: hosted
+        name: azure-architect-hosted-azd
+    proj66fb:
+        host: azure.ai.project
+        endpoint: https://aifoundrydemo66fb.services.ai.azure.com/api/projects/proj66fb

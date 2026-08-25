@@ -1,42 +1,59 @@
-import { AgentResearchWorkspace } from "@/features/agentResearch/AgentResearchWorkspace";
+import { AzureArchitectAgentWorkspace } from "@/features/azureArchitectAgent/AzureArchitectAgentWorkspace";
 import { HostedAgentWorkspace } from "@/features/hostedAgent/HostedAgentWorkspace";
+import { hostedAgentPromptGallery } from "@/features/hostedAgent/prompts";
+import { InvestmentPlannerWorkspace } from "@/features/investmentPlanner/InvestmentPlannerWorkspace";
+import { RetailAgentWorkspace } from "@/features/retailAgent/RetailAgentWorkspace";
 
 import type {
-  WorkspaceAgentResearchViewModel,
+  WorkspaceAzureArchitectAgentViewModel,
   WorkspaceContentRoute,
   WorkspaceHostedAgentViewModel,
+  WorkspaceInvestmentPlannerViewModel,
+  WorkspaceRetailAgentViewModel,
 } from "./contracts";
 
 export function AgentRoute({
   route,
-  agentResearch,
+  azureArchitectAgent,
   hostedAgent,
+  investmentPlanner,
+  retailAgent,
 }: {
   route: WorkspaceContentRoute;
-  agentResearch: WorkspaceAgentResearchViewModel;
+  azureArchitectAgent: WorkspaceAzureArchitectAgentViewModel;
   hostedAgent: WorkspaceHostedAgentViewModel;
+  investmentPlanner: WorkspaceInvestmentPlannerViewModel;
+  retailAgent?: WorkspaceRetailAgentViewModel;
 }) {
   if (route.workspace === "hostedAgent") {
     return <HostedAgentWorkspace {...hostedAgent} />;
   }
 
+  if (route.workspace === "investmentPlannerPrompt") {
+    return <InvestmentPlannerWorkspace {...investmentPlanner} />;
+  }
+  if (route.workspace === "retailAgent") {
+    return retailAgent ? <RetailAgentWorkspace {...retailAgent} /> : null;
+  }
+
   return (
-    <AgentResearchWorkspace
-      configured={agentResearch.configured}
-      projectEndpoint={agentResearch.projectEndpoint}
-      question={agentResearch.question}
-      answer={agentResearch.answer}
-      steps={agentResearch.steps}
-      citations={agentResearch.citations}
-      runConfig={agentResearch.runConfig}
-      isRunning={agentResearch.isRunning}
-      error={agentResearch.error}
-      trace={agentResearch.trace}
-      traceLoading={agentResearch.traceLoading}
-      traceError={agentResearch.traceError}
-      onQuestionChange={agentResearch.onQuestionChange}
-      onSubmit={agentResearch.onSubmit}
-      onCancel={agentResearch.onCancel}
+    <AzureArchitectAgentWorkspace
+      configured={azureArchitectAgent.configured}
+      projectEndpoint={azureArchitectAgent.projectEndpoint}
+      question={azureArchitectAgent.question}
+      answer={azureArchitectAgent.answer}
+      steps={azureArchitectAgent.steps}
+      citations={azureArchitectAgent.citations}
+      runConfig={azureArchitectAgent.runConfig}
+      isRunning={azureArchitectAgent.isRunning}
+      error={azureArchitectAgent.error}
+      trace={azureArchitectAgent.trace}
+      traceLoading={azureArchitectAgent.traceLoading}
+      traceError={azureArchitectAgent.traceError}
+      onQuestionChange={azureArchitectAgent.onQuestionChange}
+      onSubmit={azureArchitectAgent.onSubmit}
+      onCancel={azureArchitectAgent.onCancel}
+      promptGallery={hostedAgentPromptGallery}
     />
   );
 }

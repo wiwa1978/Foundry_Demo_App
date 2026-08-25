@@ -16,10 +16,10 @@ in the UI.
 - Inspect the existing FastAPI app structure first and follow the current patterns.
 - Add the official Microsoft Agent Framework dependency used by the current Python SDK/docs.
 - Create a new backend feature for agent research under
-  `usecases_agents/research_assistant_prompt/backend/`.
+  `usecases_agents/azure_architect_agent/prompt/backend/`.
 - Expose an API that:
   - accepts a question
-  - creates and runs a single research agent
+  - creates and runs a single Azure Architect Agent
   - streams step/tool events and the final answer
   - cleans up resources after the run
 - Prefer the app’s existing streaming style if it already uses SSE or WebSockets.
@@ -48,15 +48,15 @@ in the UI.
 
 ## Suggested implementation shape
 
-- `usecases_agents/research_assistant_prompt/backend/`
+- `usecases_agents/azure_architect_agent/prompt/backend/`
   - `router.py`
   - `schemas.py`
   - `__init__.py`
-- `frontend/src/features/agentResearch/`
+- `frontend/src/features/azureArchitectAgent/`
   - `types.ts`
   - `api.ts`
-  - `useAgentResearchStream.ts`
-  - `AgentResearchWorkspace.tsx`
+  - `useAzureArchitectAgentStream.ts`
+  - `AzureArchitectAgentWorkspace.tsx`
 - Update the app’s shared use-case metadata so the new feature appears in the marketplace and workspace routing.
 
 ## Acceptance criteria

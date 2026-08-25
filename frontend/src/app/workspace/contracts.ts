@@ -11,6 +11,7 @@ export type {
   RealtimeTranscriptEntry,
   TraditionalVoiceStatus,
   VoiceLiveServerEvent,
+  VoiceLiveAvatarStatus,
 } from "@/features/voice/types";
 
 export type {

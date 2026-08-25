@@ -12,6 +12,7 @@ import {
   formatGuardrailLabel,
   formatMessageDateTime,
   formatModelName,
+  formatTriggeredGuardrails,
   formatUsage,
 } from "@/app/workspace/formatters";
 import { formatApiSurface } from "@/app/workspace/traceUtils";
@@ -137,7 +138,7 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
         {!isUser && message.guardrail_results ? (
           <details className="mt-1 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-300">
             <summary className="cursor-pointer font-medium">
-              Guardrail annotations
+              Safety metadata
             </summary>
             <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap">
               {JSON.stringify(message.guardrail_results, null, 2)}
@@ -201,6 +202,19 @@ export function ComparisonModelResponse({ message }: { message: ChatMessage }) {
   if (message.pending && !message.guardrail_variant) {
     return <ThinkingIndicator />;
   }
+  const blockedByGuardrail = message.error?.startsWith("Request blocked");
+  const triggeredGuardrails = formatTriggeredGuardrails(
+    message.guardrail_results,
+  );
+  const guardrailStatus = message.error
+    ? blockedByGuardrail
+      ? "Blocked by guardrail"
+      : "Guardrail result unavailable — provider error"
+    : message.guardrail_results
+      ? triggeredGuardrails.length
+        ? "Evaluated — violation detected, not blocked by guardrail"
+        : "Evaluated — no violation triggered"
+      : "Policy requested — no evaluation metadata returned";
 
   return (
     <div
@@ -231,6 +245,9 @@ export function ComparisonModelResponse({ message }: { message: ChatMessage }) {
         {formatUsage(message.usage) ? (
           <span>{formatUsage(message.usage)}</span>
         ) : null}
+        {!message.pending ? (
+          <Badge variant="outline">{guardrailStatus}</Badge>
+        ) : null}
       </div>
       <div className="whitespace-pre-wrap">
         {message.pending ? (
@@ -242,10 +259,24 @@ export function ComparisonModelResponse({ message }: { message: ChatMessage }) {
           (message.error ?? message.content)
         )}
       </div>
+      {!message.pending && message.guardrail_variant ? (
+        <div className="mt-2 text-xs text-white/75">
+          <span className="font-semibold">Guardrail detail: </span>
+          {message.error && blockedByGuardrail
+            ? triggeredGuardrails.length
+              ? `Request stopped before a response (${triggeredGuardrails.join(", ")}).`
+              : "Request stopped by the configured policy; the provider did not identify a filter in the returned error."
+            : triggeredGuardrails.length
+              ? `Detected: ${triggeredGuardrails.join(", ")}. The guardrail did not stop this request; the model returned the response shown above.`
+              : message.guardrail_results
+                ? "The policy was evaluated and no triggered filter was reported."
+                : "The policy was sent with the request, but the provider returned no evaluation metadata."}
+        </div>
+      ) : null}
       {message.guardrail_results ? (
         <details className="mt-2 text-xs">
           <summary className="cursor-pointer font-medium">
-            Guardrail annotations
+            Safety metadata (raw)
           </summary>
           <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">
             {JSON.stringify(message.guardrail_results, null, 2)}

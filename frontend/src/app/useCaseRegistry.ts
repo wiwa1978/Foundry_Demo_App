@@ -1,9 +1,12 @@
+import { azureSpeechTtsUseCase } from "@media/azure_speech_tts/module";
 import { browserVoiceUseCase } from "@media/browser_voice/module";
 import { contentExtractorUseCase } from "@media/content_extractor/module";
 import { documentQaUseCase } from "@media/document_qa/module";
+import { foundryGptAudioUseCase } from "@media/foundry_gpt_audio/module";
 import { imageComparisonUseCase } from "@media/image_comparison/module";
 import { imageToImageUseCase } from "@media/image_to_image/module";
 import { liveTranslationUseCase } from "@media/live_translation/module";
+import { piiRedactionUseCase } from "@media/pii_redaction/module";
 import { realtimeTranscriptionWebRtcUseCase } from "@media/realtime_transcription_webrtc/module";
 import { realtimeTranscriptionWebSocketUseCase } from "@media/realtime_transcription_websocket/module";
 import { realtimeTranslationWebRtcUseCase } from "@media/realtime_translation_webrtc/module";
@@ -12,6 +15,7 @@ import { realtimeVoiceUseCase } from "@media/realtime_voice/module";
 import { reasoningComparisonUseCase } from "@media/reasoning_comparison/module";
 import { transcribeUseCase } from "@media/recorded_transcription/module";
 import { traditionalVoiceUseCase } from "@media/stt_chat_tts/module";
+import { textAnalyticsForHealthUseCase } from "@media/text_analytics_health/module";
 import { textChatUseCase } from "@media/text_chat/module";
 import { comparisonUseCase } from "@media/text_chat_comparison/module";
 import { textToImageUseCase } from "@media/text_to_image/module";
@@ -26,21 +30,26 @@ import type {
   UseCaseWorkspace,
   WorkspaceRenderer,
 } from "@/app/types";
-import { agentResearchUseCase } from "@/features/useCases/agentResearch";
-import { hostedAgentUseCase } from "@/features/useCases/hostedAgent";
+import { azureArchitectAgentUseCase } from "@/features/useCases/azureArchitectAgent";
+import { investmentPlannerPromptUseCase } from "@/features/useCases/investmentPlannerPrompt";
+import { retailAgentUseCase } from "@/features/useCases/retailAgent";
 
 export type RegisteredUseCase = UseCaseModule & { renderer: WorkspaceRenderer };
 
 const rendererByWorkspace = {
   chat: "chat",
   contentExtractor: "chat",
-  agentResearch: "agent",
+  azureArchitectAgent: "agent",
   hostedAgent: "agent",
+  retailAgent: "agent",
+  investmentPlannerPrompt: "agent",
   comparison: "chat",
   image: "image",
   imageEdit: "image",
   imageComparison: "image",
   traditionalVoice: "voice",
+  azureSpeechTts: "voice",
+  foundryGptAudio: "voice",
   realtimeVoice: "voice",
   realtimeTranscriptionWebRtc: "voice",
   realtimeTranscriptionWebSocket: "voice",
@@ -57,13 +66,16 @@ const rendererByWorkspace = {
 
 const definitions = [
   textChatUseCase,
-  agentResearchUseCase,
-  hostedAgentUseCase,
+  azureArchitectAgentUseCase,
+  investmentPlannerPromptUseCase,
+  retailAgentUseCase,
   comparisonUseCase,
   reasoningComparisonUseCase,
   documentQaUseCase,
   contentExtractorUseCase,
   textTranslationUseCase,
+  piiRedactionUseCase,
+  textAnalyticsForHealthUseCase,
   textToImageUseCase,
   imageComparisonUseCase,
   imageToImageUseCase,
@@ -71,6 +83,8 @@ const definitions = [
   youtubeRealtimeTranscriptionUseCase,
   browserVoiceUseCase,
   traditionalVoiceUseCase,
+  azureSpeechTtsUseCase,
+  foundryGptAudioUseCase,
   transcribeUseCase,
   transcriptionComparisonUseCase,
   realtimeTranscriptionWebRtcUseCase,

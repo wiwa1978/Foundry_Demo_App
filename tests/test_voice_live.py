@@ -34,7 +34,7 @@ class VoiceLiveTests(unittest.TestCase):
         self.assertEqual(
             result["url"],
             "wss://demo.services.ai.azure.com/voice-live/realtime/calls"
-            "?api-version=2026-04-10&model=gpt-realtime",
+            "?api-version=2026-01-01-preview&model=gpt-realtime",
         )
         self.assertEqual(result["token"], "entra-token")
         get_credential.return_value.get_token.assert_called_once_with(

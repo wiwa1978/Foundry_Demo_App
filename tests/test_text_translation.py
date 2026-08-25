@@ -3,10 +3,39 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.domain.models import ModelSettings
 from app.infrastructure.azure.foundry.settings import load_settings
 from app.main import create_app
 from usecases_media.text_translation.backend.schemas import TextTranslationRequest
-from usecases_media.text_translation.backend.service import TextTranslatorSettings, translate_text
+from usecases_media.text_translation.backend.service import (
+    TextTranslatorSettings,
+    analyze_text,
+    translate_text,
+    translate_text_with_llm,
+)
+
+LLM_MODEL_SETTINGS = ModelSettings(
+    model="gpt-5.1",
+    api_surface="responses",
+    temperature=0.2,
+    top_p=1,
+    max_tokens=1000,
+    repetition_penalty=1,
+)
+
+
+class FakeGateway:
+    def __init__(self):
+        self.prompts = []
+
+    def complete(self, **kwargs):
+        self.prompts.append(kwargs)
+        return {
+            "content": "Bonjour",
+            "usage": {"input_tokens": 5},
+            "foundry_request": {"path": "/responses"},
+            "foundry_response": {"status": 200},
+        }
 
 
 def test_translate_text_omits_source_language_for_auto_detect() -> None:
@@ -59,6 +88,9 @@ def test_translate_text_omits_source_language_for_auto_detect() -> None:
         "target_language": "es",
         "translated_text": "El doctor está disponible.",
         "translations": [{"language": "es", "text": "El doctor está disponible."}],
+        "engine": "azure-mt",
+        "mode": "translator_text",
+        "detected_confidence": 1.0,
     }
 
 
@@ -152,7 +184,170 @@ def test_text_translation_route_returns_translated_text(monkeypatch) -> None:
         "target_language": "fr",
         "translated_text": "Bonjour",
         "translations": [{"language": "fr", "text": "Bonjour"}],
+        "engine": "azure-mt",
+        "mode": "translator_text",
+        "analysis": {},
+        "detected_confidence": None,
+        "foundry_requests": [],
+        "foundry_responses": [],
     }
+
+
+def test_analyze_text_detects_language() -> None:
+    captured: dict = {}
+
+    def post_json(url, _headers, body):
+        captured["url"] = url
+        captured["body"] = body
+        return {
+            "results": {
+                "documents": [
+                    {
+                        "detectedLanguage": {
+                            "name": "French",
+                            "iso6391Name": "fr",
+                            "confidenceScore": 0.98,
+                        }
+                    }
+                ]
+            }
+        }
+
+    result = asyncio.run(
+        analyze_text(
+            TextTranslationRequest(
+                text="Bonjour, comment allez-vous ?",
+                target_language="es",
+                mode="language_detection_text",
+            ),
+            settings=TextTranslatorSettings(
+                endpoint="https://language.example.cognitiveservices.azure.com",
+                subscription_key="test-key",
+            ),
+            post_json=post_json,
+        )
+    )
+
+    assert captured["url"].endswith(
+        "/language/:analyze-text?api-version=2026-05-01"
+    )
+    assert captured["body"]["kind"] == "LanguageDetection"
+    assert result["detected_language"] == "fr"
+    assert result["translated_text"] == "French (fr, confidence 0.98)"
+
+
+def test_analyze_text_redacts_pii() -> None:
+    def post_json(_url, _headers, body):
+        assert body["kind"] == "PiiEntityRecognition"
+        return {
+            "results": {
+                "documents": [
+                    {
+                        "redactedText": "Contact [PERSON] at [EMAIL].",
+                        "entities": [
+                            {
+                                "text": "Maria Jensen",
+                                "category": "Person",
+                                "confidenceScore": 0.99,
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+
+    result = asyncio.run(
+        analyze_text(
+            TextTranslationRequest(
+                text="Contact Maria Jensen at maria@example.com.",
+                target_language="es",
+                mode="pii_text",
+            ),
+            settings=TextTranslatorSettings(
+                endpoint="https://language.example.cognitiveservices.azure.com",
+                subscription_key="test-key",
+            ),
+            post_json=post_json,
+        )
+    )
+
+    assert result["translated_text"] == "Contact [PERSON] at [EMAIL]."
+    assert result["target_language"] == "redacted"
+    assert result["analysis"]["entities"][0]["category"] == "Person"
+
+
+def test_analyze_text_extracts_health_entities() -> None:
+    def post_json(_url, _headers, body):
+        assert body["kind"] == "Healthcare"
+        return {
+            "results": {
+                "documents": [
+                    {
+                        "entities": [
+                            {
+                                "text": "dry cough",
+                                "category": "Symptom",
+                            }
+                        ],
+                        "relations": [],
+                    }
+                ]
+            }
+        }
+
+    result = asyncio.run(
+        analyze_text(
+            TextTranslationRequest(
+                text="The patient reports a dry cough.",
+                target_language="es",
+                mode="health_text",
+            ),
+            settings=TextTranslatorSettings(
+                endpoint="https://language.example.cognitiveservices.azure.com",
+                subscription_key="test-key",
+            ),
+            post_json=post_json,
+        )
+    )
+
+    assert result["translated_text"] == "Clinical entities:\n- Symptom: dry cough"
+    assert result["target_language"] == "health"
+
+
+def test_language_service_route_dispatches_to_azure_language(monkeypatch) -> None:
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+
+    async def fake_analyze(request):
+        assert request.mode == "language_detection_text"
+        return {
+            "source_language": None,
+            "detected_language": "fr",
+            "target_language": "fr",
+            "translated_text": "French (fr, confidence 0.98)",
+            "translations": [
+                {"language": "fr", "text": "French (fr, confidence 0.98)"}
+            ],
+            "engine": "azure-language",
+            "mode": "language_detection_text",
+            "analysis": {},
+        }
+
+    with patch(
+        "usecases_media.text_translation.backend.router.analyze_text",
+        side_effect=fake_analyze,
+    ) as mock_analyze:
+        response = TestClient(create_app()).post(
+            "/api/text-translation/translate",
+            json={
+                "text": "Bonjour",
+                "mode": "language_detection_text",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["engine"] == "azure-language"
+    assert response.json()["detected_language"] == "fr"
+    mock_analyze.assert_called_once()
 
 
 def test_text_translation_route_sanitizes_provider_errors(monkeypatch) -> None:
@@ -171,6 +366,83 @@ def test_text_translation_route_sanitizes_provider_errors(monkeypatch) -> None:
         "detail": "Text translation failed. Try again later.",
         "code": "external_service_error",
     }
+
+
+def test_translate_text_with_llm_uses_chat_model() -> None:
+    gateway = FakeGateway()
+
+    result = asyncio.run(
+        translate_text_with_llm(
+            TextTranslationRequest(
+                text="Hello",
+                source_language="en",
+                target_language="fr",
+                model="gpt-5.1",
+            ),
+            model="gpt-5.1",
+            gateway=gateway,
+            model_settings=LLM_MODEL_SETTINGS,
+        )
+    )
+
+    assert len(gateway.prompts) == 1
+    call = gateway.prompts[0]
+    assert call["model"] == "gpt-5.1"
+    assert call["api_surface"] == "responses"
+    assert "Source language: en." in call["prompt"]
+    assert "'fr'" in call["prompt"]
+    assert "Hello" in call["prompt"]
+
+    assert result == {
+        "source_language": "en",
+        "detected_language": None,
+        "target_language": "fr",
+        "translated_text": "Bonjour",
+        "translations": [{"language": "fr", "text": "Bonjour"}],
+        "engine": "gpt-5.1",
+        "detected_confidence": None,
+        "foundry_requests": [{"path": "/responses"}],
+        "foundry_responses": [{"status": 200}],
+    }
+
+
+def test_text_translation_route_uses_llm_when_model_is_not_azure_mt(monkeypatch) -> None:
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+
+    with patch(
+        "usecases_media.text_translation.backend.router.translate_text_with_llm",
+    ) as mock_translate:
+
+        async def fake_translate(*_args, **_kwargs):
+            return {
+                "source_language": "en",
+                "detected_language": None,
+                "target_language": "fr",
+                "translated_text": "Bonjour",
+                "translations": [{"language": "fr", "text": "Bonjour"}],
+                "engine": "gpt-5.1",
+                "foundry_requests": [],
+                "foundry_responses": [],
+            }
+
+        mock_translate.side_effect = fake_translate
+
+        response = TestClient(create_app()).post(
+            "/api/text-translation/translate",
+            json={
+                "text": "Hello",
+                "source_language": "en",
+                "target_language": "fr",
+                "model": "gpt-5.1",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["engine"] == "gpt-5.1"
+    assert response.json()["translated_text"] == "Bonjour"
+    mock_translate.assert_called_once()
+    _, kwargs = mock_translate.call_args
+    assert kwargs["model"] == "gpt-5.1"
 
 
 def test_config_reports_text_translation_setup_from_project_endpoint(monkeypatch) -> None:

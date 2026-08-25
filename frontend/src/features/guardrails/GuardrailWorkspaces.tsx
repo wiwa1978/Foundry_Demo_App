@@ -1,8 +1,16 @@
-import { GitCompareArrows, Settings, ShieldCheck } from "lucide-react";
+import {
+  GitCompareArrows,
+  MessagesSquare,
+  Settings,
+  ShieldCheck,
+  Table,
+} from "lucide-react";
+import { useState } from "react";
 
 import {
+  guardrailBaselinePromptExamples,
+  guardrailContractPromptExamples,
   deploymentDefaultGuardrail,
-  guardrailPromptExamples,
 } from "@/app/workspace/constants";
 import {
   formatConfiguredGuardrail,
@@ -16,6 +24,12 @@ import {
   groupComparisonTurns,
 } from "@/features/textChat/ChatMessages";
 import type { ChatMessage } from "@/features/textChat/types";
+import { cn } from "@/lib/utils";
+
+import {
+  GuardrailBatchPanel,
+  type GuardrailBatchViewModel,
+} from "./GuardrailBatchPanel";
 
 type GuardrailComparisonWorkspaceProps = {
   model: string;
@@ -28,6 +42,7 @@ type GuardrailComparisonWorkspaceProps = {
   onPromptChange: (value: string) => void;
   onSubmit: () => void;
   onOpenSettings: () => void;
+  batch?: GuardrailBatchViewModel;
 };
 
 export function GuardrailComparisonWorkspace({
@@ -41,15 +56,43 @@ export function GuardrailComparisonWorkspace({
   onPromptChange,
   onSubmit,
   onOpenSettings,
+  batch,
 }: GuardrailComparisonWorkspaceProps) {
   const turns = groupComparisonTurns(messages);
+  const [mode, setMode] = useState<"interactive" | "batch">("interactive");
+
+  if (batch && mode === "batch") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col bg-slate-100/70 dark:bg-[#303033]">
+        <GuardrailModeToggle mode={mode} onModeChange={setMode} />
+        <GuardrailBatchPanel
+          model={model}
+          batch={batch}
+          policyNames={policyNames}
+          deploymentPolicyName={deploymentPolicyName}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-slate-100/70 dark:bg-[#303033]">
+      {batch ? (
+        <GuardrailModeToggle mode={mode} onModeChange={setMode} />
+      ) : null}
       <PromptExamples
-        title="Guardrail prompt lab"
-        description="Select a scenario to load the same test prompt into both panes."
+        title="Baseline protection"
+        description="Prompts both policies should protect against."
         icon={<ShieldCheck className="h-4 w-4" />}
-        examples={guardrailPromptExamples}
+        examples={guardrailBaselinePromptExamples}
+        value={prompt}
+        onSelect={onPromptChange}
+      />
+      <PromptExamples
+        title="Loose vs Strict contract"
+        description="Prompts designed to expose the controls that differ."
+        icon={<GitCompareArrows className="h-4 w-4" />}
+        examples={guardrailContractPromptExamples}
         value={prompt}
         onSelect={onPromptChange}
       />
@@ -77,6 +120,54 @@ export function GuardrailComparisonWorkspace({
       <p className="border-t bg-white px-4 py-2 text-center text-xs text-slate-500 dark:border-[#55555a] dark:bg-[#29292c] dark:text-slate-400">
         Both panes use {formatModelName(model)} with the same prompt and model
         parameters. Only the guardrail policy differs.
+      </p>
+    </div>
+  );
+}
+
+function GuardrailModeToggle({
+  mode,
+  onModeChange,
+}: {
+  mode: "interactive" | "batch";
+  onModeChange: (value: "interactive" | "batch") => void;
+}) {
+  const options = [
+    {
+      value: "interactive" as const,
+      label: "Interactive",
+      icon: <MessagesSquare className="h-3.5 w-3.5" />,
+    },
+    {
+      value: "batch" as const,
+      label: "Batch (CSV)",
+      icon: <Table className="h-3.5 w-3.5" />,
+    },
+  ];
+  return (
+    <div className="flex items-center gap-2 border-b bg-white px-4 py-2 dark:border-[#55555a] dark:bg-[#29292c]">
+      <div className="inline-flex rounded-full border p-0.5 dark:border-[#606066]">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onModeChange(option.value)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+              mode === option.value
+                ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#3d3d42]",
+            )}
+          >
+            {option.icon}
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        {mode === "interactive"
+          ? "Send one prompt through both policies side by side."
+          : "Upload a CSV of statements and evaluate every row against both policies."}
       </p>
     </div>
   );

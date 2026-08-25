@@ -1,9 +1,11 @@
+import { createRef } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   AzureSpeechLiveTranslationWorkspace,
   GptRealtimeTranslationWorkspace,
+  VoiceLiveHero,
 } from "./VoiceWorkspaces";
 
 const noop = vi.fn();
@@ -135,5 +137,75 @@ describe("translation workspaces", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Audio playback On" }));
 
     expect(onAudioPlaybackEnabledChange).toHaveBeenCalledWith(false);
+  });
+
+  it("renders Voice Live with the shared two-pane listening layout", () => {
+    render(
+      <VoiceLiveHero
+        configured={true}
+        model="gpt-realtime"
+        voice="en-US-Ava:DragonHDLatestNeural"
+        status="live"
+        error=""
+        transcript={[
+          { id: "user-1", source: "user", text: "Plan Paris in May" },
+          {
+            id: "assistant-1",
+            source: "assistant",
+            text: "What is your budget?",
+          },
+          { id: "system-1", source: "system", text: "Connected to Voice Live" },
+        ]}
+        avatar={{
+          audioRef: createRef<HTMLAudioElement>(),
+          error: "",
+          status: "speaking",
+          videoRef: createRef<HTMLVideoElement>(),
+        }}
+        onStart={noop}
+        onStop={noop}
+      />,
+    );
+
+    expect(screen.getByText("Traveler speech")).toBeInTheDocument();
+    expect(screen.getByText("Plan Paris in May")).toBeInTheDocument();
+    expect(screen.getByText("Travel conversation")).toBeInTheDocument();
+    expect(screen.getByText("What is your budget?")).toBeInTheDocument();
+    expect(screen.getByText("Voice Live model")).toBeInTheDocument();
+    expect(screen.getByText("Azure voice")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /End concierge call/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders Voice Live empty state and bottom control palette", () => {
+    render(
+      <VoiceLiveHero
+        configured={false}
+        model="gpt-realtime"
+        voice="en-US-Ava:DragonHDLatestNeural"
+        status="idle"
+        error=""
+        transcript={[]}
+        avatar={{
+          audioRef: createRef<HTMLAudioElement>(),
+          error: "",
+          status: "idle",
+          videoRef: createRef<HTMLVideoElement>(),
+        }}
+        onStart={noop}
+        onStop={noop}
+      />,
+    );
+
+    expect(screen.getByText("Voice Live travel concierge")).toBeInTheDocument();
+    expect(screen.getByText("Voice Live model")).toBeInTheDocument();
+    expect(screen.getByText("Azure voice")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Call the concierge/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/Set AZURE_VOICELIVE_ENDPOINT/),
+    ).toBeInTheDocument();
   });
 });

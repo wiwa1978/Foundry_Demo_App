@@ -3,15 +3,26 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class HostedAgentVariantResponse(BaseModel):
+    key: str
+    label: str
+    agent_name: str
+
+
 class ConfigResponse(BaseModel):
     entra_auth_enabled: bool
     is_configured: bool
     endpoint: str | None
     auth_mode: str
     models: list[str]
-    is_agent_research_configured: bool
+    is_azure_architect_agent_configured: bool
     is_hosted_agent_configured: bool
     hosted_agent_name: str | None
+    hosted_agent_variants: list[HostedAgentVariantResponse]
+    is_retail_agent_configured: bool
+    retail_agent_name: str | None
+    is_investment_planner_configured: bool
+    investment_planner_agent_name: str | None
     is_realtime_configured: bool
     realtime_endpoint: str | None
     realtime_model: str | None

@@ -7,6 +7,7 @@ import type {
   HostedAgentRunConfig,
   HostedAgentStep,
   HostedAgentStreamEvent,
+  HostedAgentVariant,
 } from "./types";
 
 type State = {
@@ -29,14 +30,26 @@ const initialState: State = {
 
 export function useHostedAgentStream({
   fetchClient,
+  variants = [],
 }: {
   fetchClient: FetchClient;
+  variants?: HostedAgentVariant[];
 }) {
   const [state, setState] = useState(initialState);
+  const [variantKey, setVariantKey] = useState<string>(
+    variants[0]?.key ?? "",
+  );
   const controllerRef = useRef<AbortController | null>(null);
   const runSequenceRef = useRef(0);
 
   useEffect(() => () => controllerRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (!variants.length) return;
+    if (!variants.some((variant) => variant.key === variantKey)) {
+      setVariantKey(variants[0].key);
+    }
+  }, [variants, variantKey]);
 
   function reset() {
     controllerRef.current?.abort();
@@ -84,6 +97,7 @@ export function useHostedAgentStream({
       await streamHostedAgent({
         fetchClient,
         message,
+        agentKey: variantKey || undefined,
         signal: controller.signal,
         onEvent: (event) => {
           if (runSequence !== runSequenceRef.current) return;
@@ -135,6 +149,8 @@ export function useHostedAgentStream({
     ...state,
     setMessage: (message: string) =>
       setState((current) => ({ ...current, message })),
+    variantKey,
+    setVariantKey,
     submit,
     cancel: () => controllerRef.current?.abort(),
     reset,

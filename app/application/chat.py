@@ -10,6 +10,7 @@ from app.application.chat_preparation import (
     prepare_chat,
 )
 from app.application.chat_streaming import stream_chat
+from app.application.guardrail_batch import evaluate_statement
 from app.application.contracts.chat import (
     ChatCommand,
     ChatCompletionResult,
@@ -96,6 +97,21 @@ class ChatService:
             variant=variant,
             policy_name=policy_name,
         )
+
+    def evaluate_guardrail_statement(
+        self,
+        *,
+        model_settings: ModelSettings,
+        statement: str,
+        policy_name: str | None,
+    ) -> dict[str, Any]:
+        with self._semaphore:
+            return evaluate_statement(
+                self.gateway,
+                model_settings=model_settings,
+                statement=statement,
+                policy_name=policy_name,
+            )
 
     async def complete(
         self,

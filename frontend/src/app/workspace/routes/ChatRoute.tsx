@@ -1,6 +1,13 @@
+import { reasoningComparisonPrompts } from "@media/reasoning_comparison/prompts";
 import { ComparisonWorkspace } from "@media/text_chat_comparison/frontend";
 import { YouTubeSummaryWorkspace } from "@media/youtube_summary/frontend";
-import { Infinity as InfinityIcon, Mic, MicOff, Plus } from "lucide-react";
+import {
+  Infinity as InfinityIcon,
+  Mic,
+  MicOff,
+  Plus,
+  Sparkles,
+} from "lucide-react";
 
 import { reasoningEffortOptions } from "@/app/workspace/constants";
 import { formatModelName } from "@/app/workspace/formatters";
@@ -9,6 +16,7 @@ import {
   ComposerSelect,
   UseCaseComposer,
 } from "@/app/workspace/WorkspacePrimitives";
+import { PromptExamples } from "@/components/PromptExamples";
 import { Button } from "@/components/ui/button";
 import { GuardrailComparisonWorkspace } from "@/features/guardrails/GuardrailWorkspaces";
 import { ChatMessageHistory } from "@/features/textChat/ChatMessages";
@@ -48,11 +56,23 @@ export function ChatRoute({
 }: ChatRouteProps) {
   if (route.workspace === "comparison") {
     return (
-      <ComparisonWorkspace
-        {...comparison}
-        speechRecognitionSupported={false}
-        isListening={false}
-      />
+      <div className="flex min-h-0 flex-1 flex-col">
+        {route.useCase === "reasoning_comparison" ? (
+          <PromptExamples
+            title="Reasoning prompt gallery"
+            description="Challenging math, logic, and debugging prompts that reward real step-by-step thinking. Choose one to load it into every pane."
+            icon={<Sparkles className="h-4 w-4" />}
+            examples={reasoningComparisonPrompts}
+            value={comparison.prompt}
+            onSelect={comparison.onPromptChange}
+          />
+        ) : null}
+        <ComparisonWorkspace
+          {...comparison}
+          speechRecognitionSupported={false}
+          isListening={false}
+        />
+      </div>
     );
   }
   if (route.workspace === "youtubeSummary") {
@@ -75,6 +95,7 @@ export function ChatRoute({
             : chat.onSubmit
         }
         onOpenSettings={() => chat.onOpenSettings(chat.activeModel)}
+        batch={guardrails.batch}
       />
     );
   }

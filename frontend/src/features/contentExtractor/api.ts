@@ -1,18 +1,29 @@
 import { readJsonResponse, readPublicApiError } from "@/api/errors";
 import type { FetchClient } from "@/api/types";
 
-import type { ContentExtractorMode, ContentExtractorResult } from "./types";
+import type {
+  ContentExtractorDocumentAnalyzer,
+  ContentExtractorMode,
+  ContentExtractorResult,
+} from "./types";
 
 export const contentExtractorEndpoint = "/api/content-extractor/extract";
 
 export async function extractContent(
   fetchClient: FetchClient,
-  request: { mode: ContentExtractorMode; file: File },
+  request: {
+    mode: ContentExtractorMode;
+    file: File;
+    analyzer?: ContentExtractorDocumentAnalyzer;
+  },
   signal?: AbortSignal,
 ): Promise<ContentExtractorResult> {
   const formData = new FormData();
   formData.set("mode", request.mode);
   formData.set("file", request.file);
+  if (request.mode === "document" && request.analyzer) {
+    formData.set("analyzer", request.analyzer);
+  }
   const response = await fetchClient(
     contentExtractorEndpoint,
     {

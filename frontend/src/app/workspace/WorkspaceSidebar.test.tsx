@@ -101,6 +101,7 @@ function sidebarProps(
     contentExtractor: {
       configured: true,
       mode: "image",
+      analyzer: "layout",
       file: null,
       loading: false,
       error: "",
@@ -109,6 +110,7 @@ function sidebarProps(
       sampleError: "",
       inputRef: createRef<HTMLInputElement>(),
       onModeChange: vi.fn(),
+      onAnalyzerChange: vi.fn(),
       onFileChange: vi.fn(),
       onSelectSample: vi.fn(),
     },

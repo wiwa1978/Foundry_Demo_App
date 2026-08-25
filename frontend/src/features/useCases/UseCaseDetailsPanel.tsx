@@ -67,7 +67,9 @@ export function UseCaseDetailsPanel({
         <div className="overflow-auto p-6">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-[#606066] dark:bg-[#45454a]">
-              <h3 className="text-sm font-semibold">How this use case works</h3>
+              <h3 className="text-sm font-semibold">
+                How this use case works
+              </h3>
               <ol className="mt-3 grid gap-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
                 {useCase.implementation.map((step, index) => (
                   <li key={step} className="flex gap-3">

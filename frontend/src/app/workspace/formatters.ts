@@ -63,6 +63,12 @@ export function findGuardrailPolicy(
   );
 }
 
+export function isPiiGuardrailFilter(name: string) {
+  return (
+    name === "PII" || name.startsWith("PII_") || name.endsWith(" Protection")
+  );
+}
+
 export function formatGuardrailFilterName(name: string) {
   const names: Record<string, string> = {
     Selfharm: "Self-harm",
@@ -73,7 +79,16 @@ export function formatGuardrailFilterName(name: string) {
     PII: "PII (Preview)",
     "Task Adherence": "Task adherence (Preview)",
   };
-  return names[name] ?? name;
+  if (names[name]) {
+    return names[name];
+  }
+  if (name.startsWith("PII_")) {
+    return name
+      .slice(4)
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+  }
+  return name;
 }
 
 export function guardrailSection(name: string) {
@@ -82,7 +97,7 @@ export function guardrailSection(name: string) {
   if (["Hate", "Sexual", "Selfharm", "Violence"].includes(name))
     return "Content harms";
   if (name.startsWith("Protected Material")) return "Protected materials";
-  if (name === "PII") return "Sensitive data leakage";
+  if (isPiiGuardrailFilter(name)) return "Sensitive data leakage";
   if (name === "Task Adherence") return "Task drift";
   return "Other controls";
 }
@@ -140,6 +155,79 @@ export function formatGuardrailSources(
     : hasCompletion
       ? "Output"
       : sources.join(", ");
+}
+
+export function formatTriggeredGuardrails(
+  results?: Record<string, unknown> | null,
+) {
+  if (!results) {
+    return [];
+  }
+
+  const names = new Set<string>();
+
+  function visit(value: unknown, context?: string) {
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, context));
+      return;
+    }
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    const record = value as Record<string, unknown>;
+    const triggered =
+      record.filtered === true ||
+      record.blocked === true ||
+      record.detected === true;
+    if (triggered && context) {
+      names.add(formatTriggeredGuardrailName(context));
+    }
+
+    Object.entries(record).forEach(([key, child]) => {
+      if (
+        key === "content_filter_results" &&
+        child &&
+        typeof child === "object"
+      ) {
+        Object.entries(child as Record<string, unknown>).forEach(
+          ([filterName, filterResult]) => visit(filterResult, filterName),
+        );
+      } else if (
+        key !== "filtered" &&
+        key !== "blocked" &&
+        key !== "detected"
+      ) {
+        visit(child, context);
+      }
+    });
+  }
+
+  visit(results);
+  return Array.from(names).sort((left, right) => left.localeCompare(right));
+}
+
+function formatTriggeredGuardrailName(name: string) {
+  if (name.startsWith("PII_")) {
+    return formatGuardrailFilterName(name);
+  }
+  const labels: Record<string, string> = {
+    indirect_attack: "Indirect Attack",
+    hate: "Hate",
+    sexual: "Sexual",
+    self_harm: "Self-harm",
+    selfharm: "Self-harm",
+    violence: "Violence",
+    protected_material_text: "Protected Material Text",
+    protected_material_code: "Protected Material Code",
+    pii: "PII",
+  };
+  return (
+    labels[name.toLowerCase()] ??
+    name
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (character) => character.toUpperCase())
+  );
 }
 
 export function formatUsage(usage?: Usage) {

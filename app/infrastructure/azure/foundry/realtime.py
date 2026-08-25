@@ -1,7 +1,7 @@
 import json
 from typing import Any, TypedDict, cast
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlencode, urlparse
 
 from app.infrastructure.azure.credentials import get_azure_credential
 from app.infrastructure.azure.foundry.http import build_checked_request, open_checked_url
@@ -417,7 +417,7 @@ def create_realtime_translation_connection_info(
     }
 
 
-def create_voice_live_connection_info() -> VoiceLiveConnectionInfo:
+def _voice_live_connection_info(path: str) -> VoiceLiveConnectionInfo:
     settings = load_settings()
     if not settings.is_voice_live_configured:
         raise RuntimeError(
@@ -429,10 +429,13 @@ def create_voice_live_connection_info() -> VoiceLiveConnectionInfo:
     parsed = urlparse(endpoint)
     if parsed.scheme.lower() != "https" or not parsed.netloc:
         raise RuntimeError("AZURE_VOICELIVE_ENDPOINT must be an absolute HTTPS endpoint.")
-    websocket_url = (
-        f"wss://{parsed.netloc}/voice-live/realtime/calls"
-        f"?api-version=2026-04-10&model={settings.voice_live_model}"
+    query = urlencode(
+        {
+            "api-version": settings.voice_live_api_version,
+            "model": settings.voice_live_model,
+        }
     )
+    websocket_url = f"wss://{parsed.netloc}{path}?{query}"
     token = get_azure_credential().get_token("https://ai.azure.com/.default").token
     return {
         "url": websocket_url,
@@ -440,3 +443,11 @@ def create_voice_live_connection_info() -> VoiceLiveConnectionInfo:
         "model": settings.voice_live_model,
         "voice": settings.voice_live_voice,
     }
+
+
+def create_voice_live_connection_info() -> VoiceLiveConnectionInfo:
+    return _voice_live_connection_info("/voice-live/realtime/calls")
+
+
+def create_voice_live_avatar_connection_info() -> VoiceLiveConnectionInfo:
+    return _voice_live_connection_info("/voice-live/realtime")

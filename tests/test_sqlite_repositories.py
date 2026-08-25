@@ -2,6 +2,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from dataclasses import replace
 from unittest.mock import patch
 
 from app.application.conversation_messages import append_message
@@ -99,6 +100,26 @@ class SqliteRepositoryTests(unittest.TestCase):
             ),
             ["gpt-test"],
         )
+
+    def test_models_inherit_guardrail_defaults_until_overridden(self) -> None:
+        save_model_settings(
+            self.models,
+            ModelSettings(
+                model="configured-model",
+                guardrail_policy_names=("Loose", "Strict"),
+            ),
+        )
+
+        inherited = get_model_settings(self.models, "new-model")
+        self.assertEqual(inherited.guardrail_policy_names, ("Loose", "Strict"))
+
+        save_model_settings(
+            self.models,
+            replace(inherited, guardrail_policy_names=("Default", "Custom")),
+        )
+
+        overridden = get_model_settings(self.models, "new-model")
+        self.assertEqual(overridden.guardrail_policy_names, ("Default", "Custom"))
 
     def test_live_translation_binding_round_trip(self) -> None:
         with patch.dict(

@@ -1,26 +1,72 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { voiceLiveUrl } from "@/features/voice/api";
-import {
-  closeRemoteAudio,
-  stopMediaTracks,
-} from "@/features/voice/mediaSessionUtils";
+import { voiceLiveAvatarUrl } from "@/features/voice/api";
 import type {
   RealtimeStatus,
   RealtimeTranscriptEntry,
+  VoiceLiveAvatarStatus,
   VoiceLiveServerEvent,
 } from "@/features/voice/types";
 
 const voiceLiveInstructions =
   "You are Ava, a multilingual travel concierge. Help travelers plan practical trips through natural spoken conversation. Ask one focused question at a time about destination, dates, budget, interests, and accessibility needs. Reply in the language used by the traveler. Never claim that a booking is confirmed; clearly label suggestions and summarize the proposed itinerary before ending.";
 
+const iceGatheringTimeoutMs = 3000;
+const defaultStandardVoice = "en-US-Ava:DragonHDLatestNeural";
+const defaultRealtimeNativeVoice = "ava";
+const voiceLiveInputSampleRate = 16000;
+
+function buildVoiceLiveVoiceConfig(model: string, voice: string) {
+  const normalizedModel = model.trim().toLowerCase();
+  const normalizedVoice = voice.trim();
+  if (normalizedModel === "azure-realtime") {
+    return {
+      type: "azure-realtime-native",
+      name: normalizedVoice || defaultRealtimeNativeVoice,
+    };
+  }
+  return {
+    type: "azure-standard",
+    name: normalizedVoice || defaultStandardVoice,
+    temperature: 0.8,
+  };
+}
+
+function buildVoiceLiveInputAudioTranscription(model: string) {
+  const normalizedModel = model.trim().toLowerCase();
+  if (normalizedModel === "azure-realtime") return undefined;
+  if (
+    normalizedModel === "gpt-realtime" ||
+    normalizedModel === "gpt-realtime-mini"
+  ) {
+    return { model: "gpt-4o-mini-transcribe" };
+  }
+  return { model: "azure-speech" };
+}
+
+function encodeBase64(data: ArrayBuffer | ArrayBufferView) {
+  const bytes =
+    data instanceof ArrayBuffer
+      ? new Uint8Array(data)
+      : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function decodeSessionDescription(value: string): RTCSessionDescriptionInit {
+  return JSON.parse(atob(value)) as RTCSessionDescriptionInit;
+}
+
 type VoiceLiveResources = {
   abortController: AbortController;
-  audio: HTMLAudioElement | null;
-  dataChannel: RTCDataChannel | null;
+  audioContext: AudioContext | null;
+  avatarPeerConnection: RTCPeerConnection | null;
   mediaStream: MediaStream | null;
-  peerConnection: RTCPeerConnection | null;
+  silentOutput: GainNode | null;
   socket: WebSocket | null;
+  source: MediaStreamAudioSourceNode | null;
+  worklet: AudioWorkletNode | null;
   closed: boolean;
 };
 
@@ -33,7 +79,12 @@ export function useVoiceLive({
 }) {
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [error, setError] = useState("");
+  const [avatarStatus, setAvatarStatus] =
+    useState<VoiceLiveAvatarStatus>("idle");
+  const [avatarError, setAvatarError] = useState("");
   const [transcript, setTranscript] = useState<RealtimeTranscriptEntry[]>([]);
+  const avatarAudioRef = useRef<HTMLAudioElement | null>(null);
+  const avatarVideoRef = useRef<HTMLVideoElement | null>(null);
   const mountedRef = useRef(true);
   const statusRef = useRef<RealtimeStatus>("idle");
   const generationRef = useRef(0);
@@ -49,16 +100,29 @@ export function useVoiceLive({
     return mountedRef.current && generationRef.current === generation;
   }
 
-  const closeResources = useCallback((resources: VoiceLiveResources | null) => {
-    if (!resources || resources.closed) return;
-    resources.closed = true;
-    resources.abortController.abort();
-    resources.dataChannel?.close();
-    resources.socket?.close();
-    stopMediaTracks(resources.peerConnection, resources.mediaStream);
-    resources.peerConnection?.close();
-    closeRemoteAudio(resources.audio);
+  const clearAvatarElements = useCallback(() => {
+    if (avatarVideoRef.current) avatarVideoRef.current.srcObject = null;
+    if (avatarAudioRef.current) avatarAudioRef.current.srcObject = null;
   }, []);
+
+  const closeResources = useCallback(
+    (resources: VoiceLiveResources | null) => {
+      if (!resources || resources.closed) return;
+      resources.closed = true;
+      resources.abortController.abort();
+      resources.socket?.close();
+      resources.worklet?.disconnect();
+      resources.source?.disconnect();
+      resources.silentOutput?.disconnect();
+      resources.mediaStream?.getTracks().forEach((track) => track.stop());
+      resources.avatarPeerConnection?.close();
+      if (resources.audioContext?.state !== "closed") {
+        void resources.audioContext?.close();
+      }
+      clearAvatarElements();
+    },
+    [clearAvatarElements],
+  );
 
   function appendTranscript(
     source: RealtimeTranscriptEntry["source"],
@@ -74,7 +138,7 @@ export function useVoiceLive({
       source,
       text: cleaned,
     };
-    setTranscript((current) => [...current, entry].slice(-8));
+    setTranscript((current) => [...current, entry].slice(-12));
   }
 
   function handleEvent(generation: number, event: VoiceLiveServerEvent) {
@@ -87,15 +151,33 @@ export function useVoiceLive({
     } else if (
       (event.type === "response.audio_transcript.done" ||
         event.type === "response.text.done") &&
-      event.transcript
+      (event.transcript || event.text)
     ) {
-      appendTranscript("assistant", event.transcript, generation);
+      appendTranscript(
+        "assistant",
+        event.transcript ?? event.text ?? "",
+        generation,
+      );
+    } else if (
+      (event.type === "response.audio_transcript.delta" ||
+        event.type === "response.text.delta") &&
+      (event.delta || event.text)
+    ) {
+      appendTranscript(
+        "assistant",
+        event.delta ?? event.text ?? "",
+        generation,
+      );
     } else if (event.type === "input_audio_buffer.speech_started") {
       appendTranscript(
         "system",
         "Listening - interrupt at any time",
         generation,
       );
+    } else if (event.type === "session.avatar.switch_to_speaking") {
+      setAvatarStatus("speaking");
+    } else if (event.type === "session.avatar.switch_to_idle") {
+      setAvatarStatus("ready");
     } else if (event.type === "error" || event.type === "rtc.call.error") {
       setError(event.error?.message ?? "Voice Live reported an error.");
     }
@@ -106,6 +188,7 @@ export function useVoiceLive({
     const resources = resourcesRef.current;
     resourcesRef.current = null;
     closeResources(resources);
+    setAvatarStatus("idle");
   }, [closeResources]);
 
   function failSession(
@@ -118,6 +201,7 @@ export function useVoiceLive({
     resourcesRef.current = null;
     closeResources(resources);
     updateStatus("idle");
+    setAvatarStatus("unavailable");
     setError(message);
   }
 
@@ -136,14 +220,22 @@ export function useVoiceLive({
     if (peerConnection.iceGatheringState === "complete")
       return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
+      const timeoutId = window.setTimeout(
+        () => resolveReady(),
+        iceGatheringTimeoutMs,
+      );
       const cleanup = () => {
         peerConnection.removeEventListener("icegatheringstatechange", onChange);
         resources.abortController.signal.removeEventListener("abort", onAbort);
+        window.clearTimeout(timeoutId);
+      };
+      const resolveReady = () => {
+        cleanup();
+        resolve();
       };
       const onChange = () => {
         if (peerConnection.iceGatheringState !== "complete") return;
-        cleanup();
-        resolve();
+        resolveReady();
       };
       const onAbort = () => {
         cleanup();
@@ -173,8 +265,8 @@ export function useVoiceLive({
         cleanup();
         reject(new Error(message));
       };
-      const onError = () => rejectWith("Voice Live control channel failed.");
-      const onClose = () => rejectWith("Voice Live control channel closed.");
+      const onError = () => rejectWith("Voice Live avatar channel failed.");
+      const onClose = () => rejectWith("Voice Live avatar channel closed.");
       const onAbort = () => {
         cleanup();
         reject(new DOMException("The operation was aborted.", "AbortError"));
@@ -188,6 +280,60 @@ export function useVoiceLive({
     });
   }
 
+  async function connectAvatar(
+    generation: number,
+    resources: VoiceLiveResources,
+    socket: WebSocket,
+    iceServers?: RTCIceServer[],
+  ) {
+    if (!isCurrent(generation) || resources.avatarPeerConnection) return;
+    setAvatarStatus("connecting");
+    setAvatarError("");
+
+    const peerConnection = new RTCPeerConnection({
+      iceServers: iceServers?.length ? iceServers : undefined,
+    });
+    resources.avatarPeerConnection = peerConnection;
+
+    peerConnection.addTransceiver("video", { direction: "recvonly" });
+    peerConnection.addTransceiver("audio", { direction: "recvonly" });
+
+    peerConnection.ontrack = (event) => {
+      if (!isCurrent(generation)) return;
+      const [stream] = event.streams;
+      if (!stream) return;
+      if (event.track.kind === "video" && avatarVideoRef.current) {
+        avatarVideoRef.current.srcObject = stream;
+        void avatarVideoRef.current.play();
+        setAvatarStatus((current) =>
+          current === "speaking" ? "speaking" : "ready",
+        );
+      }
+      if (event.track.kind === "audio" && avatarAudioRef.current) {
+        avatarAudioRef.current.srcObject = stream;
+        void avatarAudioRef.current.play();
+      }
+    };
+    peerConnection.onconnectionstatechange = () => {
+      if (!isCurrent(generation)) return;
+      if (peerConnection.connectionState === "failed") {
+        setAvatarStatus("unavailable");
+        setAvatarError("Avatar WebRTC connection failed.");
+      }
+    };
+
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    await waitForIceGathering(generation, resources, peerConnection);
+    if (!isCurrent(generation) || !peerConnection.localDescription) return;
+    socket.send(
+      JSON.stringify({
+        type: "session.avatar.connect",
+        client_sdp: btoa(JSON.stringify(peerConnection.localDescription)),
+      }),
+    );
+  }
+
   async function start() {
     if (statusRef.current !== "idle") {
       stop();
@@ -195,11 +341,12 @@ export function useVoiceLive({
     }
     if (
       !navigator.mediaDevices?.getUserMedia ||
+      !window.AudioWorkletNode ||
       !window.RTCPeerConnection ||
       !window.WebSocket
     ) {
       setError(
-        "This browser does not support the WebRTC APIs required for Voice Live.",
+        "This browser does not support the audio and WebRTC APIs required for Voice Live avatars.",
       );
       return;
     }
@@ -208,65 +355,92 @@ export function useVoiceLive({
     generationRef.current = generation;
     const resources: VoiceLiveResources = {
       abortController: new AbortController(),
-      audio: null,
-      dataChannel: null,
+      audioContext: null,
+      avatarPeerConnection: null,
       mediaStream: null,
-      peerConnection: null,
+      silentOutput: null,
       socket: null,
+      source: null,
+      worklet: null,
       closed: false,
     };
     resourcesRef.current = resources;
     updateStatus("connecting");
+    setAvatarStatus("connecting");
+    setAvatarError("");
     setError("");
     setTranscript([]);
+    clearAvatarElements();
 
     try {
-      const peerConnection = new RTCPeerConnection();
-      resources.peerConnection = peerConnection;
-      const audio = new Audio();
-      audio.autoplay = true;
-      resources.audio = audio;
-      peerConnection.ontrack = (event) => {
-        if (!isCurrent(generation)) return;
-        const [remoteStream] = event.streams;
-        if (remoteStream && resources.audio) {
-          resources.audio.srcObject = remoteStream;
-          void resources.audio.play();
-        }
-      };
-      peerConnection.onconnectionstatechange = () => {
-        if (!isCurrent(generation)) return;
-        if (peerConnection.connectionState === "connected")
-          updateStatus("live");
-        if (peerConnection.connectionState === "failed") {
-          setError("Voice Live WebRTC connection failed.");
-          stop();
-        }
-      };
+      const context = new AudioContext();
+      resources.audioContext = context;
+      await context.audioWorklet.addModule(
+        new URL("../../live-interpreter-worklet.js", import.meta.url),
+      );
+      await context.resume();
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
       });
       if (!isCurrent(generation)) {
         mediaStream.getTracks().forEach((track) => track.stop());
         return;
       }
       resources.mediaStream = mediaStream;
-      resources.mediaStream
-        .getTracks()
-        .forEach((track) =>
-          peerConnection.addTrack(track, resources.mediaStream as MediaStream),
-        );
-      const dataChannel = peerConnection.createDataChannel("voice-live-events");
-      resources.dataChannel = dataChannel;
-      dataChannel.addEventListener("message", (message) => {
+      resources.source = context.createMediaStreamSource(resources.mediaStream);
+      resources.worklet = new AudioWorkletNode(
+        context,
+        "live-interpreter-processor",
+      );
+
+      const socket = new WebSocket(voiceLiveAvatarUrl(), "realtime");
+      resources.socket = socket;
+      let avatarConnectStarted = false;
+
+      socket.addEventListener("message", (message) => {
         if (!isCurrent(generation)) return;
         try {
           const event = JSON.parse(
             String(message.data),
           ) as VoiceLiveServerEvent;
           handleEvent(generation, event);
-          if (event.type === "error" || event.type === "rtc.call.error") {
+          if (event.type === "session.updated" && !avatarConnectStarted) {
+            avatarConnectStarted = true;
+            const avatar = event.session?.avatar;
+            const iceServers = avatar?.ice_servers ?? avatar?.iceServers;
+            void connectAvatar(generation, resources, socket, iceServers).catch(
+              (caught: unknown) => {
+                if (!isCurrent(generation)) return;
+                if (
+                  caught instanceof DOMException &&
+                  caught.name === "AbortError"
+                ) {
+                  return;
+                }
+                setAvatarStatus("unavailable");
+                setAvatarError(
+                  caught instanceof Error
+                    ? caught.message
+                    : "Avatar WebRTC connection failed.",
+                );
+              },
+            );
+          }
+          if (
+            event.type === "session.avatar.connecting" &&
+            event.server_sdp &&
+            resources.avatarPeerConnection
+          ) {
+            void resources.avatarPeerConnection
+              .setRemoteDescription(decodeSessionDescription(event.server_sdp))
+              .then(() => setAvatarStatus("ready"));
+          }
+          if (event.type === "error") {
             failSession(
               generation,
               resources,
@@ -274,87 +448,43 @@ export function useVoiceLive({
             );
           }
         } catch {
-          // Voice Live can send non-JSON data-channel events.
+          failSession(
+            generation,
+            resources,
+            "Received an unreadable Voice Live event.",
+          );
         }
       });
-      dataChannel.addEventListener("error", () => {
-        failSession(generation, resources, "Voice Live data channel failed.");
+      socket.addEventListener("error", () => {
+        failSession(generation, resources, "Voice Live avatar channel failed.");
       });
-      dataChannel.addEventListener("close", () => {
-        failSession(generation, resources, "Voice Live data channel closed.");
-      });
-
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      await waitForIceGathering(generation, resources, peerConnection);
-      if (!isCurrent(generation)) {
-        closeResources(resources);
-        return;
-      }
-      if (!peerConnection.localDescription?.sdp) {
-        throw new Error("Browser did not create a Voice Live SDP offer.");
-      }
-
-      const socket = new WebSocket(voiceLiveUrl(), "realtime");
-      resources.socket = socket;
-      await waitForSocketOpen(resources, socket);
-      if (!isCurrent(generation)) {
-        closeResources(resources);
-        return;
-      }
-
-      const answer = new Promise<string>((resolve, reject) => {
-        const onAbort = () =>
-          reject(new DOMException("The operation was aborted.", "AbortError"));
-        const failControlChannel = (message: string) => {
-          resources.abortController.signal.removeEventListener(
-            "abort",
-            onAbort,
+      socket.addEventListener("close", () => {
+        if (!resources.closed) {
+          failSession(
+            generation,
+            resources,
+            "Voice Live avatar channel closed.",
           );
-          failSession(generation, resources, message);
-          reject(new Error(message));
-        };
-        resources.abortController.signal.addEventListener("abort", onAbort, {
-          once: true,
-        });
-        socket.addEventListener("message", (message) => {
-          if (!isCurrent(generation)) return;
-          try {
-            const event = JSON.parse(
-              String(message.data),
-            ) as VoiceLiveServerEvent;
-            handleEvent(generation, event);
-            if (event.type === "rtc.call.sdp.created" && event.sdp_answer) {
-              resources.abortController.signal.removeEventListener(
-                "abort",
-                onAbort,
-              );
-              resolve(event.sdp_answer);
-            }
-            if (event.type === "error" || event.type === "rtc.call.error") {
-              failControlChannel(
-                event.error?.message ?? "Voice Live call failed.",
-              );
-            }
-          } catch {
-            failControlChannel("Received an unreadable Voice Live event.");
-          }
-        });
-        socket.addEventListener("error", () => {
-          failControlChannel("Voice Live control channel failed.");
-        });
-        socket.addEventListener("close", () => {
-          failControlChannel("Voice Live control channel closed.");
-        });
+        }
       });
+
+      await waitForSocketOpen(resources, socket);
+      if (!isCurrent(generation) || !resources.worklet || !resources.source) {
+        closeResources(resources);
+        return;
+      }
+
+      const inputAudioTranscription =
+        buildVoiceLiveInputAudioTranscription(model);
       socket.send(
         JSON.stringify({
-          type: "rtc.call.sdp.create",
-          sdp_offer: peerConnection.localDescription.sdp,
+          type: "session.update",
           session: {
             modalities: ["text", "audio"],
             instructions: voiceLiveInstructions,
-            voice: { type: "azure-standard", name: voice, temperature: 0.8 },
+            input_audio_format: "pcm16",
+            input_audio_sampling_rate: voiceLiveInputSampleRate,
+            voice: buildVoiceLiveVoiceConfig(model, voice),
             turn_detection: {
               type: "azure_semantic_vad_multilingual",
               remove_filler_words: true,
@@ -365,20 +495,50 @@ export function useVoiceLive({
               type: "azure_deep_noise_suppression",
             },
             input_audio_echo_cancellation: { type: "server_echo_cancellation" },
+            avatar: {
+              character: "lisa",
+              style: "casual-sitting",
+              customized: false,
+              output_protocol: "webrtc",
+              video: {
+                bitrate: 1000000,
+                codec: "h264",
+                resolution: { width: 1920, height: 1080 },
+                crop: {
+                  top_left: [560, 0],
+                  bottom_right: [1360, 1080],
+                },
+              },
+            },
+            ...(inputAudioTranscription && {
+              input_audio_transcription: inputAudioTranscription,
+            }),
           },
         }),
       );
-      await peerConnection.setRemoteDescription({
-        type: "answer",
-        sdp: await answer,
-      });
-      if (!isCurrent(generation)) {
-        closeResources(resources);
-        return;
-      }
+
+      resources.worklet.port.onmessage = (
+        message: MessageEvent<ArrayBuffer>,
+      ) => {
+        if (isCurrent(generation) && socket.readyState === WebSocket.OPEN) {
+          socket.send(
+            JSON.stringify({
+              type: "input_audio_buffer.append",
+              audio: encodeBase64(message.data),
+            }),
+          );
+        }
+      };
+      resources.source.connect(resources.worklet);
+      resources.silentOutput = context.createGain();
+      resources.silentOutput.gain.value = 0;
+      resources.worklet
+        .connect(resources.silentOutput)
+        .connect(context.destination);
+      updateStatus("live");
       appendTranscript(
         "system",
-        `Connected to Voice Live (${model})`,
+        `Connected to Voice Live avatar (${model})`,
         generation,
       );
     } catch (caught) {
@@ -390,10 +550,11 @@ export function useVoiceLive({
       closeResources(resources);
       if (!current) return;
       updateStatus("idle");
+      setAvatarStatus("unavailable");
       setError(
         caught instanceof Error
           ? caught.message
-          : "Failed to start Voice Live.",
+          : "Failed to start Voice Live avatar.",
       );
     }
   }
@@ -406,5 +567,17 @@ export function useVoiceLive({
     };
   }, [closeCurrentResources]);
 
-  return { error, start, status, stop, transcript };
+  return {
+    avatar: {
+      audioRef: avatarAudioRef,
+      error: avatarError,
+      status: avatarStatus,
+      videoRef: avatarVideoRef,
+    },
+    error,
+    start,
+    status,
+    stop,
+    transcript,
+  };
 }

@@ -65,12 +65,14 @@ export class MockDataChannel extends EventTarget {
 
 export class MockPeerConnection extends EventTarget {
   static instances: MockPeerConnection[] = [];
+  static initialIceGatheringState: RTCIceGatheringState = "complete";
 
   readonly dataChannel = new MockDataChannel();
   readonly close = vi.fn();
   readonly setRemoteDescription = vi.fn(() => Promise.resolve());
   connectionState: RTCPeerConnectionState = "new";
-  iceGatheringState: RTCIceGatheringState = "complete";
+  iceGatheringState: RTCIceGatheringState =
+    MockPeerConnection.initialIceGatheringState;
   localDescription: RTCSessionDescriptionInit | null = null;
   onconnectionstatechange: (() => void) | null = null;
   ontrack: ((event: { streams: MediaStream[] }) => void) | null = null;
@@ -80,6 +82,8 @@ export class MockPeerConnection extends EventTarget {
     super();
     MockPeerConnection.instances.push(this);
   }
+
+  addTransceiver = vi.fn();
 
   addTrack(track: MediaStreamTrack) {
     this.senders.push({ track });
@@ -193,6 +197,28 @@ export class MockWebSocket extends EventTarget {
         ),
       );
     }
+    if (message.type === "session.update") {
+      queueMicrotask(() =>
+        this.emitMessage(
+          JSON.stringify({
+            type: "session.updated",
+            session: { avatar: { ice_servers: [{ urls: ["stun:mock"] }] } },
+          }),
+        ),
+      );
+    }
+    if (message.type === "session.avatar.connect") {
+      queueMicrotask(() =>
+        this.emitMessage(
+          JSON.stringify({
+            type: "session.avatar.connecting",
+            server_sdp: btoa(
+              JSON.stringify({ type: "answer", sdp: "mock-avatar-answer" }),
+            ),
+          }),
+        ),
+      );
+    }
     if (message.type === "start") {
       queueMicrotask(() => this.emitMessage(JSON.stringify({ type: "ready" })));
     }
@@ -271,6 +297,7 @@ export class MockAudioContext {
 
 export function installMediaSessionMocks() {
   MockPeerConnection.instances = [];
+  MockPeerConnection.initialIceGatheringState = "complete";
   MockAudioElement.instances = [];
   MockWebSocket.instances = [];
   MockWebSocket.mode = "success";

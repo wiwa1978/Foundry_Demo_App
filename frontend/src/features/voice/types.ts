@@ -67,7 +67,17 @@ export type RealtimeTranscriptEntry = {
 
 export type VoiceLiveServerEvent = RealtimeServerEvent & {
   sdp_answer?: string;
+  server_sdp?: string;
+  session?: {
+    avatar?: {
+      ice_servers?: RTCIceServer[];
+      iceServers?: RTCIceServer[];
+    };
+  };
 };
+
+export type VoiceLiveAvatarStatus =
+  "idle" | "connecting" | "ready" | "speaking" | "unavailable";
 
 export type LiveInterpreterServerEvent = {
   type:

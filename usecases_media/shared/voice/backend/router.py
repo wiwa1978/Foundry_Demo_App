@@ -1,3 +1,4 @@
+import base64
 import logging
 from typing import Annotated
 
@@ -19,11 +20,18 @@ from app.infrastructure.azure.foundry.realtime import (
     create_realtime_translation_client_secret,
 )
 from app.infrastructure.azure.foundry.settings import load_settings
-from app.infrastructure.azure.foundry.speech import transcribe_audio, transcribe_speech_audio
+from app.infrastructure.azure.foundry.speech import (
+    synthesize_azure_speech,
+    synthesize_speech,
+    transcribe_audio,
+    transcribe_speech_audio,
+)
 from usecases_media.shared.voice.backend.schemas import (
     RealtimeSessionResponse,
     RealtimeTranscriptionSessionResponse,
     TraditionalVoiceResponse,
+    TextToSpeechRequest,
+    TextToSpeechResponse,
     TranscriptionResponse,
 )
 from usecases_media.shared.voice.backend.service import TraditionalVoiceService
@@ -32,6 +40,52 @@ from usecases_media.shared.voice.backend.websockets import router as websocket_r
 router = APIRouter(tags=["Voice"])
 logger = logging.getLogger(__name__)
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+@router.post(
+    "/api/text-to-speech",
+    response_model=TextToSpeechResponse,
+    response_model_exclude_unset=True,
+)
+async def text_to_speech(request: TextToSpeechRequest) -> dict:
+    try:
+        selected_model = request.model.strip() or "azure-speech"
+        if selected_model.lower().startswith("gpt-audio"):
+            result = await run_model_call(
+                synthesize_speech,
+                text=request.text,
+                model=selected_model,
+                voice=request.voice.strip() or "alloy",
+            )
+            result = {
+                **result,
+                "language": request.language,
+                "emotion": request.emotion,
+                "speech_request": {
+                    "service": "Foundry audio",
+                    "model": selected_model,
+                    "voice": request.voice.strip() or "alloy",
+                    "text_characters": len(request.text),
+                },
+            }
+        else:
+            result = await run_model_call(
+                synthesize_azure_speech,
+                text=request.text,
+                voice=request.voice,
+                language=request.language,
+                emotion=request.emotion,
+                pitch=request.pitch,
+                rate=request.rate,
+                volume=request.volume,
+            )
+        return {
+            **result,
+            "audio_base64": base64.b64encode(result.pop("audio")).decode("ascii"),
+        }
+    except Exception as exc:
+        logger.exception("azure_speech_synthesis_failed")
+        raise ExternalServiceError("Azure Speech synthesis") from exc
 
 
 def get_traditional_voice_service(request: Request) -> TraditionalVoiceService:

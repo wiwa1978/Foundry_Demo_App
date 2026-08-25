@@ -7,10 +7,7 @@ import type {
   GuardrailPolicy,
   ModelSettings,
 } from "@/app/workspace/contracts";
-import {
-  formatConfiguredGuardrail,
-  formatModelName,
-} from "@/app/workspace/formatters";
+import { formatModelName } from "@/app/workspace/formatters";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -36,15 +33,10 @@ type ModelSettingsPageProps = {
 };
 
 function guardrailPolicyOptionLabel(policy: GuardrailPolicy) {
-  if (
-    policy.name.startsWith("FoundryChat-") &&
-    policy.base_policy_name?.startsWith("Microsoft.")
-  ) {
-    return `${policy.base_policy_name} (selectable copy)`;
+  if (!policy.is_selectable) {
+    return `${policy.name} (system-managed)`;
   }
-  return policy.is_selectable
-    ? policy.name
-    : `${policy.name} (system-managed; deployment only)`;
+  return policy.name;
 }
 
 export function ModelSettingsPage({
@@ -224,17 +216,13 @@ export function ModelSettingsPage({
                                 : "Select a guardrail"}
                             </option>
                             <option value={deploymentDefaultGuardrail}>
-                              {formatConfiguredGuardrail(
-                                deploymentDefaultGuardrail,
-                                deploymentPolicy?.policy_name,
-                              )}
+                              Use current deployment assignment (
+                              {deploymentPolicy?.policy_name ??
+                                "Microsoft.DefaultV2"}
+                              )
                             </option>
                             {policies.map((policy) => (
-                              <option
-                                key={policy.name}
-                                value={policy.name}
-                                disabled={!policy.is_selectable}
-                              >
+                              <option key={policy.name} value={policy.name}>
                                 {guardrailPolicyOptionLabel(policy)}
                               </option>
                             ))}
@@ -242,14 +230,14 @@ export function ModelSettingsPage({
                         </div>
                       ))}
                       <p className="text-xs text-slate-500 md:col-span-2 dark:text-slate-400">
-                        Custom policies are retrieved live from Foundry and sent
-                        as request-level overrides. They do not need to be
-                        assigned to this deployment. The same model settings and
-                        prompt are used for both requests. System-managed
-                        Microsoft policies cannot be sent as request-level
-                        overrides. Use Create selectable copies to provision
-                        equivalent user-managed policies for side-by-side
-                        comparison.
+                        Visualize differences can compare any two policies,
+                        including Microsoft.Default and Microsoft.DefaultV2.
+                        Live side-by-side chat still needs user-managed
+                        policies, because Foundry does not allow system
+                        Microsoft policies as request-level overrides. Use the
+                        FoundryChat copies for that. "Use current deployment
+                        assignment" follows whatever is assigned to this
+                        deployment; it is not a second NoGuardrails policy.
                       </p>
                       {!policiesLoading && !selectablePolicies.length ? (
                         <p className="text-xs text-amber-700 dark:text-amber-300">

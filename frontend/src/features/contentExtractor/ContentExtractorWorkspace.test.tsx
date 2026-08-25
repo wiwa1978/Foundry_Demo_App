@@ -56,7 +56,7 @@ describe("ContentExtractorWorkspace", () => {
   it("prompts for an upload before a file is selected", () => {
     renderWorkspace({ nextFile: null, nextResult: null });
 
-    expect(screen.getByText("No image uploaded yet.")).toBeInTheDocument();
+    expect(screen.getByText("No file uploaded yet.")).toBeInTheDocument();
     expect(
       screen.getByText("Extracted text appears here."),
     ).toBeInTheDocument();
@@ -66,5 +66,53 @@ describe("ContentExtractorWorkspace", () => {
     renderWorkspace({ loading: true, nextResult: null });
 
     expect(screen.getByText("Extracting content...")).toBeInTheDocument();
+  });
+
+  it("renders an audio player for audio results", () => {
+    const audioResult: ContentExtractorResult = {
+      mode: "audio",
+      filename: "call.wav",
+      mime_type: "audio/wav",
+      analyzer_id: "prebuilt-callCenter",
+      operation_id: "op-2",
+      status: "Succeeded",
+      extracted_text: "Customer called about a billing issue.",
+      fields: {},
+      warnings: [],
+    };
+    renderWorkspace({
+      nextFile: new File(["audio"], "call.wav", { type: "audio/wav" }),
+      nextResult: audioResult,
+    });
+
+    expect(screen.getByText("call.wav")).toBeInTheDocument();
+    expect(
+      screen.getByText("Customer called about a billing issue."),
+    ).toBeInTheDocument();
+  });
+
+  it("renders a placeholder for document files without an inline preview", () => {
+    const documentResult: ContentExtractorResult = {
+      mode: "document",
+      filename: "invoice.pdf",
+      mime_type: "application/pdf",
+      analyzer_id: "prebuilt-invoice",
+      operation_id: "op-3",
+      status: "Succeeded",
+      extracted_text: "# Invoice\n\nSee structured fields below.",
+      fields: { Total: { valueString: "$100.00" } },
+      warnings: [],
+    };
+    renderWorkspace({
+      nextFile: new File(["pdf"], "invoice.pdf", {
+        type: "application/pdf",
+      }),
+      nextResult: documentResult,
+    });
+
+    expect(screen.getByText("invoice.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Structured fields")).toBeInTheDocument();
+    expect(screen.getByText("Total")).toBeInTheDocument();
+    expect(screen.getByText("$100.00")).toBeInTheDocument();
   });
 });

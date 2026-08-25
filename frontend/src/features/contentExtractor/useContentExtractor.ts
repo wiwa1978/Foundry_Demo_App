@@ -5,7 +5,17 @@ import { getImageSample, listImageSamples } from "@/features/images/api";
 import type { ImageSample } from "@/features/images/api";
 
 import { extractContent } from "./api";
-import type { ContentExtractorMode, ContentExtractorResult } from "./types";
+import {
+  getContentExtractorSample,
+  listContentExtractorSamples,
+} from "./samplesApi";
+import {
+  contentExtractorDefaultDocumentAnalyzer,
+  type ContentExtractorDocumentAnalyzer,
+  type ContentExtractorMode,
+  type ContentExtractorResult,
+  type ContentExtractorSample,
+} from "./types";
 
 export function useContentExtractor({
   fetchClient,
@@ -13,11 +23,17 @@ export function useContentExtractor({
   fetchClient: FetchClient;
 }) {
   const [mode, setMode] = useState<ContentExtractorMode>("image");
+  const [analyzer, setAnalyzer] = useState<ContentExtractorDocumentAnalyzer>(
+    contentExtractorDefaultDocumentAnalyzer,
+  );
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ContentExtractorResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [samples, setSamples] = useState<ImageSample[]>([]);
+  const [contentSamples, setContentSamples] = useState<ContentExtractorSample[]>(
+    [],
+  );
   const [samplesLoading, setSamplesLoading] = useState(true);
   const [sampleError, setSampleError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
@@ -35,10 +51,6 @@ export function useContentExtractor({
     async (nextFile: File | null) => {
       setFile(nextFile);
       setResult(null);
-      if (mode !== "image") {
-        setError("Only image extraction is available right now.");
-        return;
-      }
       if (!nextFile) {
         setError("");
         return;
@@ -51,7 +63,7 @@ export function useContentExtractor({
       try {
         const nextResult = await extractContent(
           fetchClient,
-          { mode, file: nextFile },
+          { mode, file: nextFile, analyzer },
           controller.signal,
         );
         setResult(nextResult);
@@ -71,7 +83,7 @@ export function useContentExtractor({
         }
       }
     },
-    [fetchClient, mode],
+    [analyzer, fetchClient, mode],
   );
 
   const extract = useCallback(async () => {
@@ -79,17 +91,20 @@ export function useContentExtractor({
   }, [file, runExtraction]);
 
   const selectSample = useCallback(
-    async (sample: ImageSample) => {
+    async (sample: ImageSample | ContentExtractorSample) => {
       setSamplesLoading(true);
       setSampleError("");
       try {
-        const sampleFile = await getImageSample(fetchClient, sample);
+        const sampleFile =
+          "image_url" in sample
+            ? await getImageSample(fetchClient, sample)
+            : await getContentExtractorSample(fetchClient, sample);
         await runExtraction(sampleFile);
       } catch (caught) {
         setSampleError(
           caught instanceof Error
             ? caught.message
-            : "Could not load image sample.",
+            : "Could not load Content Extractor sample.",
         );
       } finally {
         setSamplesLoading(false);
@@ -118,18 +133,43 @@ export function useContentExtractor({
     return () => controller.abort();
   }, [fetchClient]);
 
+  useEffect(() => {
+    if (mode === "image") {
+      setContentSamples([]);
+      return;
+    }
+    const controller = new AbortController();
+    setSamplesLoading(true);
+    setSampleError("");
+    void listContentExtractorSamples(fetchClient, mode, controller.signal)
+      .then(setContentSamples)
+      .catch((caught: unknown) => {
+        if (caught instanceof DOMException && caught.name === "AbortError") return;
+        setSampleError(
+          caught instanceof Error
+            ? caught.message
+            : `Could not load ${mode} samples.`,
+        );
+      })
+      .finally(() => setSamplesLoading(false));
+    return () => controller.abort();
+  }, [fetchClient, mode]);
+
   useEffect(() => () => abortRef.current?.abort(), []);
 
   return {
     mode,
+    analyzer,
     file,
     result,
     loading,
     error,
     samples,
+    contentSamples,
     samplesLoading,
     sampleError,
     setMode,
+    setAnalyzer,
     setFile,
     extractFile: runExtraction,
     selectSample,

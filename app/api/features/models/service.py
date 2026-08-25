@@ -26,7 +26,7 @@ MODEL_BUCKETS = frozenset(
 )
 DEFAULT_USE_CASE_MODEL_MAP: dict[str, str | dict[str, str]] = {
     "text_chat": "text_models",
-    "agent_research": "text_models",
+    "azure_architect_agent": "text_models",
     "hosted_agent": "text_models",
     "document_qa": "text_models",
     "comparison": "text_models",

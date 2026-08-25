@@ -5,8 +5,9 @@ Use this index to navigate from a customer demo to the code that implements it.
 | Use case | Implementation |
 | --- | --- |
 | Text Chat | [Implementation map](../../usecases_media/text_chat/README.md) |
-| Research Assistant Agent (Prompt Agent) | [Implementation map](../../usecases_agents/research_assistant_prompt/README.md) |
-| Research Assistant Agent (Hosted Agent) | [Framework implementations and deployment guides](../../usecases_agents/research_assistant_hosted/README.md) |
+| Azure Architect Agent (Prompt Agent) | [Implementation map](../../usecases_agents/azure_architect_agent/prompt/README.md) |
+| Azure Architect Agent (Hosted Agent) | [Framework implementations and deployment guides](../../usecases_agents/azure_architect_agent/hosted/README.md) |
+| Investment Planner (Prompt Agent) | [Skills, agent identity, and provisioning](../../usecases_agents/investment_planner_prompt/README.md) |
 | Document Q&A | [Implementation map](../../usecases_media/document_qa/README.md) |
 | Text Translation | [Implementation folder](../../usecases_media/text_translation/) |
 | Content Extractor | [Implementation folder](../../usecases_media/content_extractor/) |

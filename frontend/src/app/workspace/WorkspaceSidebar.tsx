@@ -48,10 +48,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { contentExtractorModes } from "@/features/contentExtractor/types";
-import type { ContentExtractorMode } from "@/features/contentExtractor/types";
+import {
+  contentExtractorDocumentAnalyzers,
+  contentExtractorModes,
+} from "@/features/contentExtractor/types";
+import type {
+  ContentExtractorDocumentAnalyzer,
+  ContentExtractorMode,
+  ContentExtractorSample,
+} from "@/features/contentExtractor/types";
 import type { ImageSample } from "@/features/images/api";
+import {
+  azureSpeechEmotions,
+  azureSpeechLanguageSkills,
+  azureSpeechModels,
+  azureSpeechVoiceNames,
+  gptAudioVoices,
+} from "@/features/voice/AzureSpeechTtsWorkspace";
 import { SidebarPipelineSelect } from "@/features/voice/VoiceWorkspaces";
+import type { HostedAgentVariant } from "@/features/hostedAgent/types";
 import { cn } from "@/lib/utils";
 
 export type WorkspaceSidebarWorkspaceViewModel = {
@@ -93,16 +108,21 @@ export type WorkspaceSidebarDocumentsViewModel = {
 export type WorkspaceSidebarContentExtractorViewModel = {
   configured: boolean;
   mode: ContentExtractorMode;
+  analyzer: ContentExtractorDocumentAnalyzer;
   file: File | null;
   loading: boolean;
   error: string;
   samples: ImageSample[];
+  contentSamples?: ContentExtractorSample[];
   samplesLoading: boolean;
   sampleError: string;
   inputRef: RefObject<HTMLInputElement>;
   onModeChange: (value: ContentExtractorMode) => void;
+  onAnalyzerChange: (value: ContentExtractorDocumentAnalyzer) => void;
   onFileChange: (file: File | null) => void | Promise<void>;
-  onSelectSample: (sample: ImageSample) => void | Promise<void>;
+  onSelectSample: (
+    sample: ImageSample | ContentExtractorSample,
+  ) => void | Promise<void>;
 };
 
 export type WorkspaceSidebarSpeechVoice = Pick<
@@ -157,9 +177,46 @@ export type WorkspaceSidebarVoiceViewModel = {
   ttsModels: string[];
   ttsModel: string;
   ttsVoice: string;
+  gptAudioModels?: string[];
+  azureSpeechModel?: string;
+  azureSpeechVoiceName?: string;
+  azureSpeechLanguageSkill?: string;
+  azureSpeechEmotion?: string;
+  azureSpeechPitch?: number;
+  azureSpeechRate?: number;
+  azureSpeechVolume?: number;
+  foundryGptAudioModel?: string;
+  foundryGptAudioVoice?: string;
   onTraditionalTranscriptionModelChange: (model: string) => void;
   onTtsModelChange: (model: string) => void;
   onTtsVoiceChange: (voice: string) => void;
+  onAzureSpeechModelChange?: (model: string) => void;
+  onAzureSpeechVoiceNameChange?: (voice: string) => void;
+  onAzureSpeechLanguageSkillChange?: (language: string) => void;
+  onAzureSpeechEmotionChange?: (emotion: string) => void;
+  onAzureSpeechPitchChange?: (value: number) => void;
+  onAzureSpeechRateChange?: (value: number) => void;
+  onAzureSpeechVolumeChange?: (value: number) => void;
+  onFoundryGptAudioModelChange?: (model: string) => void;
+  onFoundryGptAudioVoiceChange?: (voice: string) => void;
+};
+
+export type WorkspaceSidebarTextTranslationViewModel = {
+  mode: string;
+  modeOptions: { value: string; label: string }[];
+  sourceLanguage: string;
+  sourceLanguageOptions: { value: string; label: string }[];
+  targetLanguage: string;
+  targetLanguageOptions: { value: string; label: string }[];
+  model: string;
+  modelOptions: string[];
+  loading: boolean;
+  audioEnabled: boolean;
+  onModeChange: (mode: string) => void;
+  onSourceLanguageChange: (language: string) => void;
+  onTargetLanguageChange: (language: string) => void;
+  onModelChange: (model: string) => void;
+  onAudioEnabledChange: (enabled: boolean) => void;
 };
 
 export type WorkspaceSidebarProps = {
@@ -172,6 +229,18 @@ export type WorkspaceSidebarProps = {
   images: WorkspaceSidebarImagesViewModel;
   guardrails: WorkspaceSidebarGuardrailsViewModel;
   voice: WorkspaceSidebarVoiceViewModel;
+  textTranslation?: WorkspaceSidebarTextTranslationViewModel;
+  hostedAgent?: {
+    variants: HostedAgentVariant[];
+    variantKey: string;
+    isRunning: boolean;
+    onVariantChange: (key: string) => void;
+  };
+  agentMode?: {
+    mode: "prompt" | "hosted";
+    onModeChange: (mode: "prompt" | "hosted") => void;
+    disabled?: boolean;
+  };
 };
 
 type ModelComparisonSelectorProps = {
@@ -240,6 +309,102 @@ function contentExtractorModeIcon(mode: ContentExtractorMode) {
   return <ImageIcon className="h-4 w-4" />;
 }
 
+function contentExtractorAcceptTypes(mode: ContentExtractorMode) {
+  if (mode === "document") {
+    return "application/pdf,image/jpeg,image/png,image/webp,image/bmp,image/tiff";
+  }
+  if (mode === "audio") {
+    return "audio/wav,audio/mpeg,audio/mp3,audio/mp4,audio/m4a,audio/ogg,audio/webm,audio/flac";
+  }
+  return "image/jpeg,image/png,image/webp,image/bmp,image/tiff";
+}
+
+function contentExtractorHelpText(mode: ContentExtractorMode) {
+  if (mode === "document") {
+    return "PDF, JPEG, PNG, WebP, BMP, or TIFF up to 20 MB.";
+  }
+  if (mode === "audio") {
+    return "WAV, MP3, MP4/M4A, OGG, WebM, or FLAC up to 25 MB.";
+  }
+  return "JPEG, PNG, WebP, BMP, or TIFF up to 10 MB.";
+}
+
+function SidebarSimpleSelect({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="grid gap-2">
+      <Label htmlFor={id} className="palette-heading">
+        {label}
+      </Label>
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger
+          id={id}
+          className="h-9 w-full dark:border-[#606066] dark:bg-[#29292c]"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent position="popper" align="start">
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function SidebarRange({
+  label,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div
+      className="grid gap-2 text-sm font-medium text-slate-600 dark:text-slate-300"
+    >
+      <span className="flex items-center justify-between">
+        <span>{label}</span>
+        <span className="rounded-md bg-slate-100 px-2 py-1 text-xs dark:bg-[#29292c]">
+          {value}
+        </span>
+      </span>
+      <input
+        id={`sidebar-range-${label}`}
+        aria-label={label}
+        type="range"
+        min={-50}
+        max={50}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full"
+        style={{ accentColor: "var(--palette-color-1)" }}
+      />
+    </div>
+  );
+}
+
 export function WorkspaceSidebar({
   workspace,
   models,
@@ -250,6 +415,9 @@ export function WorkspaceSidebar({
   images,
   guardrails,
   voice,
+  textTranslation,
+  hostedAgent,
+  agentMode,
 }: WorkspaceSidebarProps) {
   const imageWorkspace =
     workspace.workspace === "image" ||
@@ -262,6 +430,12 @@ export function WorkspaceSidebar({
       : imageWorkspace
         ? images.model
         : models.activeModel;
+  const isTranslatorMode = textTranslation?.mode === "translator_text";
+  const sourceLanguageLabel = isTranslatorMode
+    ? "Translate from"
+    : textTranslation?.mode === "language_detection_text"
+      ? "Language hint"
+      : "Text language";
   const selectableModels =
     workspace.workspace === "transcribe" ||
     workspace.workspace === "transcriptionComparison"
@@ -273,12 +447,26 @@ export function WorkspaceSidebar({
           : models.textModels;
   const hidesModelSelector =
     workspace.workspace === "contentExtractor" ||
+    workspace.workspace === "azureSpeechTts" ||
+    workspace.workspace === "foundryGptAudio" ||
     workspace.workspace === "textTranslation" ||
     workspace.workspace === "realtimeTranslationWebRtc" ||
     workspace.workspace === "realtimeTranslationWebSocket" ||
     workspace.workspace === "liveTranslation";
   const pipelineDisabled =
     voice.status === "recording" || voice.status === "processing";
+  const azureSpeechModel = voice.azureSpeechModel ?? "DragonHDLatestNeural";
+  const azureSpeechVoiceName = voice.azureSpeechVoiceName ?? "Ava";
+  const azureSpeechLanguageSkill = voice.azureSpeechLanguageSkill ?? "auto";
+  const azureSpeechEmotion = voice.azureSpeechEmotion ?? "neutral";
+  const azureSpeechPitch = voice.azureSpeechPitch ?? 1;
+  const azureSpeechRate = voice.azureSpeechRate ?? 1;
+  const azureSpeechVolume = voice.azureSpeechVolume ?? 1;
+  const foundryGptAudioModel = voice.foundryGptAudioModel ?? "gpt-audio-mini";
+  const foundryGptAudioVoice = voice.foundryGptAudioVoice ?? "alloy";
+  const gptAudioModelOptions = voice.gptAudioModels?.length
+    ? voice.gptAudioModels
+    : ["gpt-audio-mini", "gpt-audio-1.5"];
   const missingDocumentRagConfig = [
     workspace.config?.search_endpoint ? null : "AZURE_SEARCH_ENDPOINT",
     workspace.config?.search_index_name ? null : "AZURE_SEARCH_INDEX_NAME",
@@ -295,7 +483,102 @@ export function WorkspaceSidebar({
   return (
     <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-4 shadow-sm dark:border-[#55555a] dark:bg-[#39393d]">
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
-        {workspace.workspace === "traditionalVoice" ? (
+        {workspace.workspace === "azureSpeechTts" ? (
+          <div className="grid gap-4">
+            <SidebarSimpleSelect
+              id="azure-tts-voice"
+              label="Voice"
+              value={azureSpeechVoiceName}
+              onChange={voice.onAzureSpeechVoiceNameChange ?? (() => undefined)}
+              options={azureSpeechVoiceNames.map((item) => ({
+                value: item.value,
+                label: `${item.label} · ${item.gender}`,
+              }))}
+              disabled={pipelineDisabled}
+            />
+            <SidebarSimpleSelect
+              id="azure-tts-model"
+              label="Model"
+              value={azureSpeechModel}
+              onChange={voice.onAzureSpeechModelChange ?? (() => undefined)}
+              options={azureSpeechModels.map((item) => ({
+                value: item.value,
+                label: item.label,
+              }))}
+              disabled={pipelineDisabled}
+            />
+            <SidebarSimpleSelect
+              id="azure-tts-language-skill"
+              label="Language skill"
+              value={azureSpeechLanguageSkill}
+              onChange={
+                voice.onAzureSpeechLanguageSkillChange ?? (() => undefined)
+              }
+              options={azureSpeechLanguageSkills}
+              disabled={pipelineDisabled}
+            />
+            <SidebarSimpleSelect
+              id="azure-tts-emotion"
+              label="Emotion"
+              value={azureSpeechEmotion}
+              onChange={voice.onAzureSpeechEmotionChange ?? (() => undefined)}
+              options={azureSpeechEmotions.map((item) => ({
+                value: item,
+                label: formatModelName(item),
+              }))}
+              disabled={pipelineDisabled}
+            />
+            <SidebarSection title="Tuning">
+              <div className="grid gap-4">
+                <SidebarRange
+                  label="Pitch"
+                  value={azureSpeechPitch}
+                  onChange={voice.onAzureSpeechPitchChange ?? (() => undefined)}
+                  disabled={pipelineDisabled}
+                />
+                <SidebarRange
+                  label="Rate"
+                  value={azureSpeechRate}
+                  onChange={voice.onAzureSpeechRateChange ?? (() => undefined)}
+                  disabled={pipelineDisabled}
+                />
+                <SidebarRange
+                  label="Volume"
+                  value={azureSpeechVolume}
+                  onChange={
+                    voice.onAzureSpeechVolumeChange ?? (() => undefined)
+                  }
+                  disabled={pipelineDisabled}
+                />
+              </div>
+            </SidebarSection>
+          </div>
+        ) : workspace.workspace === "foundryGptAudio" ? (
+          <div className="grid gap-4">
+            <SidebarSimpleSelect
+              id="foundry-gpt-audio-model"
+              label="Model"
+              value={foundryGptAudioModel}
+              onChange={voice.onFoundryGptAudioModelChange ?? (() => undefined)}
+              options={gptAudioModelOptions.map((model) => ({
+                value: model,
+                label: formatModelName(model),
+              }))}
+              disabled={pipelineDisabled}
+            />
+            <SidebarSimpleSelect
+              id="foundry-gpt-audio-voice"
+              label="Voice"
+              value={foundryGptAudioVoice}
+              onChange={voice.onFoundryGptAudioVoiceChange ?? (() => undefined)}
+              options={gptAudioVoices.map((item) => ({
+                value: item,
+                label: formatModelName(item),
+              }))}
+              disabled={pipelineDisabled}
+            />
+          </div>
+        ) : workspace.workspace === "traditionalVoice" ? (
           <div className="grid gap-4">
             <SidebarPipelineSelect
               label="STT model"
@@ -363,13 +646,14 @@ export function WorkspaceSidebar({
               disabled={pipelineDisabled}
             />
           </div>
-        ) : hidesModelSelector ? (
+        ) : workspace.workspace === "hostedAgent" ||
+          workspace.workspace === "azureArchitectAgent" ? null : hidesModelSelector ? (
           <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600 dark:border-[#606066] dark:bg-[#45454a] dark:text-slate-300">
             <p className="font-medium text-slate-700 dark:text-slate-100">
               {workspace.workspace === "contentExtractor"
                 ? "Content Extractor"
                 : workspace.workspace === "textTranslation"
-                  ? "Text Translation"
+                  ? "Language Services"
                   : workspace.workspace === "liveTranslation"
                     ? "Azure Speech Live Translation"
                     : workspace.workspace === "realtimeTranslationWebRtc"
@@ -380,7 +664,7 @@ export function WorkspaceSidebar({
               {workspace.workspace === "contentExtractor"
                 ? "Uses Azure Content Understanding. Upload source files below; image extraction is enabled first."
                 : workspace.workspace === "textTranslation"
-                  ? "Uses Azure Translator - Text Translation and language controls in the workspace. No chat model is used."
+                  ? "Uses Azure Translator and Azure Language modes selected in the workspace. No chat model is used."
                   : workspace.workspace === "liveTranslation"
                     ? "Uses Azure Speech resources and voice mode controls in the workspace. No chat model is used."
                     : workspace.workspace === "realtimeTranslationWebRtc"
@@ -453,6 +737,43 @@ export function WorkspaceSidebar({
           </Button>
         </div>
 
+        {(workspace.workspace === "azureArchitectAgent" ||
+          workspace.workspace === "hostedAgent") &&
+        agentMode ? (
+          <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
+            <SidebarSimpleSelect
+              id="agent-implementation-mode"
+              label="Agent implementation"
+              value={agentMode.mode}
+              onChange={(value) =>
+                agentMode.onModeChange(value as "prompt" | "hosted")
+              }
+              options={[
+                { value: "prompt", label: "Prompt Agent" },
+                { value: "hosted", label: "Hosted Agent" },
+              ]}
+              disabled={agentMode.disabled ?? false}
+            />
+          </div>
+        ) : null}
+
+        {workspace.workspace === "hostedAgent" &&
+        (hostedAgent?.variants.length ?? 0) > 1 ? (
+          <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
+            <SidebarSimpleSelect
+              id="hosted-agent-implementation"
+              label="Hosted agent implementation"
+              value={hostedAgent?.variantKey ?? ""}
+              onChange={hostedAgent?.onVariantChange ?? (() => undefined)}
+              options={(hostedAgent?.variants ?? []).map((variant) => ({
+                value: variant.key,
+                label: variant.label,
+              }))}
+              disabled={hostedAgent?.isRunning ?? false}
+            />
+          </div>
+        ) : null}
+
         {workspace.workspace === "contentExtractor" ? (
           <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
             <SidebarSection title="Content source">
@@ -477,24 +798,49 @@ export function WorkspaceSidebar({
                   {contentExtractorModes.map((item) => (
                     <option key={item.value} value={item.value}>
                       {item.label}
-                      {item.value === "image" ? "" : " (coming soon)"}
                     </option>
                   ))}
                 </select>
-                {contentExtractor.mode !== "image" ? (
-                  <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    {contentExtractor.mode === "document"
-                      ? "Document"
-                      : "Audio"}{" "}
-                    extraction is visible for the workflow layout and will be
-                    enabled after the image path.
-                  </p>
+                {contentExtractor.mode === "document" ? (
+                  <>
+                    <label
+                      className="palette-heading text-xs uppercase tracking-wide"
+                      htmlFor="content-extractor-analyzer"
+                    >
+                      Document analyzer
+                    </label>
+                    <select
+                      id="content-extractor-analyzer"
+                      value={contentExtractor.analyzer}
+                      disabled={contentExtractor.loading}
+                      onChange={(event) =>
+                        contentExtractor.onAnalyzerChange(
+                          event.target
+                            .value as ContentExtractorDocumentAnalyzer,
+                        )
+                      }
+                      className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
+                    >
+                      {contentExtractorDocumentAnalyzers.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      {
+                        contentExtractorDocumentAnalyzers.find(
+                          (item) => item.value === contentExtractor.analyzer,
+                        )?.description
+                      }
+                    </p>
+                  </>
                 ) : null}
                 <input
                   ref={contentExtractor.inputRef}
                   type="file"
-                  aria-label="Upload image for content extraction"
-                  accept="image/jpeg,image/png,image/webp,image/bmp,image/tiff"
+                  aria-label={`Upload ${contentExtractor.mode} for content extraction`}
+                  accept={contentExtractorAcceptTypes(contentExtractor.mode)}
                   className="hidden"
                   onChange={(event) => {
                     void contentExtractor.onFileChange(
@@ -506,10 +852,7 @@ export function WorkspaceSidebar({
                   type="button"
                   variant="outline"
                   className="w-full justify-start"
-                  disabled={
-                    contentExtractor.loading ||
-                    contentExtractor.mode !== "image"
-                  }
+                  disabled={contentExtractor.loading}
                   onClick={() => contentExtractor.inputRef.current?.click()}
                 >
                   {contentExtractor.loading ? (
@@ -521,60 +864,122 @@ export function WorkspaceSidebar({
                     ? "Extracting..."
                     : contentExtractor.file
                       ? contentExtractor.file.name
-                      : "Upload image"}
+                      : `Upload ${contentExtractor.mode}`}
                 </Button>
                 <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  JPEG, PNG, WebP, BMP, or TIFF up to 10 MB.
+                  {contentExtractorHelpText(contentExtractor.mode)}
                 </p>
-                <div className="grid gap-2 border-t border-slate-200 pt-3 dark:border-[#55555a]">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Image Prompt gallery
+                {contentExtractor.mode === "image" ? (
+                  <div className="grid gap-2 border-t border-slate-200 pt-3 dark:border-[#55555a]">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      Image Prompt gallery
+                    </div>
+                    {contentExtractor.samplesLoading &&
+                    !contentExtractor.samples.length ? (
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <LoaderCircle className="h-4 w-4 animate-spin" />
+                        Loading images...
+                      </div>
+                    ) : null}
+                    {!contentExtractor.samplesLoading &&
+                    !contentExtractor.samples.length ? (
+                      <p className="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs leading-5 text-slate-500 dark:border-[#606066] dark:text-slate-400">
+                        No gallery images yet. Generate images in Text to Image,
+                        or seed Blob Storage under image-samples/.
+                      </p>
+                    ) : null}
+                    {contentExtractor.samples.length ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {contentExtractor.samples.map((sample) => (
+                          <button
+                            key={sample.id}
+                            type="button"
+                            disabled={
+                              contentExtractor.samplesLoading ||
+                              contentExtractor.loading
+                            }
+                            onClick={() =>
+                              void contentExtractor.onSelectSample(sample)
+                            }
+                            className="group overflow-hidden rounded-lg border border-slate-200 bg-white text-left text-xs shadow-sm transition hover:border-blue-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:hover:border-violet-400"
+                            title={sample.name}
+                          >
+                            <img
+                              src={sample.image_url}
+                              alt=""
+                              className="h-20 w-full object-cover"
+                              loading="lazy"
+                            />
+                            <span className="block truncate px-2 py-1.5 text-slate-600 dark:text-slate-300">
+                              {sample.name}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                  {contentExtractor.samplesLoading &&
-                  !contentExtractor.samples.length ? (
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                      Loading images...
+                ) : null}
+                {contentExtractor.mode !== "image" ? (
+                  <div className="grid gap-2 border-t border-slate-200 pt-3 dark:border-[#55555a]">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      {contentExtractor.mode === "document"
+                        ? "Document samples"
+                        : "Audio samples"}
                     </div>
-                  ) : null}
-                  {!contentExtractor.samplesLoading &&
-                  !contentExtractor.samples.length ? (
-                    <p className="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs leading-5 text-slate-500 dark:border-[#606066] dark:text-slate-400">
-                      No gallery images yet. Generate images in Text to Image,
-                      or seed Blob Storage under image-samples/.
-                    </p>
-                  ) : null}
-                  {contentExtractor.samples.length ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      {contentExtractor.samples.map((sample) => (
-                        <button
-                          key={sample.id}
-                          type="button"
-                          disabled={
-                            contentExtractor.samplesLoading ||
-                            contentExtractor.loading
-                          }
-                          onClick={() =>
-                            void contentExtractor.onSelectSample(sample)
-                          }
-                          className="group overflow-hidden rounded-lg border border-slate-200 bg-white text-left text-xs shadow-sm transition hover:border-blue-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:hover:border-violet-400"
-                          title={sample.name}
-                        >
-                          <img
-                            src={sample.image_url}
-                            alt=""
-                            className="h-20 w-full object-cover"
-                            loading="lazy"
-                          />
-                          <span className="block truncate px-2 py-1.5 text-slate-600 dark:text-slate-300">
-                            {sample.name}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                {contentExtractor.sampleError ? (
+                    {contentExtractor.samplesLoading &&
+                    !(contentExtractor.contentSamples?.length ?? 0) ? (
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <LoaderCircle className="h-4 w-4 animate-spin" />
+                        Loading samples...
+                      </div>
+                    ) : null}
+                    {!contentExtractor.samplesLoading &&
+                    !(contentExtractor.contentSamples?.length ?? 0) ? (
+                      <p className="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs leading-5 text-slate-500 dark:border-[#606066] dark:text-slate-400">
+                        No samples yet. Seed Blob Storage under{" "}
+                        {contentExtractor.mode === "document"
+                          ? "document-samples/"
+                          : "audio-samples/"}
+                        .
+                      </p>
+                    ) : null}
+                    {contentExtractor.contentSamples?.length ? (
+                      <div className="grid gap-2">
+                        {contentExtractor.contentSamples.map((sample) => (
+                          <button
+                            key={sample.id}
+                            type="button"
+                            disabled={
+                              contentExtractor.samplesLoading ||
+                              contentExtractor.loading
+                            }
+                            onClick={() =>
+                              void contentExtractor.onSelectSample(sample)
+                            }
+                            className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs shadow-sm transition hover:border-blue-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:hover:border-violet-400"
+                            title={sample.description || sample.name}
+                          >
+                            {contentExtractor.mode === "document" ? (
+                              <FileText className="h-5 w-5 shrink-0 text-blue-500" />
+                            ) : (
+                              <FileAudio className="h-5 w-5 shrink-0 text-violet-500" />
+                            )}
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium text-slate-700 dark:text-slate-200">
+                                {sample.name}
+                              </span>
+                              <span className="block truncate text-slate-400">
+                                {sample.id}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {contentExtractor.mode === "image" &&
+                contentExtractor.sampleError ? (
                   <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
                     {contentExtractor.sampleError}
                   </p>
@@ -589,6 +994,119 @@ export function WorkspaceSidebar({
                   <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
                     {contentExtractor.error}
                   </p>
+                ) : null}
+              </div>
+            </SidebarSection>
+          </div>
+        ) : null}
+
+        {workspace.workspace === "textTranslation" && textTranslation ? (
+          <div className="mt-4 border-t pt-4 dark:border-[#55555a]">
+            <SidebarSection title="Language Services">
+              <div className="grid gap-3">
+                <label
+                  className="palette-heading text-xs uppercase tracking-wide"
+                  htmlFor="text-translation-mode"
+                >
+                  Mode
+                </label>
+                <select
+                  id="text-translation-mode"
+                  value={textTranslation.mode}
+                  disabled={textTranslation.loading}
+                  onChange={(event) => textTranslation.onModeChange(event.target.value)}
+                  className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
+                >
+                  {textTranslation.modeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <label
+                  className="palette-heading text-xs uppercase tracking-wide"
+                  htmlFor="text-translation-source-language"
+                >
+                  {sourceLanguageLabel}
+                </label>
+                <select
+                  id="text-translation-source-language"
+                  value={textTranslation.sourceLanguage}
+                  disabled={textTranslation.loading}
+                  onChange={(event) => textTranslation.onSourceLanguageChange(event.target.value)}
+                  className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
+                >
+                  {textTranslation.sourceLanguageOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                {isTranslatorMode ? (
+                  <>
+                    <label
+                      className="palette-heading text-xs uppercase tracking-wide"
+                      htmlFor="text-translation-target-language"
+                    >
+                      Translate to
+                    </label>
+                    <select
+                      id="text-translation-target-language"
+                      value={textTranslation.targetLanguage}
+                      disabled={textTranslation.loading}
+                      onChange={(event) =>
+                        textTranslation.onTargetLanguageChange(event.target.value)
+                      }
+                      className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
+                    >
+                      {textTranslation.targetLanguageOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    {textTranslation.modelOptions.length > 0 ? (
+                      <>
+                        <label
+                          className="palette-heading text-xs uppercase tracking-wide"
+                          htmlFor="text-translation-model"
+                        >
+                          Model
+                        </label>
+                        <select
+                          id="text-translation-model"
+                          value={textTranslation.model}
+                          disabled={textTranslation.loading}
+                          onChange={(event) =>
+                            textTranslation.onModelChange(event.target.value)
+                          }
+                          className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-500/20"
+                        >
+                          {textTranslation.modelOptions.map((model) => (
+                            <option key={model} value={model}>
+                              {model}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+                {textTranslation.mode === "translator_text" ? (
+                  <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={textTranslation.audioEnabled}
+                      disabled={textTranslation.loading}
+                      onChange={(event) =>
+                        textTranslation.onAudioEnabledChange(event.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-[#707076] dark:bg-[#29292c] dark:text-violet-400"
+                    />
+                    Enable audio
+                  </label>
                 ) : null}
               </div>
             </SidebarSection>

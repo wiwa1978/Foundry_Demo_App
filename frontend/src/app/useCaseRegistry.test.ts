@@ -69,9 +69,21 @@ describe("useCaseModules", () => {
       },
       {
         id: "text_translation",
-        title: "Text Translation",
+        title: "Azure Translator",
         badge: "Text",
-        typeLabel: "Azure Translator",
+        typeLabel: "Detection + Translation",
+      },
+      {
+        id: "pii_redaction",
+        title: "Azure Language",
+        badge: "Text",
+        typeLabel: "PII Redaction",
+      },
+      {
+        id: "text_analytics_health",
+        title: "Azure Language",
+        badge: "Text",
+        typeLabel: "Text Analytics for Health",
       },
       {
         id: "text_to_image",
@@ -112,6 +124,18 @@ describe("useCaseModules", () => {
       {
         id: "traditional_voice",
         title: "STT-Chat-TTS",
+        badge: "Audio",
+        typeLabel: null,
+      },
+      {
+        id: "azure_speech_tts",
+        title: "Azure Speech Text to Speech",
+        badge: "Audio",
+        typeLabel: null,
+      },
+      {
+        id: "foundry_gpt_audio",
+        title: "Foundry GPT Audio",
         badge: "Audio",
         typeLabel: null,
       },

@@ -65,14 +65,17 @@ def create_app() -> FastAPI:
     from app.api.features.conversations.router import router as conversations_router
     from app.api.features.models.router import router as models_router
     from app.api.features.system.router import router as system_router
-    from usecases_agents.research_assistant_hosted.backend.router import (
-        router as hosted_agent_router,
+    from usecases_agents.hosted_agent.backend.router import router as hosted_agent_router
+    from usecases_agents.azure_architect_agent.prompt.backend.router import (
+        router as azure_architect_agent_router,
     )
-    from usecases_agents.research_assistant_prompt.backend.router import (
-        router as agent_research_router,
+    from usecases_agents.investment_planner_prompt.backend.router import (
+        router as investment_planner_router,
     )
+    from usecases_agents.retail_agent.backend.router import router as retail_agent_router
     from usecases_media.content_extractor.backend.router import router as content_extractor_router
     from usecases_media.document_qa.backend.router import router as document_qa_router
+    from usecases_media.guardrail_batch.backend.router import router as guardrail_batch_router
     from usecases_media.shared.images.backend.router import router as images_router
     from usecases_media.shared.voice.backend.router import router as voice_router
     from usecases_media.text_chat.backend.router import router as text_chat_router
@@ -104,10 +107,13 @@ def create_app() -> FastAPI:
     application.include_router(youtube_realtime_transcription_router)
     application.include_router(images_router)
     application.include_router(comparison_router)
+    application.include_router(guardrail_batch_router)
     application.include_router(text_translation_router)
     application.include_router(conversations_router)
-    application.include_router(agent_research_router)
+    application.include_router(azure_architect_agent_router)
     application.include_router(hosted_agent_router)
+    application.include_router(retail_agent_router)
+    application.include_router(investment_planner_router)
     application.include_router(system_router)
     application.include_router(auth_router)
     application.include_router(models_router)

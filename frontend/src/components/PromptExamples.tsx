@@ -1,4 +1,10 @@
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +15,7 @@ export type PromptExample = {
   title: string;
   prompt: string;
   description?: string;
+  answer?: string;
   badges?: readonly string[];
 };
 
@@ -30,6 +37,9 @@ export function PromptExamples({
   onSelect,
 }: PromptExamplesProps) {
   const [open, setOpen] = useState(false);
+  const [visibleAnswers, setVisibleAnswers] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -55,12 +65,15 @@ export function PromptExamples({
     container.addEventListener("scroll", updateScrollControls, {
       passive: true,
     });
-    const resizeObserver = new ResizeObserver(updateScrollControls);
-    resizeObserver.observe(container);
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateScrollControls);
+    resizeObserver?.observe(container);
 
     return () => {
       container.removeEventListener("scroll", updateScrollControls);
-      resizeObserver.disconnect();
+      resizeObserver?.disconnect();
     };
   }, [examples.length, open]);
 
@@ -135,11 +148,10 @@ export function PromptExamples({
         >
           {examples.map((example) => {
             const selected = value === example.prompt;
+            const answerVisible = visibleAnswers.has(example.id);
             return (
-              <button
+              <article
                 key={example.id}
-                type="button"
-                onClick={() => onSelect(example.prompt)}
                 className={cn(
                   "group snap-start rounded-xl border bg-slate-50 p-3 text-left transition hover:border-slate-400 hover:bg-white dark:border-[#606066] dark:bg-[#29292c] dark:hover:border-[#77777d] dark:hover:bg-[#45454a]",
                   selected &&
@@ -148,9 +160,13 @@ export function PromptExamples({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold">{example.title}</span>
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300">
+                  <button
+                    type="button"
+                    onClick={() => onSelect(example.prompt)}
+                    className="text-[10px] font-medium uppercase tracking-wide text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
+                  >
                     {selected ? "Loaded" : "Use prompt"}
-                  </span>
+                  </button>
                 </div>
                 <p className="mt-2 line-clamp-2 font-mono text-[11px] leading-4 text-slate-600 dark:text-slate-300">
                   {example.prompt}
@@ -176,7 +192,39 @@ export function PromptExamples({
                     ))}
                   </div>
                 ) : null}
-              </button>
+                {example.answer ? (
+                  <div className="mt-3 border-t pt-2 dark:border-[#55555a]">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleAnswers((current) => {
+                          const next = new Set(current);
+                          if (next.has(example.id)) {
+                            next.delete(example.id);
+                          } else {
+                            next.add(example.id);
+                          }
+                          return next;
+                        })
+                      }
+                      className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                      aria-expanded={answerVisible}
+                    >
+                      {answerVisible ? (
+                        <EyeOff className="h-3.5 w-3.5" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}
+                      {answerVisible ? "Hide answer" : "Show answer"}
+                    </button>
+                    {answerVisible ? (
+                      <p className="mt-2 whitespace-pre-line text-[11px] leading-4 text-slate-600 dark:text-slate-300">
+                        {example.answer}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </article>
             );
           })}
         </div>

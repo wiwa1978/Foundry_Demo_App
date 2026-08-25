@@ -79,7 +79,7 @@ Start with the existing feature hooks. Do not introduce a global state library.
 Extract controller composition for:
 
 - Hosted agent
-- Prompt research agent
+- Prompt Azure Architect Agent
 - YouTube summarization
 - Document Q&A
 - Image generation, editing, and comparison

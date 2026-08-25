@@ -1,4 +1,4 @@
-import { GitCompareArrows, HelpCircle, Settings } from "lucide-react";
+import { FileText, GitCompareArrows, HelpCircle, Settings } from "lucide-react";
 
 import { ApiUnavailableDialog } from "@/app/ApiUnavailableDialog";
 import { useCaseModules } from "@/app/useCaseRegistry";
@@ -12,7 +12,10 @@ import { WorkspaceHeader } from "@/app/workspace/WorkspaceHeader";
 import { WorkspaceSidebar } from "@/app/workspace/WorkspaceSidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { UseCaseMarketplace } from "@/features/marketplace/UseCaseMarketplace";
+import type { LanguageServiceMode } from "@/features/textTranslation/types";
 import { UseCaseDetailsPanel } from "@/features/useCases/UseCaseDetailsPanel";
+import { UseCaseDocumentationPanel } from "@/features/useCases/UseCaseDocumentationPanel";
+import { azureSpeechModels } from "@/features/voice/AzureSpeechTtsWorkspace";
 import { cn } from "@/lib/utils";
 
 import { useWorkspaceController } from "./useWorkspaceController";
@@ -27,12 +30,17 @@ export default function AppWorkspace() {
     setActiveView,
     activeUseCase,
     activeUseCaseDetails,
+    effectiveWorkspace,
+    agentMode,
+    setAgentMode,
     selectUseCase,
     comparisonMode,
     useCaseMarketplaceOpen,
     setUseCaseMarketplaceOpen,
     useCaseDetailsOpen,
     setUseCaseDetailsOpen,
+    useCaseDocumentationOpen,
+    setUseCaseDocumentationOpen,
     appearance,
     auth,
     entraAuthEnabled,
@@ -92,6 +100,25 @@ export default function AppWorkspace() {
     setTraditionalTranscriptionModel,
     setTtsModel,
     setTtsVoice,
+    gptAudioModels,
+    azureSpeechModel,
+    setAzureSpeechModel,
+    azureSpeechVoiceName,
+    setAzureSpeechVoiceName,
+    azureSpeechLanguageSkill,
+    setAzureSpeechLanguageSkill,
+    azureSpeechEmotion,
+    setAzureSpeechEmotion,
+    azureSpeechPitch,
+    setAzureSpeechPitch,
+    azureSpeechRate,
+    setAzureSpeechRate,
+    azureSpeechVolume,
+    setAzureSpeechVolume,
+    foundryGptAudioModel,
+    setFoundryGptAudioModel,
+    foundryGptAudioVoice,
+    setFoundryGptAudioVoice,
     selected,
     selectedTranscriptions,
     contentRouterProps,
@@ -158,7 +185,7 @@ export default function AppWorkspace() {
           <WorkspaceSidebar
             workspace={{
               activeView,
-              workspace: activeUseCaseDetails.workspace,
+              workspace: effectiveWorkspace,
               showDocumentControls:
                 activeUseCaseDetails.showDocumentControls === true,
               showBrowserVoiceControls:
@@ -206,14 +233,17 @@ export default function AppWorkspace() {
             contentExtractor={{
               configured: config?.is_content_extractor_configured ?? false,
               mode: contentExtractor.mode,
+              analyzer: contentExtractor.analyzer,
               file: contentExtractor.file,
               loading: contentExtractor.loading,
               error: contentExtractor.error,
               samples: contentExtractor.samples,
+              contentSamples: contentExtractor.contentSamples,
               samplesLoading: contentExtractor.samplesLoading,
               sampleError: contentExtractor.sampleError,
               inputRef: contentExtractorFileInputRef,
               onModeChange: contentExtractor.setMode,
+              onAnalyzerChange: contentExtractor.setAnalyzer,
               onFileChange: (file) => void contentExtractor.extractFile(file),
               onSelectSample: (sample) =>
                 void contentExtractor.selectSample(sample),
@@ -262,11 +292,90 @@ export default function AppWorkspace() {
               ttsModels,
               ttsModel,
               ttsVoice,
+              gptAudioModels,
+              azureSpeechModel,
+              azureSpeechVoiceName,
+              azureSpeechLanguageSkill,
+              azureSpeechEmotion,
+              azureSpeechPitch,
+              azureSpeechRate,
+              azureSpeechVolume,
+              foundryGptAudioModel,
+              foundryGptAudioVoice,
               onTraditionalTranscriptionModelChange:
                 setTraditionalTranscriptionModel,
               onTtsModelChange: setTtsModel,
               onTtsVoiceChange: setTtsVoice,
+              onAzureSpeechModelChange: setAzureSpeechModel,
+              onAzureSpeechVoiceNameChange: setAzureSpeechVoiceName,
+              onAzureSpeechLanguageSkillChange: setAzureSpeechLanguageSkill,
+              onAzureSpeechEmotionChange: setAzureSpeechEmotion,
+              onAzureSpeechPitchChange: setAzureSpeechPitch,
+              onAzureSpeechRateChange: setAzureSpeechRate,
+              onAzureSpeechVolumeChange: setAzureSpeechVolume,
+              onFoundryGptAudioModelChange: setFoundryGptAudioModel,
+              onFoundryGptAudioVoiceChange: setFoundryGptAudioVoice,
             }}
+            hostedAgent={contentRouterProps.hostedAgent}
+            agentMode={{
+              mode: agentMode,
+              onModeChange: setAgentMode,
+              disabled:
+                contentRouterProps.azureArchitectAgent.isRunning ||
+                contentRouterProps.hostedAgent.isRunning,
+            }}
+            textTranslation={
+              contentRouterProps.textTranslation && activeUseCaseDetails.workspace === "textTranslation"
+                ? {
+                    mode: contentRouterProps.textTranslation.mode,
+                    modeOptions: [...contentRouterProps.textTranslation.modeOptions],
+                    sourceLanguage: contentRouterProps.textTranslation.sourceLanguage,
+                    sourceLanguageOptions: [
+                      { value: "auto", label: "Auto detect" },
+                      { value: "en", label: "English" },
+                      { value: "es", label: "Spanish" },
+                      { value: "fr", label: "French" },
+                      { value: "de", label: "German" },
+                      { value: "nl", label: "Dutch" },
+                      { value: "it", label: "Italian" },
+                      { value: "pt", label: "Portuguese" },
+                      { value: "zh-Hans", label: "Chinese Simplified" },
+                      { value: "ja", label: "Japanese" },
+                      { value: "ko", label: "Korean" },
+                      { value: "ar", label: "Arabic" },
+                      { value: "hi", label: "Hindi" },
+                    ],
+                    targetLanguage: contentRouterProps.textTranslation.targetLanguage,
+                    targetLanguageOptions: [
+                      { value: "en", label: "English" },
+                      { value: "es", label: "Spanish" },
+                      { value: "fr", label: "French" },
+                      { value: "de", label: "German" },
+                      { value: "nl", label: "Dutch" },
+                      { value: "it", label: "Italian" },
+                      { value: "pt", label: "Portuguese" },
+                      { value: "zh-Hans", label: "Chinese Simplified" },
+                      { value: "ja", label: "Japanese" },
+                      { value: "ko", label: "Korean" },
+                      { value: "ar", label: "Arabic" },
+                      { value: "hi", label: "Hindi" },
+                    ],
+                    model: contentRouterProps.textTranslation.model,
+                    modelOptions: contentRouterProps.textTranslation.modelOptions.map(
+                      (opt) => opt.value,
+                    ),
+                    loading: contentRouterProps.textTranslation.loading,
+                    audioEnabled: contentRouterProps.textTranslation.audioEnabled,
+                    onAudioEnabledChange:
+                      contentRouterProps.textTranslation.onAudioEnabledChange,
+                    onModeChange: (mode) =>
+                      contentRouterProps.textTranslation.onModeChange(mode as LanguageServiceMode),
+                    onSourceLanguageChange: contentRouterProps.textTranslation.onSourceLanguageChange,
+                    onTargetLanguageChange: contentRouterProps.textTranslation.onTargetLanguageChange,
+                    onModelChange: contentRouterProps.textTranslation.onModelChange,
+                  }
+                : undefined
+            }
           />
         ) : null}
 
@@ -302,9 +411,11 @@ export default function AppWorkspace() {
                               : activeUseCaseDetails.workspace === "comparison"
                                 ? `Comparing ${selected.length} model endpoint${selected.length === 1 ? "" : "s"}`
                                 : activeUseCaseDetails.workspace ===
-                                      "agentResearch" ||
+                                      "azureArchitectAgent" ||
                                     activeUseCaseDetails.workspace ===
-                                      "hostedAgent"
+                                      "hostedAgent" ||
+                                    activeUseCaseDetails.workspace ===
+                                      "investmentPlannerPrompt"
                                   ? activeUseCaseDetails.description
                                   : activeUseCaseDetails.workspace ===
                                       "transcriptionComparison"
@@ -328,9 +439,26 @@ export default function AppWorkspace() {
                                           activeUseCaseDetails.workspace ===
                                             "liveTranslation" ||
                                           activeUseCaseDetails.workspace ===
-                                            "youtubeSummary"
+                                            "youtubeSummary" ||
+                                          activeUseCaseDetails.workspace ===
+                                            "textTranslation"
                                         ? activeUseCaseDetails.description
-                                        : `${
+                                        : activeUseCaseDetails.workspace ===
+                                            "foundryGptAudio"
+                                          ? `New unsaved chat - active model: ${formatModelName(foundryGptAudioModel)}`
+                                          : activeUseCaseDetails.workspace ===
+                                              "azureSpeechTts"
+                                            ? `New unsaved chat - active model: ${
+                                                azureSpeechModels.find(
+                                                  (item) =>
+                                                    item.value ===
+                                                    azureSpeechModel,
+                                                )?.label ??
+                                                formatModelName(
+                                                  azureSpeechModel,
+                                                )
+                                              }`
+                                            : `${
                                             currentConversationId
                                               ? (conversations.find(
                                                   (item) =>
@@ -347,7 +475,8 @@ export default function AppWorkspace() {
                   "realtimeTranslationWebRtc" &&
                 activeUseCaseDetails.workspace !==
                   "realtimeTranslationWebSocket" &&
-                activeUseCaseDetails.workspace !== "liveTranslation" ? (
+                activeUseCaseDetails.workspace !== "liveTranslation" &&
+                activeUseCaseDetails.workspace !== "textTranslation" ? (
                   <button
                     type="button"
                     onClick={() =>
@@ -376,6 +505,16 @@ export default function AppWorkspace() {
                       : "text-slate-400",
                   )}
                 />
+                <button
+                  type="button"
+                  className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-400 dark:hover:bg-[#45454a] dark:hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => setUseCaseDocumentationOpen(true)}
+                  title={`Open documentation for ${activeUseCaseDetails.title}`}
+                  aria-label={`Open documentation for ${activeUseCaseDetails.title}`}
+                  disabled={!activeUseCaseDetails.documentation?.length}
+                >
+                  <FileText className="h-4 w-4" />
+                </button>
                 <button
                   type="button"
                   className="rounded p-1 text-violet-600 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-[#45454a]"
@@ -424,6 +563,12 @@ export default function AppWorkspace() {
         <UseCaseDetailsPanel
           useCase={activeUseCaseDetails}
           onClose={() => setUseCaseDetailsOpen(false)}
+        />
+      ) : null}
+      {useCaseDocumentationOpen ? (
+        <UseCaseDocumentationPanel
+          useCase={activeUseCaseDetails}
+          onClose={() => setUseCaseDocumentationOpen(false)}
         />
       ) : null}
 

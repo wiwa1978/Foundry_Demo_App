@@ -632,6 +632,12 @@ function routerProps(
         status: "idle",
         error: "",
         transcript: [],
+        avatar: {
+          audioRef: createRef<HTMLAudioElement>(),
+          error: "",
+          status: "idle",
+          videoRef: createRef<HTMLVideoElement>(),
+        },
         onStart: vi.fn(),
         onStop: vi.fn(),
       },
@@ -708,18 +714,37 @@ function routerProps(
     },
     textTranslation: {
       configured: true,
+      useCase: "text_translation",
+      mode: "translator_text",
+      modeOptions: [
+        {
+          value: "translator_text",
+          label: "Text Translation",
+          implemented: true,
+        },
+      ],
+      modeImplemented: true,
       sourceText: "hello",
+      draftText: "hello",
       sourceLanguage: "en",
       targetLanguage: "fr",
+      model: "azure-mt",
+      modelOptions: [{ value: "azure-mt", label: "Azure-MT" }],
       result: null,
       loading: false,
       error: "",
-      onSourceTextChange: vi.fn(),
+      audioEnabled: false,
+      speaking: false,
+      onDraftTextChange: vi.fn(),
       onSourceLanguageChange: vi.fn(),
       onTargetLanguageChange: vi.fn(),
+      onModelChange: vi.fn(),
+      onModeChange: vi.fn(),
       onTranslate: vi.fn(),
+      onAudioEnabledChange: vi.fn(),
+      onSpeakTranslation: vi.fn(),
     },
-    agentResearch: {
+    azureArchitectAgent: {
       configured: true,
       projectEndpoint: "https://foundry.example",
       question: "",
@@ -746,7 +771,24 @@ function routerProps(
       runConfig: null,
       isRunning: false,
       error: "",
+      variants: [],
+      variantKey: "",
+      onVariantChange: vi.fn(),
       onMessageChange: vi.fn(),
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+    },
+    investmentPlanner: {
+      configured: true,
+      agentName: "investment-planner",
+      projectEndpoint: "https://foundry.example",
+      question: "",
+      answer: "",
+      steps: [],
+      runConfig: null,
+      isRunning: false,
+      error: "",
+      onQuestionChange: vi.fn(),
       onSubmit: vi.fn(),
       onCancel: vi.fn(),
     },
@@ -780,7 +822,7 @@ function route(
 ): WorkspaceContentRouterProps {
   const workspace = update.workspace ?? props.route.workspace;
   const renderer =
-    workspace === "agentResearch" || workspace === "hostedAgent"
+    workspace === "azureArchitectAgent" || workspace === "hostedAgent"
       ? "agent"
       : workspace === "image" ||
           workspace === "imageEdit" ||
@@ -1137,8 +1179,8 @@ describe("WorkspaceContentRouter", () => {
     render(
       <WorkspaceContentRouter
         {...route(props, {
-          workspace: "agentResearch",
-          useCase: "agent_research",
+          workspace: "azureArchitectAgent",
+          useCase: "azure_architect_agent",
         })}
       />,
     );

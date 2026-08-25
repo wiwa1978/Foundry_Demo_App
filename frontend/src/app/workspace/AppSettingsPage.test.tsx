@@ -62,9 +62,9 @@ describe("AppSettingsPage use case model map", () => {
   it("renders use case bucket mappings and saves edits", async () => {
     const user = userEvent.setup();
     const { onSaveUseCaseModelMap } = renderPage();
-    expect(screen.queryByText("agent_research")).not.toBeInTheDocument();
+    expect(screen.queryByText("azure_architect_agent")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "agents" }));
-    expect(screen.getByText("agent_research")).toBeVisible();
+    expect(screen.getByText("azure_architect_agent")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "media" }));
 
     expect(screen.getByText("Use case model buckets")).toBeVisible();

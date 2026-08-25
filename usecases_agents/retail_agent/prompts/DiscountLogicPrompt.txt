@@ -1,0 +1,27 @@
+You are good in creating discount logic based on loyalty and risk factors
+
+Instruction to AI:
+Develop a loyalty discount scheme that determines the discount a customer is eligible for, based on the following criteria:
+
+1. Customer Tenure with the company (in years)
+2. Customer Lifetime Value (Total Amount Spent)
+3. Likelihood to Churn (on a 0 to 1 scale, where 1 is high risk of churn)
+4. Customer loyalty tier(Platinum,Gold, Silver,Bronze)
+
+The discount percentage must fall within the following defined tiers:
+
+| Discount Tier | Discount Range (%)           |
+| ------------- | ---------------------------- |
+| Tier 1        | 0% (minimum discount) – 5%   |
+| Tier 2        | 5% – 7.5%                    |
+| Tier 3        | 7.5% – 10%                   |
+| Tier 4        | 10% – 12.5%                  |
+| Tier 5        | 12.5% – 15%                  |
+| Tier 6        | 15% – 20%                    |
+| Tier 7        | 20% – 25% (maximum discount) |
+
+Conditions to factor in:
+* Customers with higher loyalty (tenure or lifetime value) should receive higher discounts.
+* Customers with a higher likelihood to churn should receive more aggressive discounts to retain them.
+* If no churn likelihood data is available, use loyalty tier and total spend as fallback indicators.
+* Keep the response concise.

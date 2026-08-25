@@ -39,9 +39,17 @@ def get_config(
         "endpoint": settings.endpoint,
         "auth_mode": settings.auth_mode,
         "models": settings.models,
-        "is_agent_research_configured": settings.is_agent_research_configured,
+        "is_azure_architect_agent_configured": settings.is_azure_architect_agent_configured,
         "is_hosted_agent_configured": settings.is_hosted_agent_configured,
         "hosted_agent_name": settings.hosted_agent_name,
+        "hosted_agent_variants": [
+            {"key": variant.key, "label": variant.label, "agent_name": variant.agent_name}
+            for variant in settings.hosted_agent_variants
+        ],
+        "is_retail_agent_configured": settings.is_retail_agent_configured,
+        "retail_agent_name": settings.retail_agent_name,
+        "is_investment_planner_configured": settings.is_investment_planner_configured,
+        "investment_planner_agent_name": settings.investment_planner_agent_name,
         "is_realtime_configured": settings.is_realtime_configured,
         "realtime_endpoint": settings.realtime_endpoint,
         "realtime_model": settings.realtime_model,

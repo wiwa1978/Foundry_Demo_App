@@ -86,25 +86,30 @@ it("shows system-managed policies without allowing invalid request overrides", a
 
   expect(
     screen.getAllByRole("option", {
-      name: "Microsoft.Default (system-managed; deployment only)",
+      name: "Use current deployment assignment (NoGuardrails)",
     })[0],
-  ).toBeDisabled();
+  ).toBeEnabled();
   expect(
     screen.getAllByRole("option", {
-      name: "Microsoft.DefaultV2 (system-managed; deployment only)",
+      name: "Microsoft.Default (system-managed)",
     })[0],
-  ).toBeDisabled();
+  ).toBeEnabled();
+  expect(
+    screen.getAllByRole("option", {
+      name: "Microsoft.DefaultV2 (system-managed)",
+    })[0],
+  ).toBeEnabled();
   expect(
     screen.getAllByRole("option", { name: "NoGuardrails" })[0],
   ).toBeEnabled();
   expect(
     screen.getAllByRole("option", {
-      name: "Microsoft.Default (selectable copy)",
+      name: "FoundryChat-Microsoft-Default",
     })[0],
   ).toBeEnabled();
   expect(
     screen.getAllByRole("option", {
-      name: "Microsoft.DefaultV2 (selectable copy)",
+      name: "FoundryChat-Microsoft-DefaultV2",
     })[0],
   ).toBeEnabled();
   await user.click(
@@ -112,6 +117,6 @@ it("shows system-managed policies without allowing invalid request overrides", a
   );
   expect(onCreatePolicyCopies).toHaveBeenCalledOnce();
   expect(
-    screen.getByText(/cannot be sent as request-level overrides/i),
+    screen.getByText(/does not allow system Microsoft policies/i),
   ).toBeVisible();
 });

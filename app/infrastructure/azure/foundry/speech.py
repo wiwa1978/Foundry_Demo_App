@@ -1,4 +1,5 @@
 import base64
+import html
 import os
 import tempfile
 import threading
@@ -141,6 +142,90 @@ def transcribe_speech_audio(
         "language": language,
         "duration_ms": round((time.perf_counter() - started) * 1000),
         "segments": segments,
+    }
+
+
+def synthesize_azure_speech(
+    *,
+    text: str,
+    voice: str = "en-US-Ava:DragonHDLatestNeural",
+    language: str = "en-US",
+    emotion: str = "neutral",
+    pitch: str = "0%",
+    rate: str = "0%",
+    volume: str = "0%",
+) -> dict[str, Any]:
+    settings = load_settings()
+    if not settings.is_speech_transcription_configured:
+        raise RuntimeError(
+            "Azure Speech is not configured. Set AZURE_SPEECH_ENDPOINT."
+        )
+    if not text.strip():
+        raise RuntimeError("Cannot synthesize empty text.")
+
+    import azure.cognitiveservices.speech as speechsdk
+
+    speech_config = (
+        speechsdk.SpeechConfig(
+            subscription=settings.speech_key,
+            endpoint=settings.speech_endpoint,
+        )
+        if settings.speech_key
+        else speechsdk.SpeechConfig(
+            token_credential=get_azure_credential(),
+            endpoint=settings.speech_endpoint,
+        )
+    )
+    speech_config.set_speech_synthesis_output_format(
+        speechsdk.SpeechSynthesisOutputFormat.Audio16Khz128KBitRateMonoMp3
+    )
+    selected_voice = voice.strip() or "en-US-Ava:DragonHDLatestNeural"
+    escaped_text = html.escape(text.strip())
+    escaped_voice = html.escape(selected_voice, quote=True)
+    escaped_language = html.escape(language.strip() or "en-US", quote=True)
+    escaped_emotion = html.escape(emotion.strip() or "neutral", quote=True)
+    prosody = (
+        f'<prosody rate="{html.escape(rate)}" pitch="{html.escape(pitch)}" '
+        f'volume="{html.escape(volume)}">{escaped_text}</prosody>'
+    )
+    if escaped_emotion and escaped_emotion != "neutral":
+        prosody = f'<mstts:express-as style="{escaped_emotion}">{prosody}</mstts:express-as>'
+
+    ssml = (
+        f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" '
+        f'xmlns:mstts="http://www.w3.org/2001/mstts" xml:lang="{escaped_language}">'
+        f'<voice name="{escaped_voice}">'
+        f"{prosody}"
+        "</voice></speak>"
+    )
+
+    started = time.perf_counter()
+    result = speechsdk.SpeechSynthesizer(
+        speech_config=speech_config,
+        audio_config=None,
+    ).speak_ssml_async(ssml).get()
+    if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
+        details = getattr(result, "error_details", None) or "Azure Speech synthesis failed."
+        raise RuntimeError(details)
+
+    return {
+        "model": "Dragon HD Latest",
+        "voice": selected_voice,
+        "language": language,
+        "emotion": emotion,
+        "audio": bytes(result.audio_data),
+        "audio_mime_type": "audio/mpeg",
+        "duration_ms": round((time.perf_counter() - started) * 1000),
+        "speech_request": {
+            "service": "Azure Speech",
+            "voice": selected_voice,
+            "language": language,
+            "emotion": emotion,
+            "pitch": pitch,
+            "rate": rate,
+            "volume": volume,
+            "text_characters": len(text),
+        },
     }
 
 

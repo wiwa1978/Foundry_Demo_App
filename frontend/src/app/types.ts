@@ -1,13 +1,17 @@
 export type UseCaseId =
   | "text_chat"
-  | "agent_research"
+  | "azure_architect_agent"
   | "hosted_agent"
+  | "retail_agent"
+  | "investment_planner_prompt"
   | "document_qa"
   | "content_extractor"
   | "comparison"
   | "reasoning_comparison"
   | "browser_voice"
   | "traditional_voice"
+  | "azure_speech_tts"
+  | "foundry_gpt_audio"
   | "transcribe"
   | "transcription_comparison"
   | "realtime_voice"
@@ -18,6 +22,9 @@ export type UseCaseId =
   | "voice_live"
   | "live_translation"
   | "text_translation"
+  | "language_detection"
+  | "pii_redaction"
+  | "text_analytics_health"
   | "text_to_image"
   | "image_to_image"
   | "image_comparison"
@@ -34,14 +41,18 @@ export type UseCaseIconName =
   | "voiceWave";
 export type UseCaseWorkspace =
   | "chat"
-  | "agentResearch"
+  | "azureArchitectAgent"
   | "hostedAgent"
+  | "retailAgent"
+  | "investmentPlannerPrompt"
   | "contentExtractor"
   | "comparison"
   | "image"
   | "imageEdit"
   | "imageComparison"
   | "traditionalVoice"
+  | "azureSpeechTts"
+  | "foundryGptAudio"
   | "realtimeVoice"
   | "realtimeTranscriptionWebRtc"
   | "realtimeTranscriptionWebSocket"
@@ -67,9 +78,15 @@ export type UseCaseModule = {
   shortTitle: string;
   description: string;
   badge: string;
+  showLabels?: boolean;
   icon: UseCaseIconName;
   modalities: UseCaseModality[];
   implementation: string[];
+  documentation?: {
+    title: string;
+    url: string;
+    description?: string;
+  }[];
   codeSnippet: {
     title: string;
     language: string;

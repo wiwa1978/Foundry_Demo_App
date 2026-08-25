@@ -15,6 +15,7 @@ import {
   formatGuardrailSources,
   formatMessageDateTime,
   formatModelName,
+  formatTriggeredGuardrails,
   formatUsage,
   guardrailFilterGroupValue,
   guardrailSection,
@@ -39,6 +40,38 @@ function contentFilter(
 }
 
 describe("workspace formatters", () => {
+  it("extracts triggered guardrail filters from Foundry annotations", () => {
+    expect(
+      formatTriggeredGuardrails({
+        content_filters: [
+          {
+            blocked: true,
+            source_type: "prompt",
+            content_filter_results: {
+              indirect_attack: { detected: true, filtered: true },
+              hate: { filtered: false },
+            },
+          },
+        ],
+      }),
+    ).toEqual(["Indirect Attack"]);
+    expect(
+      formatTriggeredGuardrails({
+        content_filter_results: {
+          PII_CreditCardNumber: { filtered: true },
+          PII_Email: { detected: true },
+        },
+      }),
+    ).toEqual(["Credit Card Number", "Email"]);
+    expect(
+      formatTriggeredGuardrails({
+        content_filter_results: {
+          hate: { filtered: false },
+        },
+      }),
+    ).toEqual([]);
+  });
+
   it("formats valid message timestamps and rejects absent or invalid timestamps", () => {
     const timestamp = "2025-01-02T15:04:00.000Z";
     const expected = new Intl.DateTimeFormat(undefined, {

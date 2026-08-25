@@ -18,6 +18,9 @@ ignore = ["B008"]
 "scripts/*.py" = ["E402"]
 # Tests legitimately use asserts, hardcoded dummy secrets, and unused fixture/stub arguments.
 "tests/*.py" = ["S101", "S105", "S106", "ARG001", "ARG002", "ARG005"]
+# Provisioning scripts and skill payloads are operator-run CLIs: they shell out to `az` and
+# call the Foundry/Storage REST APIs over urllib with operator-supplied URLs.
+"usecases_agents/*/agent/**/*.py" = ["S105", "S110", "S310", "S603", "S607"]
 
 [tool.mypy]
 python_version = "3.12"

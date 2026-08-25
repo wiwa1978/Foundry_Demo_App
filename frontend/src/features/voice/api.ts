@@ -222,6 +222,11 @@ export function voiceLiveUrl() {
   return `${protocol}//${window.location.host}/api/voice-live`;
 }
 
+export function voiceLiveAvatarUrl() {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/api/voice-live-avatar`;
+}
+
 export function liveInterpreterUrl() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/api/live-interpreter`;

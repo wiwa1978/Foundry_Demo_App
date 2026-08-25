@@ -187,7 +187,9 @@ export function UseCaseMarketplace({
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <UseCaseIcon useCase={useCase} />
                     <div className="flex flex-wrap justify-end gap-1.5">
-                      <Badge>{useCase.badge}</Badge>
+                      {useCase.showLabels !== false ? (
+                        <Badge>{useCase.badge}</Badge>
+                      ) : null}
                       {selected ? (
                         <Badge variant="secondary">Active</Badge>
                       ) : null}
@@ -196,7 +198,7 @@ export function UseCaseMarketplace({
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">
                     {useCase.title}
                   </h3>
-                  {useCase.typeLabel ? (
+                  {useCase.showLabels !== false && useCase.typeLabel ? (
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       <Badge variant="outline">{useCase.typeLabel}</Badge>
                       {useCase.frameworkLabel ? (

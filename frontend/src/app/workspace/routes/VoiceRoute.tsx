@@ -5,12 +5,15 @@ import { GptRealtimeTranslationWorkspace } from "@media/realtime_translation_web
 import { RealtimeVoiceHero } from "@media/realtime_voice/frontend";
 import { TranscriptionWorkspace } from "@media/recorded_transcription/frontend";
 import { TraditionalVoiceWorkspace } from "@media/stt_chat_tts/frontend";
+import { AzureSpeechTtsWorkspace } from "@media/azure_speech_tts/frontend";
+import { FoundryGptAudioWorkspace } from "@media/foundry_gpt_audio/frontend";
 import { TranscriptionComparisonWorkspace } from "@media/transcription_comparison/frontend";
 import { VoiceLiveHero } from "@media/voice_live/frontend";
 
 import type {
   WorkspaceContentRoute,
   WorkspaceRealtimeViewModel,
+  WorkspaceTextToSpeechSettings,
   WorkspaceTraditionalVoiceViewModel,
   WorkspaceTranscriptionComparisonViewModel,
   WorkspaceTranscriptionViewModel,
@@ -19,6 +22,9 @@ import type {
 type VoiceRouteProps = {
   route: WorkspaceContentRoute;
   traditionalVoice: WorkspaceTraditionalVoiceViewModel;
+  azureSpeechTtsConfigured: boolean;
+  foundryGptAudioConfigured: boolean;
+  textToSpeech: WorkspaceTextToSpeechSettings;
   transcription: WorkspaceTranscriptionViewModel;
   transcriptionComparison: WorkspaceTranscriptionComparisonViewModel;
   realtime: WorkspaceRealtimeViewModel;
@@ -27,6 +33,9 @@ type VoiceRouteProps = {
 export function VoiceRoute({
   route,
   traditionalVoice,
+  azureSpeechTtsConfigured,
+  foundryGptAudioConfigured,
+  textToSpeech,
   transcription,
   transcriptionComparison,
   realtime,
@@ -52,6 +61,23 @@ export function VoiceRoute({
         result={traditionalVoice.result}
         onStart={() => traditionalVoice.onStart(traditionalVoice.request)}
         onStop={traditionalVoice.onStop}
+      />
+    );
+  }
+  if (route.workspace === "azureSpeechTts") {
+    return (
+      <AzureSpeechTtsWorkspace
+        configured={azureSpeechTtsConfigured}
+        settings={textToSpeech}
+      />
+    );
+  }
+  if (route.workspace === "foundryGptAudio") {
+    return (
+      <FoundryGptAudioWorkspace
+        configured={foundryGptAudioConfigured}
+        settings={textToSpeech}
+        mode="gptAudio"
       />
     );
   }
@@ -94,11 +120,7 @@ export function VoiceRoute({
     );
   }
   if (route.workspace === "voiceLive") {
-    return (
-      <HeroFrame>
-        <VoiceLiveHero {...realtime.voiceLive} />
-      </HeroFrame>
-    );
+    return <VoiceLiveHero {...realtime.voiceLive} />;
   }
   return <AzureSpeechLiveTranslationWorkspace {...realtime.liveTranslation} />;
 }

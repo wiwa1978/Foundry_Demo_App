@@ -10,11 +10,18 @@ export type HostedAgentRunConfig = {
   projectEndpoint: string;
 };
 
+export type HostedAgentVariant = {
+  key: string;
+  label: string;
+  agentName: string;
+};
+
 export type HostedAgentStreamEvent =
   | {
       type: "start";
       message: string;
       agent_name: string;
+      agent_key: string;
       project_endpoint: string;
     }
   | {

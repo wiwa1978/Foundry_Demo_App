@@ -10,6 +10,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from websockets.asyncio.client import connect as websocket_connect
+from websockets.exceptions import InvalidStatus
 
 from app.api.security import AuthMode, auth_mode, authenticated_user, websocket_origin_allowed
 from app.application.use_case_settings import LIVE_TRANSLATION_USE_CASE, FoundryBinding
@@ -18,6 +19,7 @@ from app.infrastructure.azure.foundry.realtime import (
     create_realtime_transcription_connection_info,
     create_realtime_translation_connection_info,
     create_voice_live_connection_info,
+    create_voice_live_avatar_connection_info,
 )
 from app.infrastructure.azure.foundry.settings import load_settings
 from usecases_media.shared.voice.backend.live_interpreter import LiveInterpreterSession
@@ -131,6 +133,12 @@ async def _wait_for_transcription_finalization(state: TranscriptionProxyState) -
 
 def _public_provider_error(operation: str, exc: Exception) -> str:
     logger.exception("%s failed", operation, exc_info=exc)
+    if isinstance(exc, InvalidStatus):
+        return (
+            f"{operation} failed: Azure rejected the WebSocket endpoint "
+            f"with HTTP {exc.response.status_code}. Check the Voice Live endpoint, "
+            "API version, and model deployment."
+        )
     return f"{operation} failed. Try again later."
 
 
@@ -144,13 +152,16 @@ async def _authorize_websocket(websocket: WebSocket) -> bool:
     return True
 
 
-@router.websocket("/api/voice-live")
-async def voice_live_proxy(websocket: WebSocket) -> None:
+async def _voice_live_proxy(
+    websocket: WebSocket,
+    connection_factory,
+    operation: str,
+) -> None:
     if not await _authorize_websocket(websocket):
         return
     await websocket.accept(subprotocol="realtime")
     try:
-        connection = await run_model_call(create_voice_live_connection_info)
+        connection = await run_model_call(connection_factory)
         async with websocket_connect(
             connection["url"],
             additional_headers={"Authorization": f"Bearer {connection['token']}"},
@@ -194,13 +205,30 @@ async def voice_live_proxy(websocket: WebSocket) -> None:
             await websocket.send_json(
                 {
                     "type": "error",
-                    "error": {"message": _public_provider_error("Voice Live session", exc)},
+                    "error": {"message": _public_provider_error(operation, exc)},
                 }
             )
             await websocket.close(code=1011)
         except RuntimeError:
             pass
 
+
+@router.websocket("/api/voice-live")
+async def voice_live_proxy(websocket: WebSocket) -> None:
+    await _voice_live_proxy(
+        websocket,
+        create_voice_live_connection_info,
+        "Voice Live session",
+    )
+
+
+@router.websocket("/api/voice-live-avatar")
+async def voice_live_avatar_proxy(websocket: WebSocket) -> None:
+    await _voice_live_proxy(
+        websocket,
+        create_voice_live_avatar_connection_info,
+        "Voice Live avatar session",
+    )
 
 @router.websocket("/api/realtime-transcription")
 async def realtime_transcription_proxy(websocket: WebSocket) -> None:

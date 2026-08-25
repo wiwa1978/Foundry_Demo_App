@@ -14,6 +14,18 @@ import { MetricsRoute } from "./routes/MetricsRoute";
 import { SettingsRoute } from "./routes/SettingsRoute";
 import { VoiceRoute } from "./routes/VoiceRoute";
 
+const defaultTextToSpeechSettings = {
+  azureSpeechModel: "DragonHDLatestNeural",
+  azureVoiceName: "Ava",
+  languageSkill: "auto",
+  emotion: "neutral",
+  pitch: 1,
+  rate: 1,
+  volume: 1,
+  gptAudioModel: "gpt-audio-mini",
+  gptAudioVoice: "alloy",
+};
+
 export function WorkspaceContentRouter(props: WorkspaceContentRouterProps) {
   const { route, access, admin } = props;
   if (access.locked) {
@@ -93,8 +105,10 @@ export function WorkspaceContentRouter(props: WorkspaceContentRouterProps) {
       return (
         <AgentRoute
           route={route}
-          agentResearch={props.agentResearch}
+          azureArchitectAgent={props.azureArchitectAgent}
           hostedAgent={props.hostedAgent}
+          investmentPlanner={props.investmentPlanner}
+          retailAgent={props.retailAgent}
         />
       );
     case "image":
@@ -104,6 +118,9 @@ export function WorkspaceContentRouter(props: WorkspaceContentRouterProps) {
         <VoiceRoute
           route={route}
           traditionalVoice={props.traditionalVoice}
+          azureSpeechTtsConfigured={props.azureSpeechTtsConfigured ?? false}
+          foundryGptAudioConfigured={props.foundryGptAudioConfigured ?? false}
+          textToSpeech={props.textToSpeech ?? defaultTextToSpeechSettings}
           transcription={props.transcription}
           transcriptionComparison={props.transcriptionComparison}
           realtime={props.realtime}

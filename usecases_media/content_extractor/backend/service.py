@@ -17,9 +17,23 @@ from app.infrastructure.azure.foundry.settings import load_settings
 
 CONTENT_UNDERSTANDING_API_VERSION = "2025-11-01"
 IMAGE_ANALYZER_ID = "prebuilt-imageSearch"
+AUDIO_ANALYZER_ID = "prebuilt-callCenter"
 REQUEST_TIMEOUT_SECONDS = 30
 POLL_INTERVAL_SECONDS = 1
 MAX_POLL_SECONDS = 60
+
+# Document-mode analyzer choices, keyed by the value the frontend sends in the
+# `analyzer` form field. IDs verified against the Content Understanding
+# prebuilt analyzer catalog (GA API version 2025-11-01):
+# https://learn.microsoft.com/azure/ai-services/content-understanding/concepts/prebuilt-analyzers
+DOCUMENT_ANALYZERS: dict[str, str] = {
+    "layout": "prebuilt-layout",
+    "invoice": "prebuilt-invoice",
+    "tax_us": "prebuilt-tax.us",
+    "fields": "prebuilt-documentFields",
+    "read": "prebuilt-read",
+}
+DEFAULT_DOCUMENT_ANALYZER = "layout"
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +241,7 @@ def _extract_warnings(result: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _response_from_result(
     *,
+    mode: str,
     filename: str,
     mime_type: str,
     analyzer_id: str,
@@ -240,7 +255,7 @@ def _response_from_result(
     if not extracted_text and fields:
         extracted_text = _fields_to_text(fields)
     return {
-        "mode": "image",
+        "mode": mode,
         "filename": filename,
         "mime_type": mime_type,
         "analyzer_id": analyzer_id,
@@ -252,8 +267,10 @@ def _response_from_result(
     }
 
 
-async def extract_image_content(
+async def analyze_content(
     *,
+    mode: str,
+    analyzer_id: str,
     filename: str,
     mime_type: str,
     data: bytes,
@@ -262,6 +279,11 @@ async def extract_image_content(
     get_json: GetJson | None = None,
     token_provider: TokenProvider | None = None,
 ) -> dict[str, Any]:
+    """Run any Content Understanding prebuilt analyzer and poll until it finishes.
+
+    This is the shared core used by the image/document/audio wrappers below;
+    the only thing that varies between modes is which `analyzer_id` is sent.
+    """
     content_settings = settings or load_content_understanding_settings()
     if not content_settings.is_configured:
         raise InvalidRequestError(
@@ -279,7 +301,7 @@ async def extract_image_content(
             }
         ]
     }
-    analyze_url = _analyze_url(content_settings, IMAGE_ANALYZER_ID)
+    analyze_url = _analyze_url(content_settings, analyzer_id)
     try:
         accepted = await asyncio.to_thread(
             post_json or post_content_understanding_json,
@@ -307,9 +329,10 @@ async def extract_image_content(
         status = str(polled.body.get("status", "")).lower()
         if status == "succeeded":
             return _response_from_result(
+                mode=mode,
                 filename=filename,
                 mime_type=mime_type,
-                analyzer_id=IMAGE_ANALYZER_ID,
+                analyzer_id=analyzer_id,
                 operation_id=operation_id,
                 status="Succeeded",
                 payload=polled.body,
@@ -319,3 +342,79 @@ async def extract_image_content(
         if time.monotonic() >= deadline:
             raise ExternalServiceError("Content extraction")
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
+
+async def extract_image_content(
+    *,
+    filename: str,
+    mime_type: str,
+    data: bytes,
+    settings: ContentUnderstandingSettings | None = None,
+    post_json: PostJson | None = None,
+    get_json: GetJson | None = None,
+    token_provider: TokenProvider | None = None,
+) -> dict[str, Any]:
+    return await analyze_content(
+        mode="image",
+        analyzer_id=IMAGE_ANALYZER_ID,
+        filename=filename,
+        mime_type=mime_type,
+        data=data,
+        settings=settings,
+        post_json=post_json,
+        get_json=get_json,
+        token_provider=token_provider,
+    )
+
+
+async def extract_document_content(
+    *,
+    analyzer: str,
+    filename: str,
+    mime_type: str,
+    data: bytes,
+    settings: ContentUnderstandingSettings | None = None,
+    post_json: PostJson | None = None,
+    get_json: GetJson | None = None,
+    token_provider: TokenProvider | None = None,
+) -> dict[str, Any]:
+    analyzer_id = DOCUMENT_ANALYZERS.get(analyzer)
+    if not analyzer_id:
+        raise InvalidRequestError(
+            f"Unknown document analyzer '{analyzer}'. Choose one of: "
+            f"{', '.join(sorted(DOCUMENT_ANALYZERS))}."
+        )
+    return await analyze_content(
+        mode="document",
+        analyzer_id=analyzer_id,
+        filename=filename,
+        mime_type=mime_type,
+        data=data,
+        settings=settings,
+        post_json=post_json,
+        get_json=get_json,
+        token_provider=token_provider,
+    )
+
+
+async def extract_audio_content(
+    *,
+    filename: str,
+    mime_type: str,
+    data: bytes,
+    settings: ContentUnderstandingSettings | None = None,
+    post_json: PostJson | None = None,
+    get_json: GetJson | None = None,
+    token_provider: TokenProvider | None = None,
+) -> dict[str, Any]:
+    return await analyze_content(
+        mode="audio",
+        analyzer_id=AUDIO_ANALYZER_ID,
+        filename=filename,
+        mime_type=mime_type,
+        data=data,
+        settings=settings,
+        post_json=post_json,
+        get_json=get_json,
+        token_provider=token_provider,
+    )

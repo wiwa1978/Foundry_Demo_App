@@ -13,8 +13,11 @@ Voice and image implementations remain single-source under `shared/voice/backend
 | Text     | Text Chat                                   | [`text_chat`](text_chat/README.md)                                               |
 | Text     | Document Q&A                                | [`document_qa`](document_qa/README.md)                                           |
 | Text     | Side by Side - Text Chat                    | [`text_chat_comparison`](text_chat_comparison/README.md)                         |
-| Text     | Text Translation                            | [`text_translation`](text_translation/)                                          |
-| Text     | Content Extractor                           | [`content_extractor`](content_extractor/)                                      |
+| Text     | Azure Translator                            | [`text_translation`](text_translation/)                                          |
+| Text     | Azure Language - Language Detection         | [`language_detection`](language_detection/)                                      |
+| Text     | Azure Language - PII Redaction              | [`pii_redaction`](pii_redaction/)                                                |
+| Text     | Azure Language - Text Analytics for Health  | [`text_analytics_health`](text_analytics_health/)                                |
+| Text     | Content Extractor                           | [`content_extractor`](content_extractor/)                                        |
 | Audio    | Browser based voice                         | [`browser_voice`](browser_voice/README.md)                                       |
 | Audio    | STT -> Chat -> TTS                          | [`stt_chat_tts`](stt_chat_tts/README.md)                                         |
 | Audio    | Recorded Audio Transcription                | [`recorded_transcription`](recorded_transcription/README.md)                     |
