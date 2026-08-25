@@ -327,6 +327,7 @@ export function realtimeTranslationWebSocketUrl(options: {
   sourceLanguage?: string | null;
   model?: string | null;
   transcriptionModel?: string | null;
+  mode?: "translation" | "tutor";
 }) {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const url = new URL(

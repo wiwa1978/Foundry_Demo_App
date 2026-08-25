@@ -73,7 +73,11 @@ import type {
   RetailProduct,
 } from "@/features/retailAgent/types";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
-import type { VideoTranslationResult } from "@/features/videoTranslation/api";
+import type {
+  CaptioningResult,
+  DubbingResult,
+  VideoTranslationResult,
+} from "@/features/videoTranslation/api";
 import type { TextToSpeechAvatarViewModel } from "@/features/voice/useTextToSpeechAvatar";
 
 export type WorkspaceContentRoute = {
@@ -241,6 +245,8 @@ export type WorkspaceTraditionalVoiceViewModel = {
   result: TraditionalVoiceResult | null;
   request: TraditionalVoiceRequest;
   language?: string;
+  languageLearningMode?: "batch" | "realtime";
+  onLanguageLearningModeChange?: (mode: "batch" | "realtime") => void;
   onLanguageChange?: (language: string) => void;
   avatar?: WorkspaceTextToSpeechAvatarViewModel;
   onChatModelChange: (model: string) => void;
@@ -395,12 +401,53 @@ export type WorkspaceYouTubeSummaryViewModel = {
 };
 
 export type WorkspaceVideoTranslationViewModel = {
-  file: File | null; sourceLanguage: string; targetLanguage: string; voice: string;
-  transcriptionModel: string; result: VideoTranslationResult | null; loading: boolean; error: string;
+  file: File | null;
+  sourceLanguage: string;
+  targetLanguage: string;
+  voice: string;
+  transcriptionModel: string;
+  result: VideoTranslationResult | null;
+  loading: boolean;
+  error: string;
   transcriptionModels: string[];
-  onFileChange: (file: File | null) => void; onSourceLanguageChange: (value: string) => void;
-  onTargetLanguageChange: (value: string) => void; onVoiceChange: (value: string) => void;
-  onTranscriptionModelChange: (value: string) => void; onTranslate: () => void;
+  onFileChange: (file: File | null) => void;
+  onSourceLanguageChange: (value: string) => void;
+  onTargetLanguageChange: (value: string) => void;
+  onVoiceChange: (value: string) => void;
+  onTranscriptionModelChange: (value: string) => void;
+  onTranslate: () => void;
+};
+
+export type WorkspaceCaptioningViewModel = {
+  file: File | null;
+  language: string;
+  transcriptionModel: string;
+  result: CaptioningResult | null;
+  loading: boolean;
+  error: string;
+  transcriptionModels: string[];
+  onFileChange: (file: File | null) => void;
+  onLanguageChange: (value: string) => void;
+  onTranscriptionModelChange: (value: string) => void;
+  onCaption: () => void;
+};
+
+export type WorkspaceDubbingViewModel = {
+  file: File | null;
+  sourceLanguage: string;
+  targetLanguage: string;
+  voice: string;
+  transcriptionModel: string;
+  result: DubbingResult | null;
+  loading: boolean;
+  error: string;
+  transcriptionModels: string[];
+  onFileChange: (file: File | null) => void;
+  onSourceLanguageChange: (value: string) => void;
+  onTargetLanguageChange: (value: string) => void;
+  onVoiceChange: (value: string) => void;
+  onTranscriptionModelChange: (value: string) => void;
+  onDub: () => void;
 };
 
 export type WorkspaceContentExtractorViewModel = {
@@ -591,6 +638,8 @@ export type WorkspaceContentRouterProps = {
   youtubeSummary: WorkspaceYouTubeSummaryViewModel;
   youtubeRealtimeTranscription: WorkspaceYouTubeRealtimeTranscriptionViewModel;
   videoTranslation?: WorkspaceVideoTranslationViewModel;
+  captioning?: WorkspaceCaptioningViewModel;
+  dubbing?: WorkspaceDubbingViewModel;
   contentExtractor: WorkspaceContentExtractorViewModel;
   textTranslation: WorkspaceTextTranslationViewModel;
   chat: WorkspaceChatViewModel;

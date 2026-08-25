@@ -81,11 +81,11 @@ def create_app() -> FastAPI:
     from usecases_media.text_chat.backend.router import router as text_chat_router
     from usecases_media.text_chat_comparison.backend.router import router as comparison_router
     from usecases_media.text_translation.backend.router import router as text_translation_router
+    from usecases_media.video_translation.backend.router import router as video_translation_router
     from usecases_media.youtube_realtime_transcription.backend.router import (
         router as youtube_realtime_transcription_router,
     )
     from usecases_media.youtube_summary.backend.router import router as youtube_summary_router
-    from usecases_media.video_translation.backend.router import router as video_translation_router
 
     application = FastAPI(title="Foundry Chat App", lifespan=lifespan)
     application.state.services = build_application_services()

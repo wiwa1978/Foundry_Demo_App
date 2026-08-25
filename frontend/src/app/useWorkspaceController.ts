@@ -69,6 +69,8 @@ import type {
   ReasoningEffort,
   TextChatRequest,
 } from "@/features/textChat/types";
+import { useCaptioning } from "@/features/videoTranslation/useCaptioning";
+import { useDubbing } from "@/features/videoTranslation/useDubbing";
 import { useVideoTranslation } from "@/features/videoTranslation/useVideoTranslation";
 
 import { useAppBootstrap } from "./useAppBootstrap";
@@ -239,7 +241,7 @@ export function useWorkspaceController() {
       : activeUseCase === "language_learning" &&
           languageLearningMode === "realtime"
         ? "realtimeTranslationWebSocket"
-      : activeUseCaseDetails.workspace;
+        : activeUseCaseDetails.workspace;
   const {
     models,
     modelModalities,
@@ -578,6 +580,14 @@ export function useWorkspaceController() {
     fetchClient: apiTrace.tracedFetch,
     defaultTranscriptionModel: config?.speech_transcription_model ?? "",
   });
+  const captioning = useCaptioning({
+    fetchClient: apiTrace.tracedFetch,
+    defaultTranscriptionModel: config?.speech_transcription_model ?? "",
+  });
+  const dubbing = useDubbing({
+    fetchClient: apiTrace.tracedFetch,
+    defaultTranscriptionModel: config?.speech_transcription_model ?? "",
+  });
   const textTranslation = useTextTranslation({
     fetchClient: apiTrace.tracedFetch,
     activeUseCase,
@@ -822,6 +832,12 @@ export function useWorkspaceController() {
     }
     if (nextUseCase.workspace !== "videoTranslation") {
       videoTranslation.reset();
+    }
+    if (nextUseCase.workspace !== "captioning") {
+      captioning.reset();
+    }
+    if (nextUseCase.workspace !== "dubbing") {
+      dubbing.reset();
     }
   }
 
@@ -1183,6 +1199,8 @@ export function useWorkspaceController() {
       onTtsModelChange: setTtsModel,
       onTtsVoiceChange: setTtsVoice,
       language: languageLearningLanguage,
+      languageLearningMode,
+      onLanguageLearningModeChange: setLanguageLearningMode,
       onLanguageChange: (language: string) => {
         setLanguageLearningLanguage(language);
         textToSpeechAvatar.setLanguage(language);
@@ -1465,6 +1483,36 @@ export function useWorkspaceController() {
       onVoiceChange: videoTranslation.setVoice,
       onTranscriptionModelChange: videoTranslation.setTranscriptionModel,
       onTranslate: () => void videoTranslation.translate(),
+    },
+    captioning: {
+      file: captioning.file,
+      language: captioning.language,
+      transcriptionModel: captioning.transcriptionModel,
+      result: captioning.result,
+      loading: captioning.loading,
+      error: captioning.error,
+      transcriptionModels,
+      onFileChange: captioning.setFile,
+      onLanguageChange: captioning.setLanguage,
+      onTranscriptionModelChange: captioning.setTranscriptionModel,
+      onCaption: () => void captioning.caption(),
+    },
+    dubbing: {
+      file: dubbing.file,
+      sourceLanguage: dubbing.sourceLanguage,
+      targetLanguage: dubbing.targetLanguage,
+      voice: dubbing.voice,
+      transcriptionModel: dubbing.transcriptionModel,
+      result: dubbing.result,
+      loading: dubbing.loading,
+      error: dubbing.error,
+      transcriptionModels,
+      onFileChange: dubbing.setFile,
+      onSourceLanguageChange: dubbing.setSourceLanguage,
+      onTargetLanguageChange: dubbing.setTargetLanguage,
+      onVoiceChange: dubbing.setVoice,
+      onTranscriptionModelChange: dubbing.setTranscriptionModel,
+      onDub: () => void dubbing.dub(),
     },
     chat: {
       activeModel,
