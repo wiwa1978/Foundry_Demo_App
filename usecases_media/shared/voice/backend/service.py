@@ -15,7 +15,11 @@ from app.application.models import get_model_settings
 from app.core.concurrency import run_model_call
 from app.core.errors import ExternalServiceError
 from app.domain.identity import UserScope
-from app.infrastructure.azure.foundry.speech import synthesize_speech, transcribe_audio
+from app.infrastructure.azure.foundry.speech import (
+    assess_pronunciation,
+    synthesize_speech,
+    transcribe_audio,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +42,7 @@ class TraditionalVoiceService:
         conversation_id: str | None,
         reasoning_effort: str | None,
         use_case: str,
+        language: str = "en-US",
     ) -> dict[str, Any]:
         try:
             transcription = await run_model_call(
@@ -53,6 +58,22 @@ class TraditionalVoiceService:
         if not transcript:
             raise ExternalServiceError("Audio transcription")
 
+        pronunciation_assessment: dict[str, Any] | None = None
+        pronunciation_assessment_error: str | None = None
+        if use_case == "language_learning":
+            try:
+                pronunciation_assessment = await run_model_call(
+                    assess_pronunciation,
+                    audio=audio,
+                    reference_text=transcript,
+                    language=language,
+                )
+            except Exception as exc:
+                logger.exception("Pronunciation assessment failed", exc_info=exc)
+                pronunciation_assessment_error = (
+                    "Pronunciation assessment is unavailable for this turn."
+                )
+
         conversation = get_or_create_conversation(
             self.chat.conversations, scope, conversation_id, transcript, use_case
         )
@@ -66,6 +87,29 @@ class TraditionalVoiceService:
             role="user",
             content=transcript,
         )
+        system_prompt = model_settings.system_prompt
+        tutor_context = transcript
+        if use_case == "language_learning":
+            language_name = {
+                "de-DE": "German",
+                "en-GB": "English",
+                "en-US": "English",
+                "es-ES": "Spanish",
+                "fr-FR": "French",
+                "nl-NL": "Dutch",
+            }.get(language, language)
+            system_prompt = (
+                f"You are a patient, encouraging {language_name} language teacher. "
+                f"Reply in {language_name}. Correct important grammar and vocabulary errors briefly, "
+                "model a natural version of the learner's sentence, and end with one "
+                "short question or speaking exercise. Use the pronunciation assessment "
+                "provided in the learner context when giving actionable feedback.\n\n"
+                + system_prompt
+            )
+            tutor_context = (
+                f"{transcript}\n\nPronunciation assessment: "
+                f"{pronunciation_assessment or pronunciation_assessment_error or 'not available'}"
+            )
         variant_results = await asyncio.gather(
             *(
                 asyncio.to_thread(
@@ -73,8 +117,8 @@ class TraditionalVoiceService:
                     scope=scope,
                     conversation_id=conversation.id,
                     model_settings=model_settings,
-                    prompt=transcript,
-                    system_prompt=model_settings.system_prompt,
+                    prompt=tutor_context,
+                    system_prompt=system_prompt,
                     reasoning_effort=reasoning_effort,
                     history=histories[variant],
                     variant=variant,
@@ -100,6 +144,10 @@ class TraditionalVoiceService:
             ),
             "user_message": message_to_dict(user_message),
         }
+        if pronunciation_assessment is not None:
+            payload["pronunciation_assessment"] = pronunciation_assessment
+        if pronunciation_assessment_error is not None:
+            payload["pronunciation_assessment_error"] = pronunciation_assessment_error
         if len(results_with_speech) == 1:
             result = results_with_speech[0]
             payload.update(result)

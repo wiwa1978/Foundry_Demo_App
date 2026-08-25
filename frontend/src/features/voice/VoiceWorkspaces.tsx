@@ -75,8 +75,6 @@ export function TraditionalVoiceWorkspace({
   error,
   result,
   languageLearning = false,
-  language = "en-US",
-  onLanguageChange,
   avatar,
   onStart,
   onStop,
@@ -98,8 +96,6 @@ export function TraditionalVoiceWorkspace({
   error: string;
   result: TraditionalVoiceResult | null;
   languageLearning?: boolean;
-  language?: string;
-  onLanguageChange?: (language: string) => void;
   avatar?: WorkspaceTextToSpeechAvatarViewModel;
   onStart: () => void;
   onStop: () => void;
@@ -302,28 +298,6 @@ export function TraditionalVoiceWorkspace({
       <div className="border-t bg-slate-50 px-4 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
         <div className="palette-focus mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_4px_rgba(15,23,42,0.16)] dark:border-[#606066] dark:bg-[#2f2f33] dark:shadow-none">
           <div className="flex flex-wrap items-center gap-2">
-            {languageLearning ? (
-              <Label className="grid min-w-[170px] gap-1 text-xs text-slate-500 dark:text-slate-400">
-                Target language
-                <select
-                  value={language}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    onLanguageChange?.(value);
-                    avatar?.setLanguage(value);
-                  }}
-                  disabled={isRecording || isProcessing}
-                  className="h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
-                >
-                  <option value="en-US">English (United States)</option>
-                  <option value="en-GB">English (United Kingdom)</option>
-                  <option value="nl-NL">Dutch (Netherlands)</option>
-                  <option value="fr-FR">French (France)</option>
-                  <option value="de-DE">German (Germany)</option>
-                  <option value="es-ES">Spanish (Spain)</option>
-                </select>
-              </Label>
-            ) : null}
             <ComposerSelect
               id="voice-stt"
               ariaLabel="STT model"

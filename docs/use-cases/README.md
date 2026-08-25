@@ -14,6 +14,7 @@ Use this index to navigate from a customer demo to the code that implements it.
 | Side-by-side text chat | [Implementation map](../../usecases_media/text_chat_comparison/README.md) |
 | Browser voice | [Implementation map](../../usecases_media/browser_voice/README.md) |
 | STT -> Chat -> TTS | [Implementation map](../../usecases_media/stt_chat_tts/README.md) |
+| Text to Speech Avatar | [Implementation map](../../usecases_media/text_to_speech_avatar/README.md) |
 | Recorded transcription | [Implementation map](../../usecases_media/recorded_transcription/README.md) |
 | Transcription comparison | [Implementation map](../../usecases_media/transcription_comparison/README.md) |
 | Realtime transcription - WebRTC | [Implementation map](../../usecases_media/realtime_transcription_webrtc/README.md) |

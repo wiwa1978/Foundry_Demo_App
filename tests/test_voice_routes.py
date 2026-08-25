@@ -87,6 +87,37 @@ def test_realtime_translation_session_contract(monkeypatch):
     )
 
 
+def test_text_to_speech_avatar_submission_contract(monkeypatch):
+    monkeypatch.setenv("APP_AUTH_MODE", "disabled")
+    session = {
+        "id": "avatar-job",
+        "status": "NotStarted",
+    }
+    with patch(
+        "usecases_media.shared.voice.backend.router.submit_batch_avatar_synthesis",
+        return_value=session,
+    ) as create_session:
+        response = TestClient(create_app()).post(
+            "/api/text-to-speech-avatar",
+            json={"text": "Hello from Azure."},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == session
+    create_session.assert_called_once_with(
+        text="Hello from Azure.",
+        avatar_type="video",
+        character="lisa",
+        style="graceful-sitting",
+        voice="en-US-Ava:DragonHDLatestNeural",
+        custom_voice_endpoint_id="",
+        customized=False,
+        use_built_in_voice=False,
+        background_color="#FFFFFFFF",
+        background_image="",
+    )
+
+
 def test_realtime_translation_webrtc_operation_not_supported_is_actionable(monkeypatch):
     monkeypatch.setenv("APP_AUTH_MODE", "disabled")
     with patch(

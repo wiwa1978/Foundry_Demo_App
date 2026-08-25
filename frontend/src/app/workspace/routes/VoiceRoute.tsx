@@ -49,8 +49,6 @@ export function VoiceRoute({
       <TraditionalVoiceWorkspace
         configured={traditionalVoice.configured}
         languageLearning={route.useCase === "language_learning"}
-        language={traditionalVoice.language}
-        onLanguageChange={traditionalVoice.onLanguageChange}
         avatar={
           route.useCase === "language_learning" ? textToSpeechAvatar : undefined
         }

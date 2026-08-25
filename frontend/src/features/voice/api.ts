@@ -3,6 +3,7 @@ import type {
   FetchClient,
   RealtimeSessionResponse,
   RealtimeTranscriptionSessionResponse,
+  TextToSpeechAvatarJob,
   TraditionalVoiceResult,
   TranscriptionResult,
 } from "@/api/types";
@@ -12,6 +13,73 @@ import type { ReasoningEffort } from "@/features/textChat/types";
 export const traditionalVoiceEndpoint = "/api/voice/traditional";
 export const foundryTranscriptionPath = "/audio/transcriptions";
 export const foundrySpeechPath = "/audio/speech";
+
+export async function submitTextToSpeechAvatar(
+  fetchClient: FetchClient,
+  request: {
+    text: string;
+    avatar_type: "video" | "photo";
+    character: string;
+    style: string;
+    voice: string;
+    language: string;
+    custom_voice_endpoint_id: string;
+    customized: boolean;
+    use_built_in_voice: boolean;
+    background_color: string;
+    background_image: string;
+  },
+  signal?: AbortSignal,
+) {
+  const response = await fetchClient(
+    "/api/text-to-speech-avatar",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    },
+    {
+      label: "Submit Text to Speech Avatar job",
+      request,
+      responseKind: "json",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await readPublicApiError(
+        response,
+        "Failed to submit Text to Speech Avatar job.",
+      ),
+    );
+  }
+  return (await response.json()) as TextToSpeechAvatarJob;
+}
+
+export async function getTextToSpeechAvatarJob(
+  fetchClient: FetchClient,
+  jobId: string,
+  signal?: AbortSignal,
+) {
+  const response = await fetchClient(
+    `/api/text-to-speech-avatar/${encodeURIComponent(jobId)}`,
+    { method: "GET", signal },
+    {
+      label: "Get Text to Speech Avatar job",
+      request: { job_id: jobId },
+      responseKind: "json",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await readPublicApiError(
+        response,
+        "Failed to get Text to Speech Avatar job.",
+      ),
+    );
+  }
+  return (await response.json()) as TextToSpeechAvatarJob;
+}
 
 export async function createRealtimeSession(
   fetchClient: FetchClient,
@@ -146,6 +214,7 @@ export async function runTraditionalVoice(
     useCase: UseCaseId;
     conversationId: string | null;
     reasoningEffort: ReasoningEffort;
+    language?: string;
   },
 ) {
   const requestSummary = {
@@ -170,6 +239,7 @@ export async function runTraditionalVoice(
     form.append("conversation_id", request.conversationId);
   if (request.reasoningEffort !== "default")
     form.append("reasoning_effort", request.reasoningEffort);
+  if (request.language) form.append("language", request.language);
 
   const response = await fetchClient(
     traditionalVoiceEndpoint,

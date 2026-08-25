@@ -121,6 +121,7 @@ export function WorkspaceContentRouter(props: WorkspaceContentRouterProps) {
           azureSpeechTtsConfigured={props.azureSpeechTtsConfigured ?? false}
           foundryGptAudioConfigured={props.foundryGptAudioConfigured ?? false}
           textToSpeech={props.textToSpeech ?? defaultTextToSpeechSettings}
+          textToSpeechAvatar={props.textToSpeechAvatar}
           transcription={props.transcription}
           transcriptionComparison={props.transcriptionComparison}
           realtime={props.realtime}

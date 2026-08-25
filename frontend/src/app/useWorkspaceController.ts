@@ -480,6 +480,8 @@ export function useWorkspaceController() {
       ]);
     },
   });
+  const [languageLearningLanguage, setLanguageLearningLanguage] =
+    useState("en-US");
   const transcription = useTranscriptionSession({
     fetchClient: apiTrace.tracedFetch,
     model: transcriptionModel,
@@ -1152,11 +1154,17 @@ export function useWorkspaceController() {
         },
         transcriptionModel: traditionalTranscriptionModel,
         tts: { model: ttsModel, voice: ttsVoice },
+        language: languageLearningLanguage,
       },
       onChatModelChange: setActiveModel,
       onTranscriptionModelChange: setTraditionalTranscriptionModel,
       onTtsModelChange: setTtsModel,
       onTtsVoiceChange: setTtsVoice,
+      language: languageLearningLanguage,
+      onLanguageChange: (language: string) => {
+        setLanguageLearningLanguage(language);
+        textToSpeechAvatar.setLanguage(language);
+      },
       onStart: (request) => void traditionalVoice.start(request),
       onStop: traditionalVoice.stop,
     },

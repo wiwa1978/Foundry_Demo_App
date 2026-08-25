@@ -20,6 +20,8 @@ Voice and image implementations remain single-source under `shared/voice/backend
 | Text     | Content Extractor                           | [`content_extractor`](content_extractor/)                                        |
 | Audio    | Browser based voice                         | [`browser_voice`](browser_voice/README.md)                                       |
 | Audio    | STT -> Chat -> TTS                          | [`stt_chat_tts`](stt_chat_tts/README.md)                                         |
+| Audio    | Language Learning                           | [`language_learning`](language_learning/)                                       |
+| Video    | Text to Speech Avatar                       | [`text_to_speech_avatar`](text_to_speech_avatar/README.md)                       |
 | Audio    | Recorded Audio Transcription                | [`recorded_transcription`](recorded_transcription/README.md)                     |
 | Audio    | Side by Side - Recorded Audio Transcription | [`transcription_comparison`](transcription_comparison/README.md)                 |
 | Audio    | Realtime transcription - WebRTC             | [`realtime_transcription_webrtc`](realtime_transcription_webrtc/README.md)       |

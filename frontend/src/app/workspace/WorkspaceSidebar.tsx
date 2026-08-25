@@ -172,6 +172,8 @@ export type WorkspaceSidebarGuardrailsViewModel = {
 
 export type WorkspaceSidebarVoiceViewModel = {
   status: TraditionalVoiceStatus;
+  languageLearning?: boolean;
+  language?: string;
   traditionalTranscriptionModels: string[];
   traditionalTranscriptionModel: string;
   ttsModels: string[];
@@ -188,6 +190,7 @@ export type WorkspaceSidebarVoiceViewModel = {
   foundryGptAudioModel?: string;
   foundryGptAudioVoice?: string;
   onTraditionalTranscriptionModelChange: (model: string) => void;
+  onLanguageChange?: (language: string) => void;
   onTtsModelChange: (model: string) => void;
   onTtsVoiceChange: (voice: string) => void;
   onAzureSpeechModelChange?: (model: string) => void;
@@ -578,6 +581,32 @@ export function WorkspaceSidebar({
           </div>
         ) : workspace.workspace === "traditionalVoice" ? (
           <div className="grid gap-4">
+            {voice.languageLearning ? (
+              <div className="grid gap-2">
+                <Label
+                  htmlFor="language-learning-target-language"
+                  className="palette-heading"
+                >
+                  Target language
+                </Label>
+                <select
+                  id="language-learning-target-language"
+                  value={voice.language ?? "en-US"}
+                  onChange={(event) =>
+                    voice.onLanguageChange?.(event.target.value)
+                  }
+                  disabled={pipelineDisabled}
+                  className="h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+                >
+                  <option value="en-US">English (United States)</option>
+                  <option value="en-GB">English (United Kingdom)</option>
+                  <option value="nl-NL">Dutch (Netherlands)</option>
+                  <option value="fr-FR">French (France)</option>
+                  <option value="de-DE">German (Germany)</option>
+                  <option value="es-ES">Spanish (Spain)</option>
+                </select>
+              </div>
+            ) : null}
             <SidebarPipelineSelect
               label="STT model"
               value={voice.traditionalTranscriptionModel}

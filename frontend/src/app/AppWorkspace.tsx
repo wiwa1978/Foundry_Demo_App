@@ -287,6 +287,10 @@ export default function AppWorkspace() {
             }}
             voice={{
               status: traditionalVoice.status,
+              languageLearning: activeUseCase === "language_learning",
+              language: contentRouterProps.traditionalVoice.language,
+              onLanguageChange:
+                contentRouterProps.traditionalVoice.onLanguageChange,
               traditionalTranscriptionModels,
               traditionalTranscriptionModel,
               ttsModels,

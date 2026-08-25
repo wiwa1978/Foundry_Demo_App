@@ -239,6 +239,9 @@ export type WorkspaceTraditionalVoiceViewModel = {
   error: string;
   result: TraditionalVoiceResult | null;
   request: TraditionalVoiceRequest;
+  language?: string;
+  onLanguageChange?: (language: string) => void;
+  avatar?: WorkspaceTextToSpeechAvatarViewModel;
   onChatModelChange: (model: string) => void;
   onTranscriptionModelChange: (model: string) => void;
   onTtsModelChange: (model: string) => void;

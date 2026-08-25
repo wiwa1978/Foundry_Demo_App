@@ -30,6 +30,7 @@ export type TraditionalVoiceRequest = {
   conversationId: string | null;
   useCase: UseCaseId;
   reasoningEffort: ReasoningEffort;
+  language?: string;
   guardrails: {
     comparisonEnabled: boolean;
     policies: readonly string[];
@@ -220,6 +221,7 @@ export function useTraditionalVoiceSession({
           useCase: request.useCase,
           conversationId: request.conversationId,
           reasoningEffort: request.reasoningEffort,
+          language: request.language,
         },
       );
       if (!isCurrent(generation, session)) return null;

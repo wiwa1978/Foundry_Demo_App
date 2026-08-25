@@ -21,6 +21,8 @@ from app.infrastructure.azure.foundry.realtime import (
 )
 from app.infrastructure.azure.foundry.settings import load_settings
 from app.infrastructure.azure.foundry.speech import (
+    get_batch_avatar_synthesis,
+    submit_batch_avatar_synthesis,
     synthesize_azure_speech,
     synthesize_speech,
     transcribe_audio,
@@ -29,9 +31,11 @@ from app.infrastructure.azure.foundry.speech import (
 from usecases_media.shared.voice.backend.schemas import (
     RealtimeSessionResponse,
     RealtimeTranscriptionSessionResponse,
-    TraditionalVoiceResponse,
+    TextToSpeechAvatarJobResponse,
+    TextToSpeechAvatarRequest,
     TextToSpeechRequest,
     TextToSpeechResponse,
+    TraditionalVoiceResponse,
     TranscriptionResponse,
 )
 from usecases_media.shared.voice.backend.service import TraditionalVoiceService
@@ -86,6 +90,44 @@ async def text_to_speech(request: TextToSpeechRequest) -> dict:
     except Exception as exc:
         logger.exception("azure_speech_synthesis_failed")
         raise ExternalServiceError("Azure Speech synthesis") from exc
+
+
+@router.post(
+    "/api/text-to-speech-avatar",
+    response_model=TextToSpeechAvatarJobResponse,
+    response_model_exclude_unset=True,
+)
+async def submit_text_to_speech_avatar(request: TextToSpeechAvatarRequest) -> dict:
+    try:
+        return await run_model_call(
+            submit_batch_avatar_synthesis,
+            text=request.text,
+            avatar_type=request.avatar_type,
+            character=request.character,
+            style=request.style,
+            voice=request.voice,
+            custom_voice_endpoint_id=request.custom_voice_endpoint_id,
+            customized=request.customized,
+            use_built_in_voice=request.use_built_in_voice,
+            background_color=request.background_color,
+            background_image=request.background_image,
+        )
+    except Exception as exc:
+        logger.exception("text_to_speech_avatar_submission_failed")
+        raise ExternalServiceError("Text to Speech Avatar submission") from exc
+
+
+@router.get(
+    "/api/text-to-speech-avatar/{job_id}",
+    response_model=TextToSpeechAvatarJobResponse,
+    response_model_exclude_unset=True,
+)
+async def get_text_to_speech_avatar(job_id: str) -> dict:
+    try:
+        return await run_model_call(get_batch_avatar_synthesis, job_id=job_id)
+    except Exception as exc:
+        logger.exception("text_to_speech_avatar_status_failed")
+        raise ExternalServiceError("Text to Speech Avatar status") from exc
 
 
 def get_traditional_voice_service(request: Request) -> TraditionalVoiceService:
@@ -226,6 +268,7 @@ async def post_traditional_voice(
     tts_voice: str | None = Form(None),
     conversation_id: str | None = Form(None),
     reasoning_effort: str | None = Form(None),
+    language: str = Form("en-US"),
     use_case: str = Form("traditional_voice"),
 ) -> dict:
     model = model.strip()
@@ -253,6 +296,7 @@ async def post_traditional_voice(
         conversation_id=conversation_id,
         reasoning_effort=normalized_reasoning_effort,
         use_case=use_case,
+        language=language.strip() or "en-US",
     )
 
 

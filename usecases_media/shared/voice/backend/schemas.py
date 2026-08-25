@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 from app.api.features.conversations.schemas import (
@@ -71,6 +73,28 @@ class TextToSpeechResponse(BaseModel):
     speech_request: dict[str, str | int]
 
 
+class TextToSpeechAvatarRequest(BaseModel):
+    text: str
+    avatar_type: Literal["video", "photo"] = "video"
+    character: str = "lisa"
+    style: str = "graceful-sitting"
+    voice: str = "en-US-Ava:DragonHDLatestNeural"
+    language: str = "en-US"
+    custom_voice_endpoint_id: str = ""
+    customized: bool = False
+    use_built_in_voice: bool = False
+    background_color: str = "#FFFFFFFF"
+    background_image: str = ""
+
+
+class TextToSpeechAvatarJobResponse(BaseModel):
+    id: str
+    status: str
+    output_url: str | None = None
+    summary_url: str | None = None
+    error: str | None = None
+
+
 class TraditionalVoiceVariantResponse(ModelResultResponse):
     speech: SpeechResponse | None = None
     speech_error: str | None = None
@@ -105,6 +129,8 @@ class TraditionalVoiceResponse(BaseModel):
     assistant_message: MessageResponse | None = None
     foundry_request: ProviderTrace | None = None
     foundry_response: ProviderTrace | None = None
+    pronunciation_assessment: dict[str, str | float | None] | None = None
+    pronunciation_assessment_error: str | None = None
     chat: TraditionalVoiceChatResponse | None = None
     speech: SpeechResponse | None = None
     speech_error: str | None = None

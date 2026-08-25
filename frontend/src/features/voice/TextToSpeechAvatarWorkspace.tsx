@@ -3,10 +3,15 @@ import {
   Loader2,
   Play,
   Settings2,
+  Sparkles,
   Square,
   Video,
 } from "lucide-react";
 
+import {
+  PromptExamples,
+  type PromptExample,
+} from "@/components/PromptExamples";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -25,6 +30,73 @@ const statusLabels: Record<TextToSpeechAvatarStatus, string> = {
 };
 const controlClass =
   "h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-violet-500 dark:border-[#606066] dark:bg-[#29292c]";
+
+const avatarPromptGallery: readonly PromptExample[] = [
+  {
+    id: "product-announcement",
+    title: "Product announcement",
+    prompt:
+      "We're excited to announce the general availability of our new Azure AI Foundry avatar experience. Get natural, on-brand video content in minutes, without a studio.",
+    description: "Marketing-style launch narration.",
+    badges: ["Marketing", "en-US"],
+  },
+  {
+    id: "corporate-welcome",
+    title: "Corporate welcome",
+    prompt:
+      "Welcome to Contoso. In this short introduction, I'll walk you through our mission, our values, and what you can expect during your first week on the team.",
+    description: "Onboarding welcome for new employees.",
+    badges: ["Onboarding", "en-US"],
+  },
+  {
+    id: "training-microlearning",
+    title: "Training micro-lesson",
+    prompt:
+      "In today's micro-lesson, we'll cover the three most important best practices for writing clear, effective prompts for large language models. Let's get started.",
+    description: "Short educational segment.",
+    badges: ["Training", "en-US"],
+  },
+  {
+    id: "customer-support",
+    title: "Customer support update",
+    prompt:
+      "Thank you for reaching out. We've reviewed your request and I want to walk you through the next steps and expected timeline so you know exactly what to expect.",
+    description: "Empathetic customer support message.",
+    badges: ["Support", "en-US"],
+  },
+  {
+    id: "healthcare-reminder",
+    title: "Healthcare reminder",
+    prompt:
+      "This is a friendly reminder about your upcoming appointment. Please arrive fifteen minutes early and bring a photo ID and your insurance card.",
+    description: "Patient reminder narration.",
+    badges: ["Healthcare", "en-US"],
+  },
+  {
+    id: "retail-promotion",
+    title: "Retail promotion",
+    prompt:
+      "For a limited time, enjoy twenty percent off our entire spring collection. Visit any of our stores or shop online today and discover the perfect look for the season.",
+    description: "Promotional retail message.",
+    badges: ["Retail", "en-US"],
+  },
+  {
+    id: "multilingual-greeting",
+    title: "Multilingual greeting",
+    prompt:
+      "Hello and welcome. Bonjour et bienvenue. Hola y bienvenido. Hallo und willkommen. Whichever language you prefer, we're here to help.",
+    description: "Short multi-language greeting.",
+    badges: ["Multilingual"],
+  },
+  {
+    id: "conference-intro",
+    title: "Conference introduction",
+    prompt:
+      "Good morning everyone and welcome to this year's AI Foundry Summit. Over the next two days, you'll hear from experts, customers, and partners about what's next in generative AI.",
+    description: "Event or keynote introduction.",
+    badges: ["Events", "en-US"],
+  },
+];
 
 export function TextToSpeechAvatarWorkspace({
   configured,
@@ -63,6 +135,14 @@ export function TextToSpeechAvatarWorkspace({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-slate-100/70 dark:bg-[#303033]">
+      <PromptExamples
+        title="Avatar script gallery"
+        description="Choose an example script to load it into the composer."
+        icon={<Sparkles className="h-4 w-4" />}
+        examples={avatarPromptGallery}
+        value={text}
+        onSelect={setText}
+      />
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
         <div className="mx-auto grid max-w-6xl gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)]">
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-[#606066] dark:bg-[#39393d]">

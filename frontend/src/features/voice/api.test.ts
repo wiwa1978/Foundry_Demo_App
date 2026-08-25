@@ -4,13 +4,52 @@ import {
   createRealtimeSession,
   createRealtimeTranscriptionSession,
   createRealtimeTranslationSession,
+  getTextToSpeechAvatarJob,
   liveInterpreterUrl,
   realtimeTranscriptionWebSocketUrl,
   realtimeTranslationWebSocketUrl,
+  submitTextToSpeechAvatar,
   voiceLiveUrl,
 } from "./api";
 
 describe("Voice API", () => {
+  it("submits and polls a Text to Speech Avatar batch job", async () => {
+    const fetchClient = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+    await submitTextToSpeechAvatar(fetchClient, {
+      text: "Hello",
+      avatar_type: "video",
+      character: "lisa",
+      style: "graceful-sitting",
+      voice: "en-US-Ava:DragonHDLatestNeural",
+      language: "en-US",
+      custom_voice_endpoint_id: "",
+      customized: false,
+      use_built_in_voice: false,
+      background_color: "#FFFFFFFF",
+      background_image: "",
+    });
+    await getTextToSpeechAvatarJob(fetchClient, "avatar-job");
+
+    expect(fetchClient).toHaveBeenCalledWith(
+      "/api/text-to-speech-avatar",
+      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        label: "Submit Text to Speech Avatar job",
+      }),
+    );
+    expect(fetchClient).toHaveBeenCalledWith(
+      "/api/text-to-speech-avatar/avatar-job",
+      expect.objectContaining({ method: "GET" }),
+      expect.objectContaining({
+        label: "Get Text to Speech Avatar job",
+      }),
+    );
+  });
+
   it("creates a realtime session through the canonical endpoint", async () => {
     const fetchClient = vi
       .fn()

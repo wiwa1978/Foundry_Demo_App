@@ -1,14 +1,19 @@
 import base64
 import html
+import json
 import os
 import tempfile
 import threading
 import time
+import uuid
 from io import BytesIO
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlparse
 
 from app.infrastructure.azure.credentials import get_azure_credential
 from app.infrastructure.azure.foundry.clients import create_audio_client
+from app.infrastructure.azure.foundry.http import build_checked_request, open_checked_url
 from app.infrastructure.azure.foundry.settings import load_settings
 
 
@@ -145,6 +150,76 @@ def transcribe_speech_audio(
     }
 
 
+def assess_pronunciation(
+    *,
+    audio: bytes,
+    reference_text: str,
+    language: str = "en-US",
+) -> dict[str, Any]:
+    settings = load_settings()
+    if not settings.is_speech_transcription_configured:
+        raise RuntimeError(
+            "Azure Speech pronunciation assessment is not configured. "
+            "Set AZURE_SPEECH_ENDPOINT."
+        )
+    if not audio:
+        raise RuntimeError("Recorded audio was empty.")
+    if not reference_text.strip():
+        raise RuntimeError("Pronunciation assessment requires recognized speech.")
+
+    import azure.cognitiveservices.speech as speechsdk
+
+    speech_config = (
+        speechsdk.SpeechConfig(
+            subscription=settings.speech_key,
+            endpoint=settings.speech_endpoint,
+        )
+        if settings.speech_key
+        else speechsdk.SpeechConfig(
+            token_credential=get_azure_credential(),
+            endpoint=settings.speech_endpoint,
+        )
+    )
+    speech_config.speech_recognition_language = language
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as audio_file:
+        audio_file.write(audio)
+        audio_path = audio_file.name
+
+    try:
+        audio_config = speechsdk.audio.AudioConfig(filename=audio_path)
+        recognizer = speechsdk.SpeechRecognizer(
+            speech_config=speech_config,
+            audio_config=audio_config,
+        )
+        assessment_config = speechsdk.PronunciationAssessmentConfig(
+            reference_text=reference_text.strip(),
+            grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
+            granularity=speechsdk.PronunciationAssessmentGranularity.Phoneme,
+            enable_miscue=True,
+        )
+        assessment_config.enable_prosody_assessment = True
+        assessment_config.apply_to(recognizer)
+        result = recognizer.recognize_once_async().get()
+    finally:
+        try:
+            os.unlink(audio_path)
+        except OSError:
+            pass
+
+    if result.reason != speechsdk.ResultReason.RecognizedSpeech:
+        details = getattr(result, "error_details", None) or "Pronunciation assessment failed."
+        raise RuntimeError(details)
+    scores = result.pronunciation_assessment_result
+    return {
+        "accuracy_score": getattr(scores, "accuracy_score", None),
+        "fluency_score": getattr(scores, "fluency_score", None),
+        "completeness_score": getattr(scores, "completeness_score", None),
+        "pronunciation_score": getattr(scores, "pronunciation_score", None),
+        "prosody_score": getattr(scores, "prosody_score", None),
+        "language": language,
+    }
+
+
 def synthesize_azure_speech(
     *,
     text: str,
@@ -227,6 +302,282 @@ def synthesize_azure_speech(
             "text_characters": len(text),
         },
     }
+
+
+def _speech_resource_origin(endpoint: str) -> str:
+    normalized = endpoint.strip().rstrip("/")
+    parsed = urlparse(normalized)
+    if parsed.scheme.lower() != "https" or not parsed.netloc:
+        raise RuntimeError(
+            "Azure Speech endpoint must be an absolute HTTPS URL, such as "
+            "https://<resource>.cognitiveservices.azure.com."
+        )
+    return f"https://{parsed.netloc}"
+
+
+def _speech_avatar_token(settings: Any, origin: str) -> str:
+    if settings.speech_key:
+        request = build_checked_request(
+            f"{origin}/sts/v1.0/issueToken",
+            headers={"Ocp-Apim-Subscription-Key": settings.speech_key},
+            method="POST",
+        )
+        try:
+            with open_checked_url(request, timeout=30) as response:
+                token = response.read().decode("utf-8").strip()
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"Azure Speech token request failed with {exc.code}: {detail}"
+            ) from exc
+        except URLError as exc:
+            raise RuntimeError(
+                f"Azure Speech token request failed: {exc.reason}"
+            ) from exc
+    else:
+        token = get_azure_credential().get_token(
+            "https://cognitiveservices.azure.com/.default"
+        ).token
+
+    if not token:
+        raise RuntimeError("Azure Speech did not return an authorization token.")
+    return token
+
+
+def _speech_avatar_ice_servers(settings: Any, origin: str, token: str) -> list[dict[str, Any]]:
+    headers = (
+        {"Ocp-Apim-Subscription-Key": settings.speech_key}
+        if settings.speech_key
+        else {"Authorization": f"Bearer {token}"}
+    )
+    request = build_checked_request(
+        f"{origin}/tts/cognitiveservices/avatar/relay/token/v1",
+        headers=headers,
+    )
+    try:
+        with open_checked_url(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Azure Speech avatar relay request failed with {exc.code}: {detail}"
+        ) from exc
+    except URLError as exc:
+        raise RuntimeError(
+            f"Azure Speech avatar relay request failed: {exc.reason}"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Azure Speech avatar relay returned invalid JSON.") from exc
+
+    urls = payload.get("Urls") or payload.get("urls")
+    if isinstance(urls, str):
+        urls = [urls]
+    username = payload.get("Username") or payload.get("username")
+    password = payload.get("Password") or payload.get("password")
+    if (
+        not isinstance(urls, list)
+        or not urls
+        or not all(isinstance(url, str) and url for url in urls)
+        or not isinstance(username, str)
+        or not username
+        or not isinstance(password, str)
+        or not password
+    ):
+        raise RuntimeError("Azure Speech avatar relay returned incomplete ICE server data.")
+
+    return [{"urls": urls, "username": username, "credential": password}]
+
+
+def create_text_to_speech_avatar_session() -> dict[str, Any]:
+    settings = load_settings()
+    if not settings.speech_endpoint:
+        raise RuntimeError(
+            "Text to Speech Avatar is not configured. Set AZURE_SPEECH_ENDPOINT."
+        )
+
+    origin = _speech_resource_origin(settings.speech_endpoint)
+    token = _speech_avatar_token(settings, origin)
+    return {
+        "authorization_token": token,
+        "websocket_endpoint": (
+            f"wss://{urlparse(origin).netloc}"
+            "/tts/cognitiveservices/websocket/v1?enableTalkingAvatar=true"
+        ),
+        "ice_servers": _speech_avatar_ice_servers(settings, origin, token),
+        "expires_in": 600,
+    }
+
+
+def _speech_auth_headers(settings: Any) -> dict[str, str]:
+    if settings.speech_key:
+        return {"Ocp-Apim-Subscription-Key": settings.speech_key}
+    token = get_azure_credential().get_token(
+        "https://cognitiveservices.azure.com/.default"
+    ).token
+    if not token:
+        raise RuntimeError("Azure Speech did not return an authorization token.")
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _batch_avatar_url(origin: str, job_id: str) -> str:
+    return (
+        f"{origin}/avatar/batchsyntheses/{quote(job_id, safe='')}"
+        "?api-version=2024-08-01"
+    )
+
+
+def _normalize_batch_avatar_job(
+    payload: dict[str, Any], fallback_id: str
+) -> dict[str, Any]:
+    outputs = payload.get("outputs")
+    if not isinstance(outputs, dict):
+        outputs = {}
+    properties = payload.get("properties")
+    if not isinstance(properties, dict):
+        properties = {}
+    status = str(payload.get("status") or "Unknown")
+    error = properties.get("error") or payload.get("error")
+    return {
+        "id": str(payload.get("id") or fallback_id),
+        "status": status,
+        "output_url": outputs.get("result")
+        if isinstance(outputs.get("result"), str)
+        else None,
+        "summary_url": outputs.get("summary")
+        if isinstance(outputs.get("summary"), str)
+        else None,
+        "error": str(error) if error else None,
+    }
+
+
+def submit_batch_avatar_synthesis(
+    *,
+    text: str,
+    avatar_type: str = "video",
+    character: str = "lisa",
+    style: str = "graceful-sitting",
+    voice: str = "en-US-Ava:DragonHDLatestNeural",
+    custom_voice_endpoint_id: str = "",
+    customized: bool = False,
+    use_built_in_voice: bool = False,
+    background_color: str = "#FFFFFFFF",
+    background_image: str = "",
+) -> dict[str, Any]:
+    settings = load_settings()
+    if not settings.speech_endpoint:
+        raise RuntimeError(
+            "Text to Speech Avatar is not configured. Set AZURE_SPEECH_ENDPOINT."
+        )
+    cleaned_text = text.strip()
+    if not cleaned_text:
+        raise RuntimeError("Cannot synthesize an empty avatar script.")
+    if len(cleaned_text.encode("utf-8")) > 500 * 1024:
+        raise RuntimeError("The avatar script cannot exceed 500 KB.")
+    if avatar_type not in {"video", "photo"}:
+        raise RuntimeError("Avatar type must be video or photo.")
+    if background_image:
+        parsed_background = urlparse(background_image)
+        if parsed_background.scheme.lower() != "https" or not parsed_background.netloc:
+            raise RuntimeError("Avatar background image must be an HTTPS URL.")
+
+    selected_voice = voice.strip()
+    if not selected_voice:
+        raise RuntimeError("A Speech voice is required.")
+    avatar_config: dict[str, Any] = {
+        "videoFormat": "mp4",
+        "videoCodec": "h264",
+        "subtitleType": "soft_embedded",
+        "customized": customized,
+        "useBuiltInVoice": customized and use_built_in_voice,
+    }
+    if avatar_type == "photo":
+        avatar_config.update(
+            {
+                "photoAvatarBaseModel": "vasa-1",
+                "talkingAvatarCharacter": character.strip() or "anika",
+            }
+        )
+    else:
+        avatar_config.update(
+            {
+                "talkingAvatarCharacter": character.strip() or "lisa",
+                "talkingAvatarStyle": style.strip() or "graceful-sitting",
+            }
+        )
+    if background_image.strip():
+        avatar_config["backgroundImage"] = background_image.strip()
+    else:
+        avatar_config["backgroundColor"] = background_color.strip() or "#FFFFFFFF"
+
+    payload: dict[str, Any] = {
+        "synthesisConfig": {"voice": selected_voice},
+        "inputKind": "PlainText",
+        "inputs": [{"content": cleaned_text}],
+        "avatarConfig": avatar_config,
+    }
+    custom_id = custom_voice_endpoint_id.strip()
+    if custom_id:
+        payload["customVoices"] = {selected_voice: custom_id}
+
+    job_id = f"avatar-{uuid.uuid4().hex}"
+    request = build_checked_request(
+        _batch_avatar_url(_speech_resource_origin(settings.speech_endpoint), job_id),
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", **_speech_auth_headers(settings)},
+        method="PUT",
+    )
+    try:
+        with open_checked_url(request, timeout=30) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Azure Speech batch avatar submission failed with {exc.code}: {detail}"
+        ) from exc
+    except URLError as exc:
+        raise RuntimeError(
+            f"Azure Speech batch avatar submission failed: {exc.reason}"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Azure Speech batch avatar returned invalid JSON.") from exc
+    if not isinstance(result, dict):
+        raise RuntimeError("Azure Speech batch avatar returned an invalid job.")
+    return _normalize_batch_avatar_job(result, job_id)
+
+
+def get_batch_avatar_synthesis(job_id: str) -> dict[str, Any]:
+    settings = load_settings()
+    if not settings.speech_endpoint:
+        raise RuntimeError(
+            "Text to Speech Avatar is not configured. Set AZURE_SPEECH_ENDPOINT."
+        )
+    if (
+        len(job_id) < 3
+        or len(job_id) > 64
+        or not all(character.isalnum() or character in "-_" for character in job_id)
+    ):
+        raise RuntimeError("Invalid avatar synthesis job ID.")
+    request = build_checked_request(
+        _batch_avatar_url(_speech_resource_origin(settings.speech_endpoint), job_id),
+        headers=_speech_auth_headers(settings),
+    )
+    try:
+        with open_checked_url(request, timeout=30) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Azure Speech batch avatar status request failed with {exc.code}: {detail}"
+        ) from exc
+    except URLError as exc:
+        raise RuntimeError(
+            f"Azure Speech batch avatar status request failed: {exc.reason}"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Azure Speech batch avatar returned invalid JSON.") from exc
+    if not isinstance(result, dict):
+        raise RuntimeError("Azure Speech batch avatar returned an invalid job.")
+    return _normalize_batch_avatar_job(result, job_id)
 
 
 def synthesize_speech(
