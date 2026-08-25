@@ -57,6 +57,7 @@ import type {
   ContentExtractorMode,
   ContentExtractorSample,
 } from "@/features/contentExtractor/types";
+import type { HostedAgentVariant } from "@/features/hostedAgent/types";
 import type { ImageSample } from "@/features/images/api";
 import {
   azureSpeechEmotions,
@@ -66,7 +67,6 @@ import {
   gptAudioVoices,
 } from "@/features/voice/AzureSpeechTtsWorkspace";
 import { SidebarPipelineSelect } from "@/features/voice/VoiceWorkspaces";
-import type { HostedAgentVariant } from "@/features/hostedAgent/types";
 import { cn } from "@/lib/utils";
 
 export type WorkspaceSidebarWorkspaceViewModel = {

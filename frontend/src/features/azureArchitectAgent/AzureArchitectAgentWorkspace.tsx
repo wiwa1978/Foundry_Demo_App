@@ -5,13 +5,13 @@ import {
   ThinkingIndicator,
   UseCaseComposer,
 } from "@/app/workspace/WorkspacePrimitives";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import {
   PromptExamples,
   type PromptExample,
 } from "@/components/PromptExamples";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import type {
