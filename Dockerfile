@@ -16,6 +16,7 @@ ENV PORT=8000
 WORKDIR /app
 
 RUN apt-get update \
+    && apt-get upgrade --yes \
     && apt-get install --yes --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home appuser
