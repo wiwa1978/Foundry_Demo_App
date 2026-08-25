@@ -70,6 +70,7 @@ export function TraditionalVoiceWorkspace({
   status,
   error,
   result,
+  languageLearning = false,
   onStart,
   onStop,
 }: {
@@ -89,6 +90,7 @@ export function TraditionalVoiceWorkspace({
   status: TraditionalVoiceStatus;
   error: string;
   result: TraditionalVoiceResult | null;
+  languageLearning?: boolean;
   onStart: () => void;
   onStop: () => void;
 }) {
@@ -138,13 +140,18 @@ export function TraditionalVoiceWorkspace({
             <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-[#606066] dark:bg-[#39393d]">
               <DictationHero active={isRecording || isProcessing} />
               <h3 className="mt-4 text-2xl font-semibold tracking-tight">
-                Start a voice conversation
+                {languageLearning
+                  ? "Practice with your AI language tutor"
+                  : "Start a voice conversation"}
               </h3>
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-                Record a prompt, transcribe it with{" "}
-                {formatModelName(transcriptionModel)}, ask{" "}
-                {formatModelName(activeModel)}, and hear the answer in the{" "}
-                {formatModelName(ttsVoice)} voice.
+                {languageLearning
+                  ? "Speak naturally and receive pronunciation, fluency, grammar, and vocabulary feedback."
+                  : `Record a prompt, transcribe it with ${formatModelName(
+                      transcriptionModel,
+                    )}, ask ${formatModelName(activeModel)}, and hear the answer in the ${formatModelName(
+                      ttsVoice,
+                    )} voice.`}
               </p>
             </div>
           </div>
@@ -156,6 +163,48 @@ export function TraditionalVoiceWorkspace({
                 content: result.transcription.text,
               }}
             />
+            {languageLearning && result.pronunciation_assessment ? (
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900 dark:bg-indigo-950/40">
+                <h3 className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
+                  Pronunciation feedback
+                </h3>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-5">
+                  {[
+                    [
+                      "Overall",
+                      result.pronunciation_assessment.pronunciation_score,
+                    ],
+                    [
+                      "Accuracy",
+                      result.pronunciation_assessment.accuracy_score,
+                    ],
+                    ["Fluency", result.pronunciation_assessment.fluency_score],
+                    [
+                      "Completeness",
+                      result.pronunciation_assessment.completeness_score,
+                    ],
+                    ["Prosody", result.pronunciation_assessment.prosody_score],
+                  ].map(([label, score]) => (
+                    <div
+                      key={label}
+                      className="rounded-lg bg-white/70 p-2 dark:bg-slate-900/40"
+                    >
+                      <div className="text-xs text-indigo-700 dark:text-indigo-300">
+                        {label}
+                      </div>
+                      <div className="font-semibold text-indigo-950 dark:text-indigo-50">
+                        {typeof score === "number" ? score.toFixed(0) : "—"}/100
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {languageLearning && result.pronunciation_assessment_error ? (
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {result.pronunciation_assessment_error}
+              </p>
+            ) : null}
             {result.results.map((variant) => {
               const audioUrl = variant.speech
                 ? `data:${variant.speech.audio_mime_type};base64,${variant.speech.audio_base64}`
@@ -1376,6 +1425,7 @@ export function VoiceLiveHero({
                 </Badge>
               </div>
               <div className="relative flex aspect-[9/12] min-h-80 items-center justify-center bg-gradient-to-br from-slate-950 via-violet-950 to-slate-900">
+                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                 <video
                   ref={avatar.videoRef}
                   aria-label="Voice Live avatar video"
@@ -1383,6 +1433,7 @@ export function VoiceLiveHero({
                   className="h-full w-full object-cover"
                   playsInline
                 />
+                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                 <audio
                   ref={avatar.audioRef}
                   aria-label="Voice Live avatar audio"

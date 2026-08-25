@@ -8,9 +8,9 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { PromptExamples } from "@/components/PromptExamples";
 import { formatModelName } from "@/app/workspace/formatters";
+import { PromptExamples } from "@/components/PromptExamples";
+import { Button } from "@/components/ui/button";
 
 export const azureSpeechVoiceNames = [
   { value: "Ava", label: "Ava", gender: "Female" },
