@@ -1,7 +1,7 @@
 azure-cognitiveservices-speech>=1.50.0
 azure-cosmos>=4.9.0
 azure-identity>=1.25.0
-azure-mgmt-cognitiveservices>=13.7.0
+azure-mgmt-cognitiveservices>=14.1.0
 azure-monitor-query>=2.0.0
 azure-search-documents>=11.6.0
 azure-storage-blob>=12.27.0
