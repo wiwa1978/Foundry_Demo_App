@@ -5,6 +5,7 @@ import { LogIn } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AdminDashboardPage } from "@/features/admin/AdminDashboardPage";
+import { VideoTranslationWorkspace } from "@/features/videoTranslation/VideoTranslationWorkspace";
 
 import { AgentRoute } from "./routes/AgentRoute";
 import { ChatRoute } from "./routes/ChatRoute";
@@ -98,6 +99,11 @@ export function WorkspaceContentRouter(props: WorkspaceContentRouterProps) {
   }
   if (route.workspace === "contentExtractor") {
     return <ContentExtractorWorkspace {...props.contentExtractor} />;
+  }
+  if (route.workspace === "videoTranslation") {
+    return props.videoTranslation ? (
+      <VideoTranslationWorkspace {...props.videoTranslation} />
+    ) : null;
   }
 
   switch (route.renderer) {

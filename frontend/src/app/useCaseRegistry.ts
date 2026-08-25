@@ -23,6 +23,7 @@ import { textToImageUseCase } from "@media/text_to_image/module";
 import { textToSpeechAvatarUseCase } from "@media/text_to_speech_avatar/module";
 import { textTranslationUseCase } from "@media/text_translation/module";
 import { transcriptionComparisonUseCase } from "@media/transcription_comparison/module";
+import { videoTranslationUseCase } from "@media/video_translation/module";
 import { voiceLiveUseCase } from "@media/voice_live/module";
 import { youtubeRealtimeTranscriptionUseCase } from "@media/youtube_realtime_transcription/module";
 import { youtubeSummaryUseCase } from "@media/youtube_summary/module";
@@ -65,6 +66,7 @@ const rendererByWorkspace = {
   transcriptionComparison: "voice",
   youtubeSummary: "chat",
   youtubeRealtimeTranscription: "chat",
+  videoTranslation: "chat",
 } as const satisfies Record<UseCaseWorkspace, WorkspaceRenderer>;
 
 const definitions = [
@@ -84,6 +86,7 @@ const definitions = [
   imageToImageUseCase,
   youtubeSummaryUseCase,
   youtubeRealtimeTranscriptionUseCase,
+  videoTranslationUseCase,
   browserVoiceUseCase,
   traditionalVoiceUseCase,
   languageLearningUseCase,

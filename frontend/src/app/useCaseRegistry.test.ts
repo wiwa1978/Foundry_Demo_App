@@ -116,6 +116,12 @@ describe("useCaseModules", () => {
         typeLabel: "Realtime Transcription",
       },
       {
+        id: "video_translation",
+        title: "Video translation",
+        badge: "Video",
+        typeLabel: "Translation + dubbing",
+      },
+      {
         id: "browser_voice",
         title: "Browser based Voice",
         badge: "Audio",

@@ -85,6 +85,7 @@ def create_app() -> FastAPI:
         router as youtube_realtime_transcription_router,
     )
     from usecases_media.youtube_summary.backend.router import router as youtube_summary_router
+    from usecases_media.video_translation.backend.router import router as video_translation_router
 
     application = FastAPI(title="Foundry Chat App", lifespan=lifespan)
     application.state.services = build_application_services()
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
     application.include_router(document_qa_router)
     application.include_router(voice_router)
     application.include_router(youtube_summary_router)
+    application.include_router(video_translation_router)
     application.include_router(youtube_realtime_transcription_router)
     application.include_router(images_router)
     application.include_router(comparison_router)

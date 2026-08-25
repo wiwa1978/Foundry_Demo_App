@@ -56,12 +56,14 @@ export function useRealtimeTranslation({
   fetchClient,
   models = [defaultModel],
   transport = "websocket",
+  mode = "translation",
 }: {
   defaultModel?: string;
   defaultTranscriptionModel?: string;
   fetchClient?: FetchClient;
   models?: string[];
   transport?: "webrtc" | "websocket";
+  mode?: "translation" | "tutor";
 } = {}) {
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [error, setError] = useState("");
@@ -252,6 +254,7 @@ export function useRealtimeTranslation({
         sourceLanguage,
         targetLanguage,
         transcriptionModel: transcriptionModel || defaultTranscriptionModel,
+        mode,
       },
       resources.abortController.signal,
     );
@@ -356,12 +359,19 @@ export function useRealtimeTranslation({
       updateStatus("idle");
     });
     await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(
+        () => reject(new Error("Timed out opening realtime WebSocket.")),
+        30000,
+      );
       socket.addEventListener("open", () => resolve(), { once: true });
       socket.addEventListener(
         "error",
         () => reject(new Error("Realtime translation WebSocket failed.")),
         { once: true },
       );
+      socket.addEventListener("open", () => window.clearTimeout(timeout), {
+        once: true,
+      });
     });
     resources.source = context.createMediaStreamSource(mediaStream);
     resources.worklet = new AudioWorkletNode(

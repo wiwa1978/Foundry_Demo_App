@@ -35,3 +35,4 @@ Voice and image implementations remain single-source under `shared/voice/backend
 | Image    | Image to Image                              | [`image_to_image`](image_to_image/README.md)                                     |
 | Image    | Side by Side - Text Image                   | [`image_comparison`](image_comparison/README.md)                                 |
 | Video    | YouTube Video Summarization                 | [`youtube_summary`](youtube_summary/README.md)                                   |
+| Video    | Video translation and AI dubbing             | [`video_translation`](video_translation/)                                         |

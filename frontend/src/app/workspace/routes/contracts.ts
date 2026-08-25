@@ -73,6 +73,7 @@ import type {
   RetailProduct,
 } from "@/features/retailAgent/types";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
+import type { VideoTranslationResult } from "@/features/videoTranslation/api";
 import type { TextToSpeechAvatarViewModel } from "@/features/voice/useTextToSpeechAvatar";
 
 export type WorkspaceContentRoute = {
@@ -393,6 +394,15 @@ export type WorkspaceYouTubeSummaryViewModel = {
   onSummarize: () => void;
 };
 
+export type WorkspaceVideoTranslationViewModel = {
+  file: File | null; sourceLanguage: string; targetLanguage: string; voice: string;
+  transcriptionModel: string; result: VideoTranslationResult | null; loading: boolean; error: string;
+  transcriptionModels: string[];
+  onFileChange: (file: File | null) => void; onSourceLanguageChange: (value: string) => void;
+  onTargetLanguageChange: (value: string) => void; onVoiceChange: (value: string) => void;
+  onTranscriptionModelChange: (value: string) => void; onTranslate: () => void;
+};
+
 export type WorkspaceContentExtractorViewModel = {
   configured: boolean;
   mode: ContentExtractorMode;
@@ -580,6 +590,7 @@ export type WorkspaceContentRouterProps = {
   guardrails: WorkspaceGuardrailsViewModel;
   youtubeSummary: WorkspaceYouTubeSummaryViewModel;
   youtubeRealtimeTranscription: WorkspaceYouTubeRealtimeTranscriptionViewModel;
+  videoTranslation?: WorkspaceVideoTranslationViewModel;
   contentExtractor: WorkspaceContentExtractorViewModel;
   textTranslation: WorkspaceTextTranslationViewModel;
   chat: WorkspaceChatViewModel;

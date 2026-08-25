@@ -69,6 +69,7 @@ import type {
   ReasoningEffort,
   TextChatRequest,
 } from "@/features/textChat/types";
+import { useVideoTranslation } from "@/features/videoTranslation/useVideoTranslation";
 
 import { useAppBootstrap } from "./useAppBootstrap";
 
@@ -229,9 +230,15 @@ export function useWorkspaceController() {
   const [agentMode, setAgentModeState] = useState<"prompt" | "hosted">(
     "prompt",
   );
+  const [languageLearningMode, setLanguageLearningMode] = useState<
+    "batch" | "realtime"
+  >("batch");
   const effectiveWorkspace: UseCaseWorkspace =
     activeUseCase === "azure_architect_agent" && agentMode === "hosted"
       ? "hostedAgent"
+      : activeUseCase === "language_learning" &&
+          languageLearningMode === "realtime"
+        ? "realtimeTranslationWebSocket"
       : activeUseCaseDetails.workspace;
   const {
     models,
@@ -541,7 +548,15 @@ export function useWorkspaceController() {
       config?.realtime_translation_model ?? "gpt-realtime-translate",
     models: realtimeTranslationModels,
     defaultTranscriptionModel: defaultRealtimeTranscriptionModel,
+    mode: activeUseCase === "language_learning" ? "tutor" : "translation",
   });
+  const setRealtimeTargetLanguage =
+    realtimeTranslationWebSocket.setTargetLanguage;
+  useEffect(() => {
+    if (activeUseCase === "language_learning") {
+      setRealtimeTargetLanguage(languageLearningLanguage.split("-")[0] ?? "en");
+    }
+  }, [activeUseCase, languageLearningLanguage, setRealtimeTargetLanguage]);
   const voiceLive = useVoiceLive({
     model: config?.voice_live_model ?? "gpt-realtime",
     voice: config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural",
@@ -558,6 +573,10 @@ export function useWorkspaceController() {
     fetchClient: apiTrace.tracedFetch,
     appendFoundryTrace: apiTrace.appendFoundryTrace,
     appendFoundryResponseTrace: apiTrace.appendFoundryResponseTrace,
+  });
+  const videoTranslation = useVideoTranslation({
+    fetchClient: apiTrace.tracedFetch,
+    defaultTranscriptionModel: config?.speech_transcription_model ?? "",
   });
   const textTranslation = useTextTranslation({
     fetchClient: apiTrace.tracedFetch,
@@ -800,6 +819,9 @@ export function useWorkspaceController() {
     }
     if (nextUseCase.workspace !== "youtubeSummary") {
       youtubeSummary.invalidate();
+    }
+    if (nextUseCase.workspace !== "videoTranslation") {
+      videoTranslation.reset();
     }
   }
 
@@ -1426,6 +1448,23 @@ export function useWorkspaceController() {
       onDelayChange: youtubeRealtimeTranscription.setDelay,
       onStart: () => void youtubeRealtimeTranscription.start(),
       onStop: youtubeRealtimeTranscription.stop,
+    },
+    videoTranslation: {
+      file: videoTranslation.file,
+      sourceLanguage: videoTranslation.sourceLanguage,
+      targetLanguage: videoTranslation.targetLanguage,
+      voice: videoTranslation.voice,
+      transcriptionModel: videoTranslation.transcriptionModel,
+      result: videoTranslation.result,
+      loading: videoTranslation.loading,
+      error: videoTranslation.error,
+      transcriptionModels,
+      onFileChange: videoTranslation.setFile,
+      onSourceLanguageChange: videoTranslation.setSourceLanguage,
+      onTargetLanguageChange: videoTranslation.setTargetLanguage,
+      onVoiceChange: videoTranslation.setVoice,
+      onTranscriptionModelChange: videoTranslation.setTranscriptionModel,
+      onTranslate: () => void videoTranslation.translate(),
     },
     chat: {
       activeModel,

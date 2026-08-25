@@ -31,7 +31,8 @@ export type UseCaseId =
   | "image_to_image"
   | "image_comparison"
   | "youtube_summary"
-  | "youtube_realtime_transcription";
+  | "youtube_realtime_transcription"
+  | "video_translation";
 
 export type UseCaseIconName =
   | "chat"
@@ -67,7 +68,8 @@ export type UseCaseWorkspace =
   | "transcribe"
   | "transcriptionComparison"
   | "youtubeSummary"
-  | "youtubeRealtimeTranscription";
+  | "youtubeRealtimeTranscription"
+  | "videoTranslation";
 export type UseCaseModality = "text" | "image" | "audio" | "video";
 export type WorkspaceRenderer = "chat" | "agent" | "voice" | "image";
 export type UseCaseCategory = "media" | "agents";

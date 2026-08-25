@@ -145,6 +145,7 @@ export async function createRealtimeTranslationSession(
     sourceLanguage?: string | null;
     targetLanguage: string;
     transcriptionModel?: string | null;
+    mode?: "translation" | "tutor";
   },
   signal?: AbortSignal,
 ) {
@@ -339,5 +340,6 @@ export function realtimeTranslationWebSocketUrl(options: {
   if (options.transcriptionModel) {
     url.searchParams.set("transcriptionModel", options.transcriptionModel);
   }
+  if (options.mode === "tutor") url.searchParams.set("mode", "tutor");
   return url.toString();
 }
