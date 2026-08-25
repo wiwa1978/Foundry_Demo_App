@@ -1,4 +1,11 @@
-import { Download, Loader2, Pause, Play, Sparkles, Volume2 } from "lucide-react";
+import {
+  Download,
+  Loader2,
+  Pause,
+  Play,
+  Sparkles,
+  Volume2,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -10,8 +17,22 @@ export const azureSpeechVoiceNames = [
   { value: "Andrew", label: "Andrew", gender: "Male" },
   { value: "Adam", label: "Adam", gender: "Male" },
 ];
-export const gptAudioVoices = ["alloy", "ash", "coral", "echo", "sage", "shimmer"];
-export const azureSpeechEmotions = ["neutral", "cheerful", "sad", "angry", "fearful", "calm"];
+export const gptAudioVoices = [
+  "alloy",
+  "ash",
+  "coral",
+  "echo",
+  "sage",
+  "shimmer",
+];
+export const azureSpeechEmotions = [
+  "neutral",
+  "cheerful",
+  "sad",
+  "angry",
+  "fearful",
+  "calm",
+];
 export const azureSpeechModels = [
   { value: "DragonHDLatestNeural", label: "Dragon HD Latest" },
   { value: "DragonHDOmniLatestNeural", label: "Dragon HD Omni Latest" },
@@ -30,37 +51,43 @@ const speechPromptGallery = [
   {
     id: "milestone-update",
     title: "Milestone update",
-    prompt: "We just achieved a major milestone ahead of schedule. The team worked incredibly hard, and the results exceeded our expectations. I'm excited to share what this means for our customers and partners.",
+    prompt:
+      "We just achieved a major milestone ahead of schedule. The team worked incredibly hard, and the results exceeded our expectations. I'm excited to share what this means for our customers and partners.",
     description: "Excited announcement for customers and partners.",
   },
   {
     id: "customer-reassurance",
     title: "Customer reassurance",
-    prompt: "I understand that unexpected changes can be frustrating. Please know that we're working closely with you to find the best possible solution. Thank you for your patience and trust throughout this process.",
+    prompt:
+      "I understand that unexpected changes can be frustrating. Please know that we're working closely with you to find the best possible solution. Thank you for your patience and trust throughout this process.",
     description: "Calm, empathetic customer communication.",
   },
   {
     id: "operational-normal",
     title: "Operational normal",
-    prompt: "Everything is operating normally, and there is no action required at this time. Our monitoring systems continue to perform as expected. We will keep you informed if anything changes.",
+    prompt:
+      "Everything is operating normally, and there is no action required at this time. Our monitoring systems continue to perform as expected. We will keep you informed if anything changes.",
     description: "Neutral status update with no action needed.",
   },
   {
     id: "urgent-incident",
     title: "Urgent incident",
-    prompt: "We've identified an issue that requires immediate attention. Our engineering team is actively investigating and working on a resolution. We recommend following the guidance provided until the issue is resolved.",
+    prompt:
+      "We've identified an issue that requires immediate attention. Our engineering team is actively investigating and working on a resolution. We recommend following the guidance provided until the issue is resolved.",
     description: "Serious incident message requiring attention.",
   },
   {
     id: "vision-pitch",
     title: "Vision pitch",
-    prompt: "Imagine if your employees could spend less time searching for information and more time creating value. What opportunities would that unlock for your organization? Let's explore what might be possible together.",
+    prompt:
+      "Imagine if your employees could spend less time searching for information and more time creating value. What opportunities would that unlock for your organization? Let's explore what might be possible together.",
     description: "Consultative pitch for business value.",
   },
   {
     id: "strategy-results",
     title: "Strategy results",
-    prompt: "Our strategy is delivering measurable results across the business. We've improved efficiency, strengthened security, and accelerated innovation. The next phase will focus on scaling these successes across the organization.",
+    prompt:
+      "Our strategy is delivering measurable results across the business. We've improved efficiency, strengthened security, and accelerated innovation. The next phase will focus on scaling these successes across the organization.",
     description: "Executive summary of business progress.",
   },
 ];
@@ -145,7 +172,9 @@ export function AzureSpeechTtsWorkspace({
                 settings.languageSkill,
               ),
           language:
-            settings.languageSkill === "auto" ? "en-US" : settings.languageSkill,
+            settings.languageSkill === "auto"
+              ? "en-US"
+              : settings.languageSkill,
           emotion: settings.emotion,
           pitch: `${settings.pitch}%`,
           rate: `${settings.rate}%`,
@@ -181,7 +210,6 @@ export function AzureSpeechTtsWorkspace({
     } finally {
       setBusy(false);
     }
-
   }
 
   async function togglePlayback() {
@@ -222,13 +250,16 @@ export function AzureSpeechTtsWorkspace({
                 <Volume2 className="h-7 w-7" />
               </div>
               <h3 className="mt-4 text-2xl font-semibold tracking-tight">
-                {isGptAudio ? "Generate speech with GPT Audio" : "Generate speech with Azure Speech"}
+                {isGptAudio
+                  ? "Generate speech with GPT Audio"
+                  : "Generate speech with Azure Speech"}
               </h3>
               <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500 dark:text-slate-400">
                 Enter text below and play the generated speech using{" "}
                 {isGptAudio
                   ? formatModelName(settings.gptAudioModel)
-                  : "Azure Speech"}.
+                  : "Azure Speech"}
+                .
               </p>
             </div>
             {generatedText ? (
@@ -240,14 +271,32 @@ export function AzureSpeechTtsWorkspace({
                 Choose a prompt or enter text below, then select Play speech.
               </div>
             )}
-            {error ? <p className="mt-3 text-xs text-red-600 dark:text-red-300">{error}</p> : null}
+            {error ? (
+              <p className="mt-3 text-xs text-red-600 dark:text-red-300">
+                {error}
+              </p>
+            ) : null}
             {audioUrl ? (
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => void togglePlayback()}>
-                  {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => void togglePlayback()}
+                >
+                  {isPlaying ? (
+                    <Pause className="h-4 w-4" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
                   {isPlaying ? "Pause" : "Play"}
                 </Button>
-                <a className="text-xs font-medium text-violet-700 hover:underline dark:text-violet-300" download="speech.mp3" href={audioUrl}>
+                <a
+                  className="text-xs font-medium text-violet-700 hover:underline dark:text-violet-300"
+                  download="speech.mp3"
+                  href={audioUrl}
+                >
                   <Download className="mr-1 inline h-3.5 w-3.5" /> Download MP3
                 </a>
               </div>
@@ -265,13 +314,30 @@ export function AzureSpeechTtsWorkspace({
             placeholder="Enter the text you want to read..."
             rows={2}
           />
-          <Button type="button" onClick={() => void synthesize()} disabled={!configured || busy || !text.trim()} className="shrink-0 rounded-full px-5">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+          <Button
+            type="button"
+            onClick={() => void synthesize()}
+            disabled={!configured || busy || !text.trim()}
+            className="shrink-0 rounded-full px-5"
+          >
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
             {busy ? "Generating..." : "Play speech"}
           </Button>
         </div>
-        {!configured ? <p className="mx-auto mt-2 max-w-5xl text-xs text-amber-700 dark:text-amber-300">{isGptAudio ? "Configure a Foundry audio deployment to enable speech." : "Configure Azure Speech to enable speech."}</p> : null}
-        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">AI-generated content may be incorrect</p>
+        {!configured ? (
+          <p className="mx-auto mt-2 max-w-5xl text-xs text-amber-700 dark:text-amber-300">
+            {isGptAudio
+              ? "Configure a Foundry audio deployment to enable speech."
+              : "Configure Azure Speech to enable speech."}
+          </p>
+        ) : null}
+        <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+          AI-generated content may be incorrect
+        </p>
       </div>
     </div>
   );

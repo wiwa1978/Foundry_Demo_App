@@ -28,7 +28,10 @@ _PRODUCT_FIELDS = (
 
 
 def _local_catalog_path() -> Path:
-    return Path(__file__).resolve().parents[1] / "data" / "product_catalog.json"
+    package_path = Path(__file__).resolve().parents[1] / "data" / "product_catalog.json"
+    if package_path.is_file():
+        return package_path
+    return Path(__file__).resolve().parents[3] / "data" / "product_catalog.json"
 
 
 @lru_cache(maxsize=1)
