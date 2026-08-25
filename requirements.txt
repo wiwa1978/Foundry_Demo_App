@@ -15,7 +15,7 @@ python-multipart>=0.0.20
 python-dotenv>=1.0.1
 requests>=2.34.0
 uvicorn[standard]>=0.30.0
-websockets>=14.0
+websockets>=17.0.1
 youtube-transcript-api>=1.2.0
 yt-dlp==2026.7.4
 imageio-ffmpeg>=0.6.0
