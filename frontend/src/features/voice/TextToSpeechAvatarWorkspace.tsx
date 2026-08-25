@@ -1,4 +1,11 @@
-import { Download, Loader2, Play, Settings2, Square, Video } from "lucide-react";
+import {
+  Download,
+  Loader2,
+  Play,
+  Settings2,
+  Square,
+  Video,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -228,7 +235,9 @@ export function TextToSpeechAvatarWorkspace({
                   className={controlClass}
                   value={customVoiceEndpointId}
                   disabled={busy}
-                  onChange={(event) => setCustomVoiceEndpointId(event.target.value)}
+                  onChange={(event) =>
+                    setCustomVoiceEndpointId(event.target.value)
+                  }
                   placeholder="Optional limited-access custom voice"
                 />
               </Field>

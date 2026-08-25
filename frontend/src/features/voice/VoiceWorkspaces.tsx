@@ -22,6 +22,7 @@ import type {
 } from "@/app/workspace/contracts";
 import { formatModelName } from "@/app/workspace/formatters";
 import { mapStoredMessage } from "@/app/workspace/messageUtils";
+import type { WorkspaceTextToSpeechAvatarViewModel } from "@/app/workspace/routes/contracts";
 import { ComposerSelect } from "@/app/workspace/WorkspacePrimitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,9 @@ import type {
   RealtimeTranscriptEntry,
 } from "@/features/voice/types";
 import { cn } from "@/lib/utils";
+
+/* Live avatar media is not accompanied by a caption track. */
+/* eslint-disable jsx-a11y/media-has-caption */
 
 function formatVttTime(durationMs: number) {
   const totalSeconds = Math.max(1, Math.ceil(durationMs / 1000));
@@ -71,6 +75,9 @@ export function TraditionalVoiceWorkspace({
   error,
   result,
   languageLearning = false,
+  language = "en-US",
+  onLanguageChange,
+  avatar,
   onStart,
   onStop,
 }: {
@@ -91,6 +98,9 @@ export function TraditionalVoiceWorkspace({
   error: string;
   result: TraditionalVoiceResult | null;
   languageLearning?: boolean;
+  language?: string;
+  onLanguageChange?: (language: string) => void;
+  avatar?: WorkspaceTextToSpeechAvatarViewModel;
   onStart: () => void;
   onStop: () => void;
 }) {
@@ -214,6 +224,39 @@ export function TraditionalVoiceWorkspace({
                   <ChatBubble
                     message={mapStoredMessage(variant.assistant_message)}
                   />
+                  {languageLearning && avatar ? (
+                    <div className="ml-11 flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={
+                          avatar.status === "submitting" ||
+                          avatar.status === "running"
+                        }
+                        onClick={() => void avatar.start(variant.content)}
+                      >
+                        {avatar.status === "submitting" ||
+                        avatar.status === "running"
+                          ? "Creating avatar..."
+                          : "Show tutor as avatar"}
+                      </Button>
+                      {avatar.videoUrl ? (
+                        <video
+                          className="mt-2 w-full max-w-md rounded-xl"
+                          controls
+                          src={avatar.videoUrl}
+                        >
+                          <track kind="captions" />
+                        </video>
+                      ) : null}
+                      {avatar.error ? (
+                        <p className="text-xs text-red-600 dark:text-red-300">
+                          {avatar.error}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="ml-11 flex flex-wrap items-center gap-2">
                     {audioUrl ? (
                       <Button
@@ -259,6 +302,28 @@ export function TraditionalVoiceWorkspace({
       <div className="border-t bg-slate-50 px-4 py-3 dark:border-[#55555a] dark:bg-[#29292c]">
         <div className="palette-focus mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_4px_rgba(15,23,42,0.16)] dark:border-[#606066] dark:bg-[#2f2f33] dark:shadow-none">
           <div className="flex flex-wrap items-center gap-2">
+            {languageLearning ? (
+              <Label className="grid min-w-[170px] gap-1 text-xs text-slate-500 dark:text-slate-400">
+                Target language
+                <select
+                  value={language}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    onLanguageChange?.(value);
+                    avatar?.setLanguage(value);
+                  }}
+                  disabled={isRecording || isProcessing}
+                  className="h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-[#606066] dark:bg-[#29292c] dark:text-slate-100"
+                >
+                  <option value="en-US">English (United States)</option>
+                  <option value="en-GB">English (United Kingdom)</option>
+                  <option value="nl-NL">Dutch (Netherlands)</option>
+                  <option value="fr-FR">French (France)</option>
+                  <option value="de-DE">German (Germany)</option>
+                  <option value="es-ES">Spanish (Spain)</option>
+                </select>
+              </Label>
+            ) : null}
             <ComposerSelect
               id="voice-stt"
               ariaLabel="STT model"
@@ -1425,7 +1490,6 @@ export function VoiceLiveHero({
                 </Badge>
               </div>
               <div className="relative flex aspect-[9/12] min-h-80 items-center justify-center bg-gradient-to-br from-slate-950 via-violet-950 to-slate-900">
-                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                 <video
                   ref={avatar.videoRef}
                   aria-label="Voice Live avatar video"
@@ -1433,7 +1497,7 @@ export function VoiceLiveHero({
                   className="h-full w-full object-cover"
                   playsInline
                 />
-                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                {}
                 <audio
                   ref={avatar.audioRef}
                   aria-label="Voice Live avatar audio"

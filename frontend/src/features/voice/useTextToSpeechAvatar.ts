@@ -2,18 +2,11 @@ import { useEffect, useRef, useState } from "react";
 
 import type { FetchClient } from "@/api/types";
 
-import {
-  getTextToSpeechAvatarJob,
-  submitTextToSpeechAvatar,
-} from "./api";
+import { getTextToSpeechAvatarJob, submitTextToSpeechAvatar } from "./api";
 
 export type TextToSpeechAvatarType = "video" | "photo";
 export type TextToSpeechAvatarStatus =
-  | "idle"
-  | "submitting"
-  | "running"
-  | "succeeded"
-  | "failed";
+  "idle" | "submitting" | "running" | "succeeded" | "failed";
 
 export type TextToSpeechAvatarSettings = {
   avatarType: TextToSpeechAvatarType;
@@ -68,10 +61,12 @@ export function useTextToSpeechAvatar({
     setSettings((current) => ({ ...current, [key]: value }));
   }
 
-  async function start() {
+  async function start(textOverride?: string) {
     if (status === "submitting" || status === "running") return;
     if (!configured) {
-      setError("Configure AZURE_SPEECH_ENDPOINT to enable Text to Speech Avatar.");
+      setError(
+        "Configure AZURE_SPEECH_ENDPOINT to enable Text to Speech Avatar.",
+      );
       return;
     }
     const controller = new AbortController();
@@ -90,7 +85,7 @@ export function useTextToSpeechAvatar({
       const submitted = await submitTextToSpeechAvatar(
         fetchClient,
         {
-          text,
+          text: textOverride ?? text,
           avatar_type: settings.avatarType,
           character: settings.character,
           style: settings.style,
@@ -110,7 +105,10 @@ export function useTextToSpeechAvatar({
       const submittedStatus = submitted.status.toLowerCase();
       if (submittedStatus === "succeeded") {
         setStatus("succeeded");
-      } else if (submittedStatus === "failed" || submittedStatus === "canceled") {
+      } else if (
+        submittedStatus === "failed" ||
+        submittedStatus === "canceled"
+      ) {
         setStatus("failed");
         setError(
           submitted.error ||
@@ -137,13 +135,11 @@ export function useTextToSpeechAvatar({
           }, 2000);
           function onAbort() {
             window.clearTimeout(timeoutId);
-            reject(new DOMException("The operation was aborted.", "AbortError"));
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            );
           }
-          controller.signal.addEventListener(
-            "abort",
-            onAbort,
-            { once: true },
-          );
+          controller.signal.addEventListener("abort", onAbort, { once: true });
         });
         if (generation !== generationRef.current) return;
         const job = await getTextToSpeechAvatarJob(
@@ -162,15 +158,20 @@ export function useTextToSpeechAvatar({
         }
         if (normalizedStatus === "failed" || normalizedStatus === "canceled") {
           setStatus("failed");
-          setError(job.error || `Avatar synthesis ${job.status.toLowerCase()}.`);
+          setError(
+            job.error || `Avatar synthesis ${job.status.toLowerCase()}.`,
+          );
           return;
         }
       }
     } catch (caught) {
-      if (caught instanceof DOMException && caught.name === "AbortError") return;
+      if (caught instanceof DOMException && caught.name === "AbortError")
+        return;
       if (generation !== generationRef.current) return;
       setStatus("failed");
-      setError(caught instanceof Error ? caught.message : "Avatar synthesis failed.");
+      setError(
+        caught instanceof Error ? caught.message : "Avatar synthesis failed.",
+      );
     } finally {
       if (generation === generationRef.current) abortRef.current = null;
     }
@@ -211,7 +212,8 @@ export function useTextToSpeechAvatar({
     setCustomVoiceEndpointId: (value: string) =>
       setSetting("customVoiceEndpointId", value),
     setCustomized: (value: boolean) => setSetting("customized", value),
-    setUseBuiltInVoice: (value: boolean) => setSetting("useBuiltInVoice", value),
+    setUseBuiltInVoice: (value: boolean) =>
+      setSetting("useBuiltInVoice", value),
     setBackgroundColor: (value: string) => setSetting("backgroundColor", value),
     setBackgroundImage: (value: string) => setSetting("backgroundImage", value),
     start,
