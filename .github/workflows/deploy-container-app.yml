@@ -1,6 +1,7 @@
 name: Deploy Container App
 
 on:
+  workflow_dispatch: {}
   push:
     branches:
       - main
