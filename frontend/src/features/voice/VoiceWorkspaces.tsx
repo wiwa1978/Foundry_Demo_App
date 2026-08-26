@@ -1438,8 +1438,12 @@ export function VoiceLiveHero({
   const emptyDescription = isLiveChatAvatar
     ? "Start a low-latency WebRTC conversation with Ava. Ask questions, explore ideas, or get help with everyday tasks."
     : "Start a low-latency WebRTC call with Ava. Switch language, pause naturally, or interrupt while she is speaking.";
-  const startLabel = isLiveChatAvatar ? "Start conversation" : "Call the concierge";
-  const stopLabel = isLiveChatAvatar ? "End conversation" : "End concierge call";
+  const startLabel = isLiveChatAvatar
+    ? "Start conversation"
+    : "Call the concierge";
+  const stopLabel = isLiveChatAvatar
+    ? "End conversation"
+    : "End concierge call";
   const userPlaceholder = isLiveChatAvatar
     ? "Listening for your question..."
     : "Listening for trip details...";
@@ -1451,8 +1455,9 @@ export function VoiceLiveHero({
     (entry) => entry.source === "user" || entry.source === "assistant",
   );
   const conversationText = conversationTurns
-    .map((entry) =>
-      `${entry.source === "user" ? userLabel : assistantLabel}: ${entry.text}`,
+    .map(
+      (entry) =>
+        `${entry.source === "user" ? userLabel : assistantLabel}: ${entry.text}`,
     )
     .join("\n\n");
   const systemText = transcript

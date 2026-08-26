@@ -164,8 +164,7 @@ export function useVoiceLive({
         ].slice(-12);
       }
       const needsSpace =
-        !last.text.endsWith(" ") &&
-        !/^[,.;!?%:)\]}]/.test(cleaned);
+        !last.text.endsWith(" ") && !/^[,.;!?%:)\]}]/.test(cleaned);
       return [
         ...current.slice(0, -1),
         { ...last, text: `${last.text}${needsSpace ? " " : ""}${cleaned}` },
