@@ -1,0 +1,15 @@
+# Trivy ignore list for image vulnerability scanning.
+#
+# These are Debian/apt base-image OS package CVEs where a fixed package
+# version exists upstream but is not yet present in the Debian mirror(s)
+# used by our self-hosted runner at build time. `apt-get upgrade` in the
+# Dockerfile already picks up fixes as soon as the mirror has them, so
+# these entries are a transient allowance, not a permanent exception.
+#
+# Review/remove entries periodically (see date next to each CVE). If a
+# CVE is still listed after its review date, re-check whether the fix is
+# now available and remove the entry, or renew the note with a reason.
+
+# libssl3t64 3.5.6-1~deb13u2 -> fixed in 3.5.7-1~deb13u2 (not yet in mirror)
+# added 2026-08-26, review by 2026-09-26
+CVE-2026-14456
