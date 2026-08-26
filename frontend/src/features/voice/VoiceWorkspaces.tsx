@@ -1406,6 +1406,7 @@ export function VoiceLiveHero({
   avatar,
   onStart,
   onStop,
+  experience = "voiceLive",
 }: {
   configured: boolean;
   model: string;
@@ -1421,21 +1422,44 @@ export function VoiceLiveHero({
   };
   onStart: () => void;
   onStop: () => void;
+  experience?: "voiceLive" | "liveChatAvatar";
 }) {
+  const isLiveChatAvatar = experience === "liveChatAvatar";
+  const conversationLabel = isLiveChatAvatar
+    ? "Live conversation"
+    : "Travel conversation";
+  const userLabel = isLiveChatAvatar ? "Your speech" : "Traveler speech";
+  const assistantLabel = isLiveChatAvatar
+    ? "Ava avatar assistant"
+    : "Ava travel concierge";
+  const emptyTitle = isLiveChatAvatar
+    ? "Live chat with an Azure avatar"
+    : "Voice Live travel concierge";
+  const emptyDescription = isLiveChatAvatar
+    ? "Start a low-latency WebRTC conversation with Ava. Ask questions, explore ideas, or get help with everyday tasks."
+    : "Start a low-latency WebRTC call with Ava. Switch language, pause naturally, or interrupt while she is speaking.";
+  const startLabel = isLiveChatAvatar ? "Start conversation" : "Call the concierge";
+  const stopLabel = isLiveChatAvatar ? "End conversation" : "End concierge call";
+  const userPlaceholder = isLiveChatAvatar
+    ? "Listening for your question..."
+    : "Listening for trip details...";
+  const assistantPlaceholder = isLiveChatAvatar
+    ? "Waiting for Ava's response..."
+    : "Waiting for Ava's spoken itinerary guidance...";
   const isActive = status !== "idle";
-  const travelerText = transcript
-    .filter((entry) => entry.source === "user")
-    .map((entry) => entry.text)
-    .join("\n");
-  const conciergeText = transcript
-    .filter((entry) => entry.source === "assistant")
-    .map((entry) => entry.text)
-    .join("\n");
+  const conversationTurns = transcript.filter(
+    (entry) => entry.source === "user" || entry.source === "assistant",
+  );
+  const conversationText = conversationTurns
+    .map((entry) =>
+      `${entry.source === "user" ? userLabel : assistantLabel}: ${entry.text}`,
+    )
+    .join("\n\n");
   const systemText = transcript
     .filter((entry) => entry.source === "system")
     .map((entry) => entry.text)
     .at(-1);
-  const hasOutput = isActive || Boolean(travelerText || conciergeText);
+  const hasOutput = isActive || conversationTurns.length > 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -1496,18 +1520,18 @@ export function VoiceLiveHero({
                 ) : null}
               </div>
             </div>
-            <div className="min-h-80 rounded-2xl border border-fuchsia-200 bg-white p-5 shadow-sm dark:border-fuchsia-500/40 dark:bg-[#39393d]">
+            <div className="flex min-h-80 flex-col rounded-2xl border border-fuchsia-200 bg-white p-5 shadow-sm dark:border-fuchsia-500/40 dark:bg-[#39393d]">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700 dark:text-fuchsia-300">
-                  Travel conversation
+                  {conversationLabel}
                 </span>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!conciergeText}
+                  disabled={!conversationText}
                   onClick={() =>
-                    void navigator.clipboard.writeText(conciergeText)
+                    void navigator.clipboard.writeText(conversationText)
                   }
                 >
                   <Copy className="h-4 w-4" /> Copy
@@ -1517,24 +1541,46 @@ export function VoiceLiveHero({
                 <Badge variant="outline">{formatModelName(model)}</Badge>
                 <Badge variant="outline">{voice}</Badge>
               </div>
-              <div className="mt-4 grid gap-4">
-                <div>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                    Traveler speech
-                  </span>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
-                    {travelerText || "Listening for trip details..."}
+              <div className="mt-4 flex-1 space-y-3 overflow-auto">
+                {conversationTurns.length ? (
+                  conversationTurns.map((entry) => {
+                    const isUser = entry.source === "user";
+                    return (
+                      <div
+                        key={entry.id}
+                        className={cn(
+                          "flex",
+                          isUser ? "justify-end" : "justify-start",
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-6 whitespace-pre-wrap",
+                            isUser
+                              ? "bg-slate-100 text-slate-800 dark:bg-[#45454a] dark:text-slate-100"
+                              : "bg-fuchsia-50 text-slate-800 dark:bg-fuchsia-500/15 dark:text-slate-100",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "mb-1 block text-[10px] font-semibold uppercase tracking-wide",
+                              isUser
+                                ? "text-slate-500 dark:text-slate-300"
+                                : "text-fuchsia-700 dark:text-fuchsia-300",
+                            )}
+                          >
+                            {isUser ? userLabel : assistantLabel}
+                          </span>
+                          {entry.text}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">
+                    {userPlaceholder} {assistantPlaceholder}
                   </p>
-                </div>
-                <div>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700 dark:text-fuchsia-300">
-                    Ava travel concierge
-                  </span>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-800 dark:text-slate-100">
-                    {conciergeText ||
-                      "Waiting for Ava's spoken itinerary guidance..."}
-                  </p>
-                </div>
+                )}
               </div>
             </div>
             {systemText ? (
@@ -1552,11 +1598,10 @@ export function VoiceLiveHero({
                 <Badge variant="outline">{formatModelName(model)}</Badge>
               </div>
               <h3 className="mt-3 text-2xl font-semibold tracking-tight">
-                Voice Live travel concierge
+                {emptyTitle}
               </h3>
               <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                Start a low-latency WebRTC call with Ava. Switch language, pause
-                naturally, or interrupt while she is speaking.
+                {emptyDescription}
               </p>
             </div>
           </div>
@@ -1591,8 +1636,8 @@ export function VoiceLiveHero({
             {status === "connecting"
               ? "Connecting..."
               : status === "live"
-                ? "End concierge call"
-                : "Call the concierge"}
+                ? stopLabel
+                : startLabel}
           </Button>
         </div>
         {!configured ? (

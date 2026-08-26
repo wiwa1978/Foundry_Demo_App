@@ -20,7 +20,11 @@ import {
 } from "@media/text_chat_comparison/frontend";
 import { useTextToSpeechAvatar } from "@media/text_to_speech_avatar/frontend";
 import { useTextTranslation } from "@media/text_translation/frontend";
-import { useVoiceLive } from "@media/voice_live/frontend";
+import {
+  liveChatAvatarInstructions,
+  useVoiceLive,
+  voiceLiveTravelInstructions,
+} from "@media/voice_live/frontend";
 import { useYouTubeRealtimeTranscription } from "@media/youtube_realtime_transcription/frontend";
 import { useYouTubeSummary } from "@media/youtube_summary/frontend";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -562,6 +566,10 @@ export function useWorkspaceController() {
   const voiceLive = useVoiceLive({
     model: config?.voice_live_model ?? "gpt-realtime",
     voice: config?.voice_live_voice ?? "en-US-Ava:DragonHDLatestNeural",
+    instructions:
+      activeUseCase === "live_chat_avatar"
+        ? liveChatAvatarInstructions
+        : voiceLiveTravelInstructions,
   });
   const textToSpeechAvatar = useTextToSpeechAvatar({
     configured: config?.is_speech_transcription_configured ?? false,

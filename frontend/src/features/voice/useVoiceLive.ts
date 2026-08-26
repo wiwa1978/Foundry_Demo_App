@@ -8,8 +8,10 @@ import type {
   VoiceLiveServerEvent,
 } from "@/features/voice/types";
 
-const voiceLiveInstructions =
+export const voiceLiveTravelInstructions =
   "You are Ava, a multilingual travel concierge. Help travelers plan practical trips through natural spoken conversation. Ask one focused question at a time about destination, dates, budget, interests, and accessibility needs. Reply in the language used by the traveler. Never claim that a booking is confirmed; clearly label suggestions and summarize the proposed itinerary before ending.";
+export const liveChatAvatarInstructions =
+  "You are Ava, a friendly general-purpose conversational assistant. Have natural, helpful spoken conversations about the user's questions, ideas, and everyday tasks. Ask clarifying questions when useful, keep responses concise enough for a live conversation, and reply in the language used by the user. Do not pretend to have completed actions you cannot perform.";
 
 const iceGatheringTimeoutMs = 3000;
 const defaultStandardVoice = "en-US-Ava:DragonHDLatestNeural";
@@ -73,9 +75,11 @@ type VoiceLiveResources = {
 export function useVoiceLive({
   model,
   voice,
+  instructions = voiceLiveTravelInstructions,
 }: {
   model: string;
   voice: string;
+  instructions?: string;
 }) {
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [error, setError] = useState("");
@@ -89,6 +93,7 @@ export function useVoiceLive({
   const statusRef = useRef<RealtimeStatus>("idle");
   const generationRef = useRef(0);
   const transcriptSequenceRef = useRef(0);
+  const assistantStreamingRef = useRef(false);
   const resourcesRef = useRef<VoiceLiveResources | null>(null);
 
   function updateStatus(nextStatus: RealtimeStatus) {
@@ -141,6 +146,48 @@ export function useVoiceLive({
     setTranscript((current) => [...current, entry].slice(-12));
   }
 
+  function appendAssistantDelta(text: string, generation: number) {
+    const cleaned = text.trim();
+    if (!cleaned || !isCurrent(generation)) return;
+    assistantStreamingRef.current = true;
+    setTranscript((current) => {
+      const last = current.at(-1);
+      if (!last || last.source !== "assistant") {
+        transcriptSequenceRef.current += 1;
+        return [
+          ...current,
+          {
+            id: `voice-live-${transcriptSequenceRef.current}`,
+            source: "assistant" as const,
+            text: cleaned,
+          },
+        ].slice(-12);
+      }
+      const needsSpace =
+        !last.text.endsWith(" ") &&
+        !/^[,.;!?%:)\]}]/.test(cleaned);
+      return [
+        ...current.slice(0, -1),
+        { ...last, text: `${last.text}${needsSpace ? " " : ""}${cleaned}` },
+      ];
+    });
+  }
+
+  function appendAssistantFinal(text: string, generation: number) {
+    if (!assistantStreamingRef.current) {
+      appendTranscript("assistant", text, generation);
+      return;
+    }
+    const cleaned = text.trim();
+    assistantStreamingRef.current = false;
+    if (!cleaned || !isCurrent(generation)) return;
+    setTranscript((current) => {
+      const last = current.at(-1);
+      if (!last || last.source !== "assistant") return current;
+      return [...current.slice(0, -1), { ...last, text: cleaned }];
+    });
+  }
+
   function handleEvent(generation: number, event: VoiceLiveServerEvent) {
     if (!isCurrent(generation)) return;
     if (
@@ -153,21 +200,13 @@ export function useVoiceLive({
         event.type === "response.text.done") &&
       (event.transcript || event.text)
     ) {
-      appendTranscript(
-        "assistant",
-        event.transcript ?? event.text ?? "",
-        generation,
-      );
+      appendAssistantFinal(event.transcript ?? event.text ?? "", generation);
     } else if (
       (event.type === "response.audio_transcript.delta" ||
         event.type === "response.text.delta") &&
       (event.delta || event.text)
     ) {
-      appendTranscript(
-        "assistant",
-        event.delta ?? event.text ?? "",
-        generation,
-      );
+      appendAssistantDelta(event.delta ?? event.text ?? "", generation);
     } else if (event.type === "input_audio_buffer.speech_started") {
       appendTranscript(
         "system",
@@ -370,6 +409,7 @@ export function useVoiceLive({
     setAvatarError("");
     setError("");
     setTranscript([]);
+    assistantStreamingRef.current = false;
     clearAvatarElements();
 
     try {
@@ -481,7 +521,7 @@ export function useVoiceLive({
           type: "session.update",
           session: {
             modalities: ["text", "audio"],
-            instructions: voiceLiveInstructions,
+            instructions,
             input_audio_format: "pcm16",
             input_audio_sampling_rate: voiceLiveInputSampleRate,
             voice: buildVoiceLiveVoiceConfig(model, voice),

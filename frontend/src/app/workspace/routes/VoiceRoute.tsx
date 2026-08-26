@@ -137,7 +137,12 @@ export function VoiceRoute({
     return <VoiceLiveHero {...realtime.voiceLive} />;
   }
   if (route.workspace === "liveChatAvatar") {
-    return <LiveChatAvatarWorkspace {...realtime.voiceLive} />;
+    return (
+      <LiveChatAvatarWorkspace
+        {...realtime.voiceLive}
+        experience="liveChatAvatar"
+      />
+    );
   }
   return <AzureSpeechLiveTranslationWorkspace {...realtime.liveTranslation} />;
 }
