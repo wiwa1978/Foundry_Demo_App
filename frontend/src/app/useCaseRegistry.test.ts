@@ -116,10 +116,22 @@ describe("useCaseModules", () => {
         typeLabel: "Realtime Transcription",
       },
       {
-        id: "video_translation",
-        title: "Video translation",
+        id: "captioning",
+        title: "Captioning",
         badge: "Video",
-        typeLabel: "Translation + dubbing",
+        typeLabel: "Timed captions",
+      },
+      {
+        id: "dubbing",
+        title: "Dubbing",
+        badge: "Audio",
+        typeLabel: "Translated audio",
+      },
+      {
+        id: "video_translation",
+        title: "Video Translation",
+        badge: "Video",
+        typeLabel: "Prototype translated video",
       },
       {
         id: "browser_voice",
@@ -209,6 +221,12 @@ describe("useCaseModules", () => {
         id: "voice_live",
         title: "Voice Live travel Concierge",
         badge: "Audio",
+        typeLabel: null,
+      },
+      {
+        id: "live_chat_avatar",
+        title: "Live Chat Avatar",
+        badge: "Audio + video",
         typeLabel: null,
       },
     ]);

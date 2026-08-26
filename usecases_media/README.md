@@ -35,4 +35,18 @@ Voice and image implementations remain single-source under `shared/voice/backend
 | Image    | Image to Image                              | [`image_to_image`](image_to_image/README.md)                                     |
 | Image    | Side by Side - Text Image                   | [`image_comparison`](image_comparison/README.md)                                 |
 | Video    | YouTube Video Summarization                 | [`youtube_summary`](youtube_summary/README.md)                                   |
-| Video    | Video translation and AI dubbing             | [`video_translation`](video_translation/)                                         |
+| Video    | Captioning                                  | [`captioning`](captioning/)                                                       |
+| Audio    | Dubbing                                     | [`dubbing`](dubbing/)                                                             |
+| Video    | Video Translation (prototype/custom mux)     | [`video_translation`](video_translation/)                                         |
+
+## Media translation workflows
+
+These are deliberately separate use cases:
+
+- **Captioning** uses Azure Speech phrase timing data to produce non-empty WebVTT and SRT files.
+- **Dubbing** translates speech and returns a separate synthesized target-language audio track. It does not generate captions.
+- **Video Translation** is the combined custom prototype that muxes the translated audio into a video. This repository does not configure the dedicated Azure Video Translation API.
+
+Captioning and Dubbing share the backend implementation in
+[`video_translation/backend`](video_translation/backend); the separate modules keep their
+routes, contracts, UI, and marketplace metadata distinct without duplicating media processing.

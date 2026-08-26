@@ -1,5 +1,6 @@
 import { AzureSpeechTtsWorkspace } from "@media/azure_speech_tts/frontend";
 import { FoundryGptAudioWorkspace } from "@media/foundry_gpt_audio/frontend";
+import { LiveChatAvatarWorkspace } from "@media/live_chat_avatar/frontend";
 import { AzureSpeechLiveTranslationWorkspace } from "@media/live_translation/frontend";
 import { RealtimeTranscriptionHero as RealtimeTranscriptionWebRtcHero } from "@media/realtime_transcription_webrtc/frontend";
 import { RealtimeTranscriptionHero as RealtimeTranscriptionWebSocketHero } from "@media/realtime_transcription_websocket/frontend";
@@ -134,6 +135,9 @@ export function VoiceRoute({
   }
   if (route.workspace === "voiceLive") {
     return <VoiceLiveHero {...realtime.voiceLive} />;
+  }
+  if (route.workspace === "liveChatAvatar") {
+    return <LiveChatAvatarWorkspace {...realtime.voiceLive} />;
   }
   return <AzureSpeechLiveTranslationWorkspace {...realtime.liveTranslation} />;
 }

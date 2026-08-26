@@ -78,6 +78,24 @@ def transcribe_speech_audio(
     language: str = "en-US",
     model: str | None = None,
 ) -> dict[str, Any]:
+    result = transcribe_speech_audio_with_timings(
+        audio=audio,
+        language=language,
+        model=model,
+    )
+    return {
+        **result,
+        "segments": [segment["text"] for segment in result["segments"]],
+    }
+
+
+def transcribe_speech_audio_with_timings(
+    *,
+    audio: bytes,
+    language: str = "en-US",
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Transcribe audio and retain Azure Speech's recognized phrase timings."""
     settings = load_settings()
     if not settings.is_speech_transcription_configured:
         raise RuntimeError(
@@ -100,7 +118,8 @@ def transcribe_speech_audio(
             endpoint=settings.speech_endpoint,
         )
     speech_config.speech_recognition_language = language
-    segments: list[str] = []
+    segments: list[dict[str, Any]] = []
+    last_end_ms = 0
     done = threading.Event()
     error: list[str] = []
 
@@ -116,8 +135,24 @@ def transcribe_speech_audio(
         )
 
         def recognized(evt: Any) -> None:
+            nonlocal last_end_ms
             if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech and evt.result.text:
-                segments.append(evt.result.text.strip())
+                text = evt.result.text.strip()
+                offset_ms = round(float(getattr(evt.result, "offset", 0) or 0) / 10_000)
+                duration_ms = round(float(getattr(evt.result, "duration", 0) or 0) / 10_000)
+                if offset_ms < last_end_ms:
+                    offset_ms = last_end_ms
+                if duration_ms <= 0:
+                    duration_ms = max(1_000, len(text) * 60)
+                end_ms = max(offset_ms + duration_ms, offset_ms + 1)
+                segments.append(
+                    {
+                        "text": text,
+                        "offset_ms": offset_ms,
+                        "duration_ms": end_ms - offset_ms,
+                    }
+                )
+                last_end_ms = end_ms
 
         def canceled(evt: Any) -> None:
             if evt.reason == speechsdk.CancellationReason.Error:
@@ -140,7 +175,7 @@ def transcribe_speech_audio(
     if error:
         raise RuntimeError(error[0])
 
-    text = " ".join(segment for segment in segments if segment).strip()
+    text = " ".join(segment["text"] for segment in segments if segment["text"]).strip()
     return {
         "model": (model or settings.speech_transcription_model).strip(),
         "text": text,

@@ -2,22 +2,23 @@ import type { UseCaseModule } from "@/app/types";
 
 export const videoTranslationUseCase: UseCaseModule = {
   id: "video_translation",
-  title: "Video translation",
-  shortTitle: "Video translation",
+  title: "Video Translation",
+  shortTitle: "Video Translation",
   description:
-    "Translate spoken content and apply AI voice dubbing across languages.",
+    "Prototype workflow that translates speech, creates a dubbed track, and muxes it into a video.",
   badge: "Video",
-  typeLabel: "Translation + dubbing",
+  typeLabel: "Prototype translated video",
   icon: "video",
   modalities: ["video", "audio", "text"],
   implementation: [
     "Upload a bounded local video and extract normalized mono audio with ffmpeg.",
-    "Transcribe, translate with Azure Translator, synthesize the selected Azure Speech voice, and mux the dubbed track back into the video.",
+    "Use the shared transcription, translation, and synthesis pipeline, then mux the custom dubbed track into the video.",
+    "This is a custom prototype pipeline; the dedicated Azure Video Translation API is not configured here.",
   ],
   codeSnippet: {
-    title: "Translate and dub a video",
+    title: "Prototype translated video",
     language: "python",
-    code: "audio = extract_audio(video)\ntranscript = transcribe(audio)\ntranslated = translate(transcript)\ndubbed = synthesize(translated)\nreturn mux(video, dubbed)",
+    code: "audio = extract_audio(video)\ntranslated_audio = dub(audio)\nreturn mux(video, translated_audio)",
   },
   workspace: "videoTranslation",
 };

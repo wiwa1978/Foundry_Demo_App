@@ -1,10 +1,10 @@
 /* eslint-disable jsx-a11y/media-has-caption */
-import { ComposerSelect } from "@/app/workspace/WorkspacePrimitives";
 import { Video } from "lucide-react";
 
-import { MediaBottomComposer } from "./MediaTranslationWorkspaces";
+import { ComposerSelect } from "@/app/workspace/WorkspacePrimitives";
 
 import type { VideoTranslationResult } from "./api";
+import { MediaBottomComposer } from "./MediaTranslationWorkspaces";
 
 export function VideoTranslationWorkspace(p: {
   file: File | null;

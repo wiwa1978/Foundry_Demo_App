@@ -5,6 +5,10 @@ import { LogIn } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AdminDashboardPage } from "@/features/admin/AdminDashboardPage";
+import {
+  CaptioningWorkspace,
+  DubbingWorkspace,
+} from "@/features/videoTranslation/MediaTranslationWorkspaces";
 import { VideoTranslationWorkspace } from "@/features/videoTranslation/VideoTranslationWorkspace";
 
 import { AgentRoute } from "./routes/AgentRoute";
@@ -104,6 +108,14 @@ export function WorkspaceContentRouter(props: WorkspaceContentRouterProps) {
     return props.videoTranslation ? (
       <VideoTranslationWorkspace {...props.videoTranslation} />
     ) : null;
+  }
+  if (route.workspace === "captioning") {
+    return props.captioning ? (
+      <CaptioningWorkspace {...props.captioning} />
+    ) : null;
+  }
+  if (route.workspace === "dubbing") {
+    return props.dubbing ? <DubbingWorkspace {...props.dubbing} /> : null;
   }
 
   switch (route.renderer) {

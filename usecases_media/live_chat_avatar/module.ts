@@ -1,0 +1,45 @@
+import type { UseCaseModule } from "@/app/types";
+
+export const liveChatAvatarUseCase: UseCaseModule = {
+  id: "live_chat_avatar",
+  title: "Live Chat Avatar",
+  shortTitle: "Live Chat Avatar",
+  description:
+    "Have a natural spoken conversation with a real-time Azure avatar that listens, responds, and supports interruption.",
+  badge: "Audio + video",
+  icon: "voiceWave",
+  modalities: ["audio", "video"],
+  implementation: [
+    "The browser streams microphone audio over WebRTC while receiving both avatar video and synthesized audio responses.",
+    "The avatar is powered by Azure Speech Text-to-Speech with talking-avatar rendering, enabling synchronized lip-sync and natural gestures.",
+    "Live Chat Avatar supports multilingual conversation, turn detection, and natural interruption for a fluid interactive experience.",
+  ],
+  codeSnippet: {
+    title: "Live Chat Avatar: initialize the session",
+    language: "javascript",
+    code: [
+      "signalWs.send(JSON.stringify({",
+      "  type: 'rtc.call.sdp.create',",
+      "  sdp_offer: pc.localDescription.sdp,",
+      "  session: {",
+      "    modalities: ['text', 'audio'],",
+      "    instructions: AVATAR_CHAT_INSTRUCTIONS,",
+      "    voice: {",
+      "      type: 'azure-standard',",
+      "      name: 'en-US-Ava:DragonHDLatestNeural',",
+      "      temperature: 0.8,",
+      "    },",
+      "    turn_detection: {",
+      "      type: 'azure_semantic_vad_multilingual',",
+      "      remove_filler_words: true,",
+      "      interrupt_response: true,",
+      "    },",
+      "    input_audio_noise_reduction: { type: 'azure_deep_noise_suppression' },",
+      "    input_audio_echo_cancellation: { type: 'server_echo_cancellation' },",
+      "    enableTalkingAvatar: true,",
+      "  },",
+      "}));",
+    ].join("\n"),
+  },
+  workspace: "liveChatAvatar",
+};

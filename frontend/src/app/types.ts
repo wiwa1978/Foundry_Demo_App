@@ -22,6 +22,7 @@ export type UseCaseId =
   | "realtime_translation_webrtc"
   | "realtime_translation_websocket"
   | "voice_live"
+  | "live_chat_avatar"
   | "live_translation"
   | "text_translation"
   | "language_detection"
@@ -32,6 +33,8 @@ export type UseCaseId =
   | "image_comparison"
   | "youtube_summary"
   | "youtube_realtime_transcription"
+  | "captioning"
+  | "dubbing"
   | "video_translation";
 
 export type UseCaseIconName =
@@ -63,12 +66,15 @@ export type UseCaseWorkspace =
   | "realtimeTranslationWebRtc"
   | "realtimeTranslationWebSocket"
   | "voiceLive"
+  | "liveChatAvatar"
   | "liveTranslation"
   | "textTranslation"
   | "transcribe"
   | "transcriptionComparison"
   | "youtubeSummary"
   | "youtubeRealtimeTranscription"
+  | "captioning"
+  | "dubbing"
   | "videoTranslation";
 export type UseCaseModality = "text" | "image" | "audio" | "video";
 export type WorkspaceRenderer = "chat" | "agent" | "voice" | "image";

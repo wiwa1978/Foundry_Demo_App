@@ -1,11 +1,14 @@
 import { azureSpeechTtsUseCase } from "@media/azure_speech_tts/module";
 import { browserVoiceUseCase } from "@media/browser_voice/module";
+import { captioningUseCase } from "@media/captioning/module";
 import { contentExtractorUseCase } from "@media/content_extractor/module";
 import { documentQaUseCase } from "@media/document_qa/module";
+import { dubbingUseCase } from "@media/dubbing/module";
 import { foundryGptAudioUseCase } from "@media/foundry_gpt_audio/module";
 import { imageComparisonUseCase } from "@media/image_comparison/module";
 import { imageToImageUseCase } from "@media/image_to_image/module";
 import { languageLearningUseCase } from "@media/language_learning/module";
+import { liveChatAvatarUseCase } from "@media/live_chat_avatar/module";
 import { liveTranslationUseCase } from "@media/live_translation/module";
 import { piiRedactionUseCase } from "@media/pii_redaction/module";
 import { realtimeTranscriptionWebRtcUseCase } from "@media/realtime_transcription_webrtc/module";
@@ -60,12 +63,15 @@ const rendererByWorkspace = {
   realtimeTranslationWebRtc: "voice",
   realtimeTranslationWebSocket: "voice",
   voiceLive: "voice",
+  liveChatAvatar: "voice",
   liveTranslation: "voice",
   textTranslation: "chat",
   transcribe: "voice",
   transcriptionComparison: "voice",
   youtubeSummary: "chat",
   youtubeRealtimeTranscription: "chat",
+  captioning: "chat",
+  dubbing: "chat",
   videoTranslation: "chat",
 } as const satisfies Record<UseCaseWorkspace, WorkspaceRenderer>;
 
@@ -86,6 +92,8 @@ const definitions = [
   imageToImageUseCase,
   youtubeSummaryUseCase,
   youtubeRealtimeTranscriptionUseCase,
+  captioningUseCase,
+  dubbingUseCase,
   videoTranslationUseCase,
   browserVoiceUseCase,
   traditionalVoiceUseCase,
@@ -102,6 +110,7 @@ const definitions = [
   liveTranslationUseCase,
   realtimeVoiceUseCase,
   voiceLiveUseCase,
+  liveChatAvatarUseCase,
 ] as const;
 
 export function registerUseCases(
