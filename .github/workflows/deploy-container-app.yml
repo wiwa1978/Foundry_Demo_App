@@ -106,10 +106,18 @@ jobs:
 
       - name: Build and push immutable image
         run: |
-          az acr build \
-            --registry "${{ env.CONTAINER_REGISTRY_NAME }}" \
-            --image "${{ env.IMAGE_NAME }}:${{ github.sha }}" \
-            .
+          for attempt in 1 2 3; do
+            if az acr build \
+              --registry "${{ env.CONTAINER_REGISTRY_NAME }}" \
+              --image "${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+              .; then
+              exit 0
+            fi
+            echo "az acr build failed (attempt $attempt/3), retrying in 30s..." >&2
+            sleep 30
+          done
+          echo "az acr build failed after 3 attempts" >&2
+          exit 1
 
       - name: Ensure app resource group exists
         if: ${{ github.event_name == 'push' || inputs.deploy_infra }}

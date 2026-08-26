@@ -2,7 +2,18 @@ FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a55
 
 WORKDIR /src
 COPY frontend/package*.json ./frontend/
-RUN cd frontend && npm ci
+RUN cd frontend \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-factor 2 \
+    && npm config set fetch-retry-mintimeout 15000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && success=0 \
+    && for attempt in 1 2 3 4 5; do \
+         if npm ci; then success=1; break; fi; \
+         echo "npm ci failed (attempt $attempt/5), retrying in 20s..." >&2; \
+         sleep 20; \
+       done \
+    && [ "$success" = "1" ]
 COPY frontend/ ./frontend/
 COPY usecases_media/ ./usecases_media/
 RUN cd frontend && npm run build
