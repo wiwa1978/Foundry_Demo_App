@@ -6,6 +6,7 @@ import type {
   RetailAgentRunConfig,
   RetailAgentStep,
   RetailCartItem,
+  RetailConversationTurn,
   RetailProduct,
 } from "./types";
 
@@ -20,6 +21,7 @@ type Props = {
   runConfig: RetailAgentRunConfig | null;
   products: RetailProduct[];
   cart: RetailCartItem[];
+  conversationHistory: RetailConversationTurn[];
   isRunning: boolean;
   error: string;
   onMessageChange: (value: string) => void;
@@ -63,6 +65,10 @@ export function RetailAgentWorkspace(props: Props) {
         question={props.message}
         submittedQuestion={props.submittedMessage}
         answer={answer}
+        conversationHistory={props.conversationHistory.map((turn) => ({
+          ...turn,
+          answer: formatRetailAnswer(turn.answer),
+        }))}
         steps={props.steps}
         citations={[]}
         runConfig={props.runConfig}
@@ -77,25 +83,76 @@ export function RetailAgentWorkspace(props: Props) {
         questionPlaceholder="Ask about products, stock, or your cart..."
         questionAriaLabel="Retail Shopping Assistant question"
         activityDescription="Retail search, cart, and SSE activity"
-        promptGallery={null}
+        promptGallery={{
+          title: "Try a Zava shopping conversation",
+          description:
+            "Use these sample questions to explore products, stock, your cart, and checkout.",
+          examples: retailPromptExamples,
+        }}
         conversationMode="chat"
       />
     </div>
   );
 }
 
+const retailPromptExamples = [
+  {
+    id: "green-paint-colors",
+    title: "Green paint colors",
+    prompt: "What colors of green paint do you have?",
+  },
+  {
+    id: "bedroom-paint-quantity",
+    title: "Estimate paint quantity",
+    prompt:
+      "I think I’m interested in Deep Forest. How many gallons would I need to paint a medium sized bedroom?",
+  },
+  {
+    id: "stock-check",
+    title: "Check stock",
+    prompt: "How much of PROD0018 do you have in stock?",
+  },
+  {
+    id: "add-paint",
+    title: "Add paint",
+    prompt: "Let’s add two gallons to the cart, please.",
+  },
+  {
+    id: "add-accessories",
+    title: "Add accessories",
+    prompt:
+      "Please also add one paint tray and two of your All-Purpose Wall Paint Brushes.",
+  },
+  {
+    id: "view-cart",
+    title: "View cart",
+    prompt: "What items are in my cart right now?",
+  },
+  {
+    id: "checkout",
+    title: "Check out",
+    prompt: "I’d like to check out now.",
+  },
+] as const;
+
 function formatRetailAnswer(value: string) {
   if (!value.trim()) return value;
 
   try {
     const parsed: unknown = JSON.parse(value);
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      "answer" in parsed &&
-      typeof parsed.answer === "string"
-    ) {
-      return parsed.answer;
+    const candidates = Array.isArray(parsed) ? parsed : [parsed];
+    const answers = candidates
+      .filter(
+        (item): item is { answer: string } =>
+          Boolean(item) &&
+          typeof item === "object" &&
+          "answer" in item &&
+          typeof item.answer === "string",
+      )
+      .map((item) => item.answer.trim())
+      .filter(Boolean);
+    if (answers.length) {
+      return answers.join("\n\n");
     }
   } catch {
     return value;

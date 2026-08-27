@@ -61,3 +61,10 @@ export type RetailAgentRunConfig = {
   projectEndpoint: string | null;
   sessionId: string;
 };
+
+export type RetailConversationTurn = {
+  id: string;
+  question: string;
+  answer: string;
+  agentName: string;
+};

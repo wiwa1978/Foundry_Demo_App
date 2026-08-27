@@ -9,6 +9,7 @@ import type {
   RetailCartItem,
   RetailProduct,
   RetailAgentStreamEvent,
+  RetailConversationTurn,
 } from "./types";
 
 type State = {
@@ -22,6 +23,7 @@ type State = {
   runConfig: RetailAgentRunConfig | null;
   isRunning: boolean;
   error: string;
+  conversationHistory: RetailConversationTurn[];
 };
 
 const initialState: State = {
@@ -35,6 +37,7 @@ const initialState: State = {
   runConfig: null,
   isRunning: false,
   error: "",
+  conversationHistory: [],
 };
 
 export function useRetailAgentStream({
@@ -69,6 +72,19 @@ export function useRetailAgentStream({
       steps: [],
       isRunning: true,
       error: "",
+      conversationHistory:
+        current.submittedMessage && (current.answer || current.error)
+          ? [
+              ...current.conversationHistory,
+              {
+                id: `${sequence}`,
+                question: current.submittedMessage,
+                answer: current.answer || current.error,
+                agentName:
+                  current.runConfig?.agentName ?? "zava-shop-assistant-agent",
+              },
+            ]
+          : current.conversationHistory,
     }));
     try {
       await streamRetailAgent({

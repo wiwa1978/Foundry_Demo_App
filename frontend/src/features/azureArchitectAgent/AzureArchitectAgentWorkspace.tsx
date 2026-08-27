@@ -21,6 +21,13 @@ import type {
   AzureArchitectAgentTrace,
 } from "./types";
 
+type ConversationTurn = {
+  id: string;
+  question: string;
+  answer: string;
+  agentName: string;
+};
+
 type AzureArchitectAgentWorkspaceProps = {
   configured: boolean;
   projectEndpoint: string | null;
@@ -50,6 +57,7 @@ type AzureArchitectAgentWorkspaceProps = {
     examples: readonly PromptExample[];
   } | null;
   conversationMode?: "card" | "chat";
+  conversationHistory?: readonly ConversationTurn[];
 };
 
 export function AzureArchitectAgentWorkspace({
@@ -76,6 +84,7 @@ export function AzureArchitectAgentWorkspace({
   activityDescription = "Connection and invocation details",
   promptGallery = null,
   conversationMode = "card",
+  conversationHistory = [],
 }: AzureArchitectAgentWorkspaceProps) {
   const [activityOpen, setActivityOpen] = useState(false);
   const effectiveConfig = runConfig ?? {
@@ -121,10 +130,40 @@ export function AzureArchitectAgentWorkspace({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto p-5 pt-16">
-          {answer || isRunning || error ? (
+          {conversationHistory.length || answer || isRunning || error ? (
             <div className="mx-auto w-full max-w-5xl">
               {conversationMode === "chat" ? (
                 <div className="grid gap-4">
+                  {conversationHistory.map((turn) => (
+                    <div key={turn.id} className="grid gap-4">
+                      <div className="flex items-end justify-end gap-3">
+                        <div className="max-w-[min(44rem,82%)]">
+                          <div className="mb-1 px-2 text-right text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                            You
+                          </div>
+                          <div className="chat-user-bubble rounded-2xl rounded-br-md px-4 py-3 text-sm leading-6 shadow-sm">
+                            {turn.question}
+                          </div>
+                        </div>
+                        <div className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-700 shadow-sm dark:border dark:border-white/10 dark:bg-[#424248] dark:text-slate-300">
+                          <User className="h-4 w-4" />
+                        </div>
+                      </div>
+                      <div className="flex items-end gap-3">
+                        <div className="chat-assistant-avatar mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white shadow-sm">
+                          <Bot className="h-4 w-4" />
+                        </div>
+                        <div className="max-w-[min(52rem,86%)]">
+                          <div className="mb-1 px-2 text-[11px] font-semibold text-slate-700 palette-accent-text">
+                            {turn.agentName || "Assistant"}
+                          </div>
+                          <div className="chat-assistant-bubble rounded-2xl rounded-bl-md border px-4 py-3 text-sm leading-7 shadow-sm">
+                            <MarkdownContent value={turn.answer} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                   {submittedQuestion || question ? (
                     <div className="flex items-end justify-end gap-3">
                       <div className="max-w-[min(44rem,82%)]">

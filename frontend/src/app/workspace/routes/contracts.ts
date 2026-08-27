@@ -70,6 +70,7 @@ import type {
   RetailAgentRunConfig,
   RetailAgentStep,
   RetailCartItem,
+  RetailConversationTurn,
   RetailProduct,
 } from "@/features/retailAgent/types";
 import type { ChatMessage, ReasoningEffort } from "@/features/textChat/types";
@@ -598,6 +599,7 @@ export type WorkspaceRetailAgentViewModel = {
   steps: RetailAgentStep[];
   products: RetailProduct[];
   cart: RetailCartItem[];
+  conversationHistory: RetailConversationTurn[];
   runConfig: RetailAgentRunConfig | null;
   isRunning: boolean;
   error: string;

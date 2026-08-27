@@ -1610,6 +1610,7 @@ export function useWorkspaceController() {
       steps: retailAgent.steps,
       products: retailAgent.products,
       cart: retailAgent.cart,
+      conversationHistory: retailAgent.conversationHistory,
       runConfig: retailAgent.runConfig,
       isRunning: retailAgent.isRunning,
       error: retailAgent.error,
